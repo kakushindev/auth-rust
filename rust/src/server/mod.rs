@@ -129,6 +129,30 @@ fn prepare_keys() -> Option<String> {
     Some(metrics_key)
 }
 
+/// authentik-rs: `os.CreateTemp("", "authentik-gunicorn.*.pid")`: a new
+/// empty file named with a random `uint32`, mode 0600.
+fn gunicorn_pid_file() -> Option<PathBuf> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    for _ in 0_u32..10_000_u32 {
+        let path = temp_dir().join(format!("authentik-gunicorn.{}.pid", rand::random::<u32>()));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+        {
+            Ok(_) => return Some(path),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(err) => {
+                warn!(?err, "failed to create temporary pid file");
+                return None;
+            }
+        }
+    }
+    None
+}
+
 /// authentik-rs: `Shutdown` removes both key files after stopping gunicorn.
 fn remove_keys() {
     if let Err(err) = std::fs::remove_file(temp_dir().join(METRICS_KEY_FILE)) {
@@ -144,14 +168,19 @@ impl Server {
         info!("starting server");
         let metrics_key = prepare_keys();
 
+        // authentik-rs: gounicorn's command line; gunicorn.conf.py binds
+        // `$TMPDIR/authentik-core.sock`, and the PID file is
+        // `os.CreateTemp("", "authentik-gunicorn.*.pid")`.
+        let mut args = vec![
+            "-c".to_owned(),
+            "./lifecycle/gunicorn.conf.py".to_owned(),
+            "authentik.root.asgi:application".to_owned(),
+        ];
+        if let Some(pid_file) = gunicorn_pid_file() {
+            args.extend(["--pid".to_owned(), pid_file.display().to_string()]);
+        }
         let gunicorn = Command::new("gunicorn")
-            .args([
-                "--bind",
-                &format!("unix://{}", socket_path.display()),
-                "-c",
-                "./lifecycle/gunicorn.conf.py",
-                "authentik.root.asgi:application",
-            ])
+            .args(&args)
             .kill_on_drop(true)
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
@@ -428,7 +457,8 @@ pub(crate) async fn start(_cli: Cli, tasks: &mut Tasks) -> Result<Arc<Server>> {
     let arbiter = tasks.arbiter();
     let mut events_rx = arbiter.events_subscribe();
 
-    let server = Arc::new(Server::new(temp_dir().join("authentik-gunicorn.sock"))?);
+    // authentik-rs: 2026.2.7's `UnixSocketName`.
+    let server = Arc::new(Server::new(temp_dir().join("authentik-core.sock"))?);
 
     tasks
         .build_task()

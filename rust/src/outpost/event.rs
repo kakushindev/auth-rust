@@ -1,7 +1,10 @@
 use std::{fmt::Display, sync::Arc};
 
-use ak_common::{Arbiter, Tasks, VERSION, api, arbiter, authentik_build_hash, config, tls};
-use axum::http::{HeaderValue, header::AUTHORIZATION};
+use ak_common::{Arbiter, Tasks, VERSION, api, arbiter, authentik_build_hash, tls};
+use axum::http::{
+    HeaderValue,
+    header::{AUTHORIZATION, USER_AGENT},
+};
 use eyre::{Result, eyre};
 use futures::{Sink, SinkExt as _, Stream, StreamExt as _};
 use nix::unistd::gethostname;
@@ -60,7 +63,7 @@ pub(crate) struct EventSessionEnd {
     pub(crate) session_id: String,
 }
 
-fn build_ws_url(mut url: Url, outpost_pk: &str, instance_uuid: &str, attempt: u32) -> Result<Url> {
+fn build_ws_url(mut url: Url, outpost_pk: &str, instance_uuid: &str) -> Result<Url> {
     let ws_scheme = match url.scheme() {
         "https" => "wss",
         "http" => "ws",
@@ -70,9 +73,9 @@ fn build_ws_url(mut url: Url, outpost_pk: &str, instance_uuid: &str, attempt: u3
     url.set_scheme(ws_scheme)
         .map_err(|()| eyre!("Failed to set URL scheme to {ws_scheme}"))?;
     url.set_path(&format!("{}ws/outpost/{outpost_pk}/", url.path()));
+    // authentik-rs: 2026.2.7's Go `initEvent` sends only `instance_uuid`.
     url.query_pairs_mut()
-        .append_pair("instance_uuid", instance_uuid)
-        .append_pair("attempt", &attempt.to_string());
+        .append_pair("instance_uuid", instance_uuid);
 
     Ok(url)
 }
@@ -133,7 +136,6 @@ async fn watch_events_inner<O: Outpost>(
     arbiter: Arbiter,
     controller: Arc<OutpostController>,
     outpost: Arc<O>,
-    attempt: u32,
 ) -> Result<()> {
     type WsWriter = Box<dyn Sink<Message, Error = WsError> + Unpin + Send>;
     type WsReader = Box<dyn Stream<Item = Result<Message, WsError>> + Unpin + Send>;
@@ -153,11 +155,10 @@ async fn watch_events_inner<O: Outpost>(
         warn!(?err, "failed to refresh");
     }
 
+    // authentik-rs: the embedded outpost connects like Go's, over TCP to
+    // `http://<listen.http><web.path>`.
     let (host, insecure) = if controller.is_embedded() {
-        (
-            Url::parse(&format!("http://localhost{}", config::get().web.path))?,
-            false,
-        )
+        (api::embedded_url()?, false)
     } else {
         let server_config = api::ServerConfig::new()?;
         (server_config.host, server_config.insecure)
@@ -167,7 +168,6 @@ async fn watch_events_inner<O: Outpost>(
         host,
         &controller.outpost.load().pk.to_string(),
         &controller.instance_uuid.to_string(),
-        attempt,
     )?;
 
     debug!(url = %ws_url, insecure, "connecting to websocket");
@@ -181,21 +181,14 @@ async fn watch_events_inner<O: Outpost>(
         AUTHORIZATION,
         HeaderValue::from_str(&format!("Bearer {token}"))?,
     );
+    // authentik-rs: Go's dialer sends the outpost user agent.
+    request.headers_mut().insert(
+        USER_AGENT,
+        HeaderValue::from_str(&ak_common::user_agent_outpost())?,
+    );
 
-    // Embedded outposts run inside the core server and reach it over its unix socket,
-    // which only exists when built with the `core` feature.
-    let embedded_stream = if controller.is_embedded() {
-        #[cfg(feature = "core")]
-        {
-            Some(UnixStream::connect(crate::server::socket_path()).await?)
-        }
-        #[cfg(not(feature = "core"))]
-        {
-            None::<UnixStream>
-        }
-    } else {
-        None
-    };
+    // authentik-rs: no unix-socket shortcut for the embedded outpost.
+    let embedded_stream = None::<UnixStream>;
 
     let (mut ws_write, mut ws_read): (WsWriter, WsReader) = if let Some(stream) = embedded_stream {
         let (ws_stream, _response) = tokio_tungstenite::client_async(request, stream).await?;
@@ -333,7 +326,6 @@ async fn watch_events<O: Outpost>(
                 arbiter.clone(),
                 Arc::clone(&controller),
                 Arc::clone(&outpost),
-                attempt
             ) => {
                 controller.m_connection.set(0_u8);
                 match res {

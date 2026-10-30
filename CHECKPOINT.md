@@ -2,6 +2,16 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 8 — 2026-10-31
+
+- **Forwarded-header differential observed in Django's request log** (`forwarded.py`, run by `run.sh`): 21/21 identical with the harness host trusted and untrusted (`TRUSTED_CIDRS=127.0.0.1/32`); the full HTTP harness is also 0 different in untrusted mode.
+- **502s** carry Go's transport error and JSON escaping (`backend_down.sh`: identical). **gunicorn** launches exactly as gounicorn does (`authentik-core.sock`, `--pid` file).
+- **Embedded outpost** talks to core over TCP at `http://<listen.http><web.path>` like Go (API, websocket, backchannel), fetches root config, and sends Go's websocket headers. Django-side requests identical (`outpost_requests.py`), also under `web.path`.
+- **M2 is done** apart from the owner decision on the outpost hello fields. All differentials: 0 different. Clippy clean; 110 unit tests pass (+1 needing PostgreSQL).
+
+### Exact next action
+M4: `ak-models` read models for User, Group, Application, Provider/Source (multi-table inheritance), Token, Brand and Tenant. Each must decode every row of the populated reference DB, and round-trip writes must leave rows byte-equal (acceptance in `docs/MIGRATION_PLAN.md`). Owner decisions pending: outpost hello fields; R2 Enterprise; the M18 name/logo files; the M19 registry org.
+
 ## Batch 7 — 2026-10-30
 
 - **Brand TLS (:9443)** ported from Go `brand_tls`/`web_tls.go`/`CryptoStore`: per-ClientHello config (`ak-axum` `LazyTlsAcceptor`), Go's brand selection quirks, `RequestClientCert`, the GOFIPS TLS surface with Go's cipher/signature order and tickets, and Go's fallback certificate. `tests/differential/tls/brands.sh`: reference and candidate identical (11 SNIs plus the full TLS probe).

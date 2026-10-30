@@ -3,7 +3,8 @@
 #   ref2 - pinned upstream image again    http://127.0.0.1:29200, https :29643 (noise floor)
 #   cand - candidate image (rust/ binary)  http://127.0.0.1:29100, https :29543
 # Both use reference/.env, so SECRET_KEY and bootstrap credentials match.
-# WEB_PATH sets web.path on all three (default "/").
+# WEB_PATH sets web.path on all three (default "/"); TRUSTED_CIDRS sets
+# listen.trusted_proxy_cidrs (default: the 2026.2.7 default list).
 x-db: &db
   image: docker.io/library/postgres:16-alpine
   env_file: ../../../reference/.env
@@ -44,6 +45,7 @@ services:
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_WEB__PATH: ${WEB_PATH:-/}
+      AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${TRUSTED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fe80::/10,::1/128}
     ports: ["127.0.0.1:29000:9000", "127.0.0.1:29443:9443"]
   ref2:
     <<: *server
@@ -55,6 +57,7 @@ services:
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_WEB__PATH: ${WEB_PATH:-/}
+      AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${TRUSTED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fe80::/10,::1/128}
     ports: ["127.0.0.1:29200:9000", "127.0.0.1:29643:9443"]
   cand:
     <<: *server
@@ -66,4 +69,5 @@ services:
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_WEB__PATH: ${WEB_PATH:-/}
+      AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${TRUSTED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fe80::/10,::1/128}
     ports: ["127.0.0.1:29100:9000", "127.0.0.1:29543:9443"]

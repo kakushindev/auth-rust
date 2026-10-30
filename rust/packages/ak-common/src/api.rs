@@ -66,6 +66,35 @@ pub fn make_config() -> Result<Configuration> {
     })
 }
 
+/// authentik-rs: the URL 2026.2.7's Go server gives its embedded outpost,
+/// `http://<listen.http><web.path>` (`cmd/server/server.go`): it talks to
+/// core over TCP, through the front server like any client.
+pub fn embedded_url() -> Result<Url> {
+    let config = config::get();
+    let listen = config
+        .listen
+        .http
+        .first()
+        .ok_or_else(|| eyre::eyre!("the embedded outpost needs a listen.http address"))?;
+    Ok(Url::parse(&format!("http://{listen}{}", config.web.path))?)
+}
+
+/// authentik-rs: [`make_config_embedded`] over TCP to [`embedded_url`], as
+/// Go's `NewAPIController` is set up for the embedded outpost.
+pub fn make_config_embedded_go() -> Result<Configuration> {
+    let base_path = embedded_url()?.join("api/v3")?.into();
+    let client = reqwest::ClientBuilder::new().build()?;
+    let client = reqwest_middleware::ClientBuilder::new(client).build();
+
+    Ok(Configuration {
+        base_path,
+        client,
+        bearer_access_token: Some(config::get().secret_key.clone()),
+        user_agent: Some(user_agent_outpost()),
+        ..Default::default()
+    })
+}
+
 pub fn make_config_embedded(socket_path: PathBuf) -> Result<Configuration> {
     let base_path = format!("http://localhost{}api/v3", config::get().web.path);
 

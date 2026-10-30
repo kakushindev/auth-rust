@@ -10,7 +10,7 @@ use ak_common::{Tasks, VERSION, api, authentik_build_hash, tracing::LogFilterHan
 use arc_swap::ArcSwap;
 use eyre::{Error, Result, eyre};
 use tokio_retry2::{Retry, RetryError, strategy::LinearBackoff};
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
 pub(crate) mod event;
@@ -84,10 +84,8 @@ impl OutpostController {
             #[cfg(feature = "core")]
             {
                 if Mode::is_core() {
-                    (
-                        true,
-                        api::make_config_embedded(crate::server::socket_path())?,
-                    )
+                    // authentik-rs: over TCP like Go, not the server socket.
+                    (true, api::make_config_embedded_go()?)
                 } else {
                     (false, api::make_config()?)
                 }
@@ -95,6 +93,11 @@ impl OutpostController {
         };
 
         let outpost = Self::get_outpost(&api_config).await?;
+        // authentik-rs: Go's `NewAPIController` also fetches the global
+        // configuration and gives up (to retry) if it cannot.
+        ak_client::apis::root_api::root_config_retrieve(&api_config)
+            .await
+            .inspect_err(|err| error!(?err, "Failed to fetch global configuration"))?;
         let instance_uuid = Uuid::new_v4();
 
         let m_labels = [

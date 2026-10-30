@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Snapshot the reference DB, start reference + candidate stacks restored from
 # it, run the HTTP differential harness, then check both databases against the
-# schema baseline. Usage: [WEB_PATH=/sub/] run.sh [--keep]
+# schema baseline. Usage: [WEB_PATH=/sub/] [TRUSTED_CIDRS=a,b] run.sh [--keep]
 # (--keep leaves the stacks running; WEB_PATH replays every case under a
-# non-default web.path)
+# non-default web.path; TRUSTED_CIDRS makes the harness host untrusted, e.g.
+# TRUSTED_CIDRS=127.0.0.1/32, for the forwarded-header differential)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 here=tests/differential/http
@@ -32,6 +33,10 @@ status=0
 report="$here/last-report.json"
 [[ "$WEB_PATH" != / ]] && report="$here/last-report-web-path.json"
 python3 -I "$here/harness.py" --prefix "$WEB_PATH" --report "$report" || status=$?
+if [[ "$WEB_PATH" == / ]]; then
+  mode=trusted; [[ -n "${TRUSTED_CIDRS:-}" ]] && mode=untrusted
+  python3 -I "$here/forwarded.py" "$mode" || status=$?
+fi
 
 # Both databases must still match the schema baseline after the run.
 guard=rust/target/debug/ak-schema-guard

@@ -657,6 +657,57 @@ pub(super) async fn health_live(State(server): State<Arc<Server>>) -> Response {
     response
 }
 
+/// The error `ReverseProxy` passes to `proxyErrorHandler` for a request
+/// that failed in the transport, as Go formats it. A failed dial is a
+/// `net.OpError`, `dial unix <socket>: connect: <errno text>`; Go's errno
+/// texts are glibc's with a lowercase first letter. Other failures keep the
+/// innermost OS error, else hyper's text.
+pub(super) fn go_transport_error(
+    err: &(dyn std::error::Error + 'static),
+    socket_path: &std::path::Path,
+    connect: bool,
+) -> String {
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(err);
+    let mut os_error = None;
+    while let Some(current) = source {
+        if let Some(io) = current.downcast_ref::<std::io::Error>()
+            && io.raw_os_error().is_some()
+        {
+            os_error = Some(io);
+        }
+        source = current.source();
+    }
+    let errno_text = |io: &std::io::Error| {
+        let text = io.to_string();
+        let text = text
+            .rsplit_once(" (os error ")
+            .map_or(text.as_str(), |(text, _)| text);
+        let mut chars = text.chars();
+        chars.next().map_or_else(String::new, |first| {
+            first.to_lowercase().chain(chars).collect()
+        })
+    };
+    match os_error {
+        Some(io) if connect => format!(
+            "dial unix {}: connect: {}",
+            socket_path.display(),
+            errno_text(io)
+        ),
+        Some(io) => errno_text(io),
+        None => err.to_string(),
+    }
+}
+
+/// `encoding/json`'s `Encoder` with HTML escaping (its default): `<`, `>`,
+/// `&`, U+2028 and U+2029 become `\u` escapes.
+pub(super) fn go_json_escape(json: &str) -> String {
+    json.replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026")
+        .replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029")
+}
+
 /// `http.NotFound`, which gorilla mux answers unmatched paths with before any
 /// router middleware runs.
 pub(crate) async fn go_not_found() -> Response {
@@ -735,6 +786,60 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::*;
+
+    #[tokio::test]
+    async fn transport_errors_read_like_go() {
+        use hyper_unix_socket::UnixSocketConnector;
+        use hyper_util::{client::legacy::Client, rt::TokioExecutor};
+
+        // A real failed dial through the same client the server uses.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let missing = dir.path().join("authentik-core.sock");
+        let client: Client<_, Body> =
+            Client::builder(TokioExecutor::new()).build(UnixSocketConnector::new(missing.clone()));
+        let err = client
+            .request(
+                Request::builder()
+                    .uri("http://localhost:8000/")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect_err("no socket");
+        assert_eq!(
+            go_transport_error(&err, &missing, err.is_connect()),
+            format!(
+                "dial unix {}: connect: no such file or directory",
+                missing.display()
+            )
+        );
+        // A regular file in the socket's place refuses the connection.
+        std::fs::write(&missing, b"").expect("write");
+        let err = client
+            .request(
+                Request::builder()
+                    .uri("http://localhost:8000/")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect_err("not a socket");
+        assert_eq!(
+            go_transport_error(&err, &missing, err.is_connect()),
+            format!(
+                "dial unix {}: connect: connection refused",
+                missing.display()
+            )
+        );
+    }
+
+    #[test]
+    fn json_escapes_html_like_go() {
+        assert_eq!(
+            go_json_escape("{\"error\":\"<a&b>\u{2028}\"}"),
+            "{\"error\":\"\\u003ca\\u0026b\\u003e\\u2028\"}"
+        );
+    }
 
     #[test]
     fn upgrade_type_needs_connection_token() {

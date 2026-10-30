@@ -67,8 +67,10 @@ impl Outpost for ProxyOutpost {
     #[instrument(skip_all)]
     async fn new(controller: Arc<OutpostController>) -> Result<Self> {
         #[cfg(feature = "core")]
+        // authentik-rs: Go's embedded backchannel dials the token endpoint the
+        // API returned (`http://<listen.http>/…`) over TCP.
         let builder = if controller.is_embedded() {
-            reqwest::ClientBuilder::new().unix_socket(crate::server::socket_path())
+            reqwest::ClientBuilder::new()
         } else {
             ApiServerConfig::new()?.client_builder()
         };

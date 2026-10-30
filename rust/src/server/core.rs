@@ -101,15 +101,15 @@ fn is_stale_connection(err: &hyper_util::client::legacy::Error) -> bool {
     false
 }
 
-/// authentik-rs: `proxyErrorHandler` for a failed upstream request. The
-/// error text is Rust's, so it differs from Go's wording.
+/// authentik-rs: `proxyErrorHandler` for a failed upstream request. Callers
+/// pass Go's error text (see `go_compat::go_transport_error`).
 fn proxy_error_response(accept_header: &str, err: &impl std::fmt::Display) -> Response {
     let message = format!("failed to connect to authentik backend: {err}");
     if accept_header.contains("application/json") {
         (
             StatusCode::BAD_GATEWAY,
             [(CONTENT_TYPE, "application/json")],
-            format!("{}\n", json!({ "error": message })),
+            go_compat::go_json_escape(&format!("{}\n", json!({ "error": message }))),
         )
             .into_response()
     } else {
@@ -322,7 +322,10 @@ async fn proxy_to_backend(
         // authentik-rs: proxyErrorHandler answers 502 once the backend runs.
         Err(err) => {
             warn!(?err, "failed to proxy to backend");
-            Ok(proxy_error_response(accept_header, &err))
+            Ok(proxy_error_response(
+                accept_header,
+                &go_compat::go_transport_error(&err, &server.socket_path, err.is_connect()),
+            ))
         }
     }
 }
