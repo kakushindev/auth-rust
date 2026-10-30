@@ -14,8 +14,8 @@ use axum::{
     http::{
         HeaderName, HeaderValue, Method, StatusCode, Uri,
         header::{
-            ACCEPT, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, HOST, LOCATION, RETRY_AFTER,
-            TRANSFER_ENCODING, UPGRADE, X_CONTENT_TYPE_OPTIONS,
+            ACCEPT, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, HOST, RETRY_AFTER, TRANSFER_ENCODING,
+            UPGRADE, X_CONTENT_TYPE_OPTIONS,
         },
     },
     middleware,
@@ -381,10 +381,16 @@ fn upgrade_response(
     Response::from_parts(parts, Body::empty())
 }
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "authentik-rs: upstream's signature; the redirect no longer fails"
+)]
 pub(super) fn build_router(server: &Arc<Server>) -> eyre::Result<Router> {
     // authentik-rs: the 2026.2.7 Go handler chain (`internal/web`), see
     // `go_compat`. Only `/-/health/live/` is answered locally; every other
     // `/-/` path, including `/-/health/ready/`, goes to Django.
+    // gorilla prepends the PathPrefix template to the later Path, so this
+    // is `<web.path>-/health/live/`.
     let health_router = Router::new()
         .route("/-/health/live/", any(go_compat::health_live))
         .with_state(Arc::clone(server));
@@ -406,22 +412,31 @@ pub(super) fn build_router(server: &Arc<Server>) -> eyre::Result<Router> {
         .merge(gunicorn_router)
         .layer(middleware::from_fn(go_compat::static_dispatch));
 
-    let web_path = &config::get().web.path;
+    // authentik-rs: with a non-default web.path, gorilla mux only routes `/`
+    // (a 302 to web.path) and the web.path prefix; anything else gets
+    // `http.NotFound` without the router's middleware.
+    let web_path = config::get().web.path.clone();
     let router = if web_path == "/" {
         router
+            .layer(middleware::from_fn(go_compat::modify_response))
+            .layer(middleware::from_fn(go_compat::gorilla_compress))
     } else {
-        let redirect_response = (
-            StatusCode::FOUND,
-            [(LOCATION, HeaderValue::from_str(web_path)?)],
-        );
-        let redirect_router = wrap_router(Router::new().route("/", any(redirect_response)), true);
-
-        Router::new().merge(redirect_router).nest(web_path, router)
+        let target = web_path.clone();
+        Router::new()
+            .route(
+                "/",
+                any(move |method: Method| {
+                    let target = target.clone();
+                    async move { go_compat::go_redirect(&method, &target, StatusCode::FOUND) }
+                }),
+            )
+            .nest(&web_path, router)
+            .layer(middleware::from_fn(go_compat::modify_response))
+            .layer(middleware::from_fn(go_compat::gorilla_compress))
+            .fallback(go_compat::go_not_found)
     };
 
     let router = router
-        .layer(middleware::from_fn(go_compat::modify_response))
-        .layer(middleware::from_fn(go_compat::gorilla_compress))
         .layer(middleware::from_fn(go_compat::mux_clean_path))
         .layer(middleware::from_fn(go_compat::net_http_framing));
 

@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Snapshot the reference DB, start reference + candidate stacks restored from
 # it, run the HTTP differential harness, then check both databases against the
-# schema baseline. Usage: run.sh [--keep]   (--keep leaves the stacks running)
+# schema baseline. Usage: [WEB_PATH=/sub/] run.sh [--keep]
+# (--keep leaves the stacks running; WEB_PATH replays every case under a
+# non-default web.path)
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 here=tests/differential/http
 export PG_PASS="$(sed -n 's/^PG_PASS=//p' reference/.env)"
 export SNAPSHOT_DIR="${SNAPSHOT_DIR:-$(mktemp -d)}"
+export WEB_PATH="${WEB_PATH:-/}"
 mkdir -p "$SNAPSHOT_DIR"
 dc() { docker compose -p ak-diff -f "$here/compose.yml" "$@"; }
 
@@ -19,14 +22,16 @@ dc down -v --remove-orphans >/dev/null 2>&1 || true
 dc up -d
 for port in 29000 29100 29200; do
   for _ in $(seq 1 120); do
-    curl -fsS -o /dev/null "http://127.0.0.1:$port/-/health/ready/" && break
+    curl -fsS -o /dev/null "http://127.0.0.1:$port${WEB_PATH}-/health/ready/" && break
     sleep 2
   done
-  curl -fsS -o /dev/null "http://127.0.0.1:$port/-/health/ready/"
+  curl -fsS -o /dev/null "http://127.0.0.1:$port${WEB_PATH}-/health/ready/"
 done
 
 status=0
-python3 -I "$here/harness.py" --report "$here/last-report.json" || status=$?
+report="$here/last-report.json"
+[[ "$WEB_PATH" != / ]] && report="$here/last-report-web-path.json"
+python3 -I "$here/harness.py" --prefix "$WEB_PATH" --report "$report" || status=$?
 
 # Both databases must still match the schema baseline after the run.
 guard=rust/target/debug/ak-schema-guard

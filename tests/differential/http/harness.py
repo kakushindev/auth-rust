@@ -155,6 +155,28 @@ def cases():
     return out + FRONT_CASES + UPGRADE_CASES
 
 
+def web_path_cases(prefix):
+    """Paths at the edges of a non-default web.path (no trailing slash,
+    outside it, or doubled)."""
+    return [
+        "/",
+        prefix,
+        prefix + "/",
+        "/-/health/live/",
+        "/-/health/ready/",
+        "/static/dist/poly.js",
+        "/api/v3/root/config/",
+        "/robots.txt",
+        "/if/flow/default-authentication-flow/",
+        prefix + prefix + "/",
+        prefix + "/static/dist/poly.js",
+        prefix + "/media/",
+        "/media/",
+        "/outpost.goauthentik.io/ping",
+        prefix + "/outpost.goauthentik.io/ping",
+    ]
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -335,6 +357,11 @@ def main():
     ap.add_argument("--reference2", default="http://127.0.0.1:29200")
     ap.add_argument("--token-env-file", default=str(ROOT / "reference/.env"))
     ap.add_argument("--report", default=None)
+    ap.add_argument(
+        "--prefix",
+        default="/",
+        help="web.path of all three stacks: every case is replayed under it, plus the prefix edge cases",
+    )
     args = ap.parse_args()
 
     env = dict(
@@ -343,7 +370,7 @@ def main():
     token = env["AUTHENTIK_BOOTSTRAP_TOKEN"]
 
     # Self-test: a seeded difference must be detected, otherwise the run is void.
-    probe = fetch(args.reference, "/api/v3/root/config/", None)
+    probe = fetch(args.reference, args.prefix.rstrip("/") + "/api/v3/root/config/", None)
     if compare(probe, probe):
         sys.exit("harness self-test failed: identical responses reported as different")
     status, headers, body = probe
@@ -359,7 +386,12 @@ def main():
             sys.exit(f"harness self-test failed: seeded {name} difference not detected")
 
     results = []
-    for who, method, path, extra in cases():
+    prefix = args.prefix.rstrip("/")
+    all_cases = cases()
+    if prefix:
+        all_cases = [(who, method, prefix + path, extra) for who, method, path, extra in all_cases]
+        all_cases += [(who, "GET", path, {}) for who in ("anon", "token") for path in web_path_cases(prefix)]
+    for who, method, path, extra in all_cases:
         tok = token if who == "token" else None
         get = (lambda base: fetch_upgrade(base, path, tok, extra)) if method == "UPGRADE" else (
             lambda base: fetch(base, path, tok, method, extra)

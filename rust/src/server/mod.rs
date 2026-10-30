@@ -17,7 +17,7 @@ use ak_axum::{
     router::make_request_body_limit_layer,
 };
 use ak_common::{Arbiter, Event, Tasks, config, tls::self_signed};
-use arc_swap::ArcSwapOption;
+use arc_swap::{ArcSwap, ArcSwapOption};
 use argh::FromArgs;
 use axum::{
     Router,
@@ -50,7 +50,7 @@ use tower::ServiceExt as _;
 use tracing::{info, instrument, trace, warn};
 
 use crate::{
-    brands::tls::BrandCertResolver,
+    brands::tls::BrandTls,
     outpost::{self, proxy::ProxyOutpost},
     worker::Workers,
 };
@@ -87,7 +87,8 @@ pub(crate) struct Server {
     )]
     pub(crate) workers: ArcSwapOption<Workers>,
     proxy_outpost: Arc<ArcSwapOption<ProxyOutpost>>,
-    brand_cert_resolver: ArcSwapOption<BrandCertResolver>,
+    // authentik-rs: `brand_tls.Watcher` state.
+    brand_tls: ArcSwap<BrandTls>,
     fallback_cert: Arc<CertifiedKey>,
     /// authentik-rs: the key Django's `MetricsView` expects (`prepareKeys`).
     metrics_key: Option<String>,
@@ -168,7 +169,7 @@ impl Server {
             socket_path,
             workers: ArcSwapOption::empty(),
             proxy_outpost: Arc::new(ArcSwapOption::empty()),
-            brand_cert_resolver: ArcSwapOption::empty(),
+            brand_tls: ArcSwap::from_pointee(BrandTls::default()),
             fallback_cert: Arc::new(self_signed::generate_certifiedkey()?),
             metrics_key,
         })
@@ -403,7 +404,11 @@ fn build_router(server: &Arc<Server>) -> Result<Router> {
         "API request latencies in seconds"
     );
 
-    let router = if config::get().outposts.disable_embedded_outpost {
+    // authentik-rs: Go's embedded outpost answers the ping inside the
+    // web.path handler, matching the unprefixed path, so it only exists with
+    // the default web.path.
+    let router = if config::get().outposts.disable_embedded_outpost || config::get().web.path != "/"
+    {
         Router::new()
     } else {
         Router::new().route("/outpost.goauthentik.io/ping", any(StatusCode::NO_CONTENT))
@@ -436,18 +441,21 @@ pub(crate) async fn start(_cli: Cli, tasks: &mut Tasks) -> Result<Arc<Server>> {
         ak_axum::server::start_plain(tasks, "server", router.clone(), addr)?;
     }
 
-    let tls_config = tls::make_initial_tls_config(Arc::clone(&server));
+    // authentik-rs: a TLS configuration per ClientHello, as 2026.2.7's Go
+    // server builds it (see `tls`).
     for addr in config::get().listen.https.iter().copied() {
-        ak_axum::server::start_tls(tasks, "server", router.clone(), addr, tls_config.clone())?;
+        ak_axum::server::start_tls_per_hello(
+            tasks,
+            "server",
+            router.clone(),
+            addr,
+            tls::config_for_hello(Arc::clone(&server)),
+        )?;
     }
     tasks
         .build_task()
         .name(&format!("{}::tls::watch_tls_config", module_path!()))
-        .spawn(tls::watch_tls_config(
-            arbiter.clone(),
-            tls_config,
-            Arc::clone(&server),
-        ))?;
+        .spawn(tls::watch_tls_config(arbiter.clone(), Arc::clone(&server)))?;
 
     ak_axum::server::start_unix(
         tasks,

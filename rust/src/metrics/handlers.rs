@@ -31,23 +31,6 @@ pub(super) async fn go_metrics_handler(State(state): State<Arc<Metrics>>) -> Res
         .body(Body::from(body))?)
 }
 
-/// authentik-rs: `http.NotFound` from the metrics mux.
-#[cfg(feature = "core")]
-pub(super) async fn go_not_found() -> Response {
-    let mut response = Response::new(Body::from("404 page not found\n"));
-    *response.status_mut() = StatusCode::NOT_FOUND;
-    let headers = response.headers_mut();
-    headers.insert(
-        "content-type",
-        axum::http::HeaderValue::from_static("text/plain; charset=utf-8"),
-    );
-    headers.insert(
-        "x-content-type-options",
-        axum::http::HeaderValue::from_static("nosniff"),
-    );
-    response
-}
-
 #[instrument(skip_all)]
 pub(super) async fn metrics_handler(State(state): State<Arc<Metrics>>) -> Result<Response> {
     let mut metrics = Vec::new();

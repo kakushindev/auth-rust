@@ -1,8 +1,9 @@
 # Three isolated stacks restored from the same database snapshot:
-#   ref  - pinned upstream image          http://127.0.0.1:29000
-#   ref2 - pinned upstream image again    http://127.0.0.1:29200 (noise floor)
-#   cand - candidate image (rust/ binary)  http://127.0.0.1:29100
+#   ref  - pinned upstream image          http://127.0.0.1:29000, https :29443
+#   ref2 - pinned upstream image again    http://127.0.0.1:29200, https :29643 (noise floor)
+#   cand - candidate image (rust/ binary)  http://127.0.0.1:29100, https :29543
 # Both use reference/.env, so SECRET_KEY and bootstrap credentials match.
+# WEB_PATH sets web.path on all three (default "/").
 x-db: &db
   image: docker.io/library/postgres:16-alpine
   env_file: ../../../reference/.env
@@ -42,7 +43,8 @@ services:
       AUTHENTIK_POSTGRESQL__NAME: authentik
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
-    ports: ["127.0.0.1:29000:9000"]
+      AUTHENTIK_WEB__PATH: ${WEB_PATH:-/}
+    ports: ["127.0.0.1:29000:9000", "127.0.0.1:29443:9443"]
   ref2:
     <<: *server
     image: ghcr.io/goauthentik/server:2026.2.7
@@ -52,7 +54,8 @@ services:
       AUTHENTIK_POSTGRESQL__NAME: authentik
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
-    ports: ["127.0.0.1:29200:9000"]
+      AUTHENTIK_WEB__PATH: ${WEB_PATH:-/}
+    ports: ["127.0.0.1:29200:9000", "127.0.0.1:29643:9443"]
   cand:
     <<: *server
     image: ${CANDIDATE_IMAGE:-authentik-rs-candidate:dev}
@@ -62,4 +65,5 @@ services:
       AUTHENTIK_POSTGRESQL__NAME: authentik
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
-    ports: ["127.0.0.1:29100:9000"]
+      AUTHENTIK_WEB__PATH: ${WEB_PATH:-/}
+    ports: ["127.0.0.1:29100:9000", "127.0.0.1:29543:9443"]

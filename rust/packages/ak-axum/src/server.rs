@@ -18,7 +18,7 @@ use crate::{
         catch_panic::CatchPanicAcceptor,
         go_tcp::{GoTcpAcceptor, TLS_KEEPALIVE_IDLE},
         proxy_protocol::ProxyProtocolAcceptor,
-        tls::TlsAcceptor,
+        tls::{ConfigForHello, LazyTlsAcceptor, TlsAcceptor},
     },
     extract::trusted_proxy::TrustedProxy,
 };
@@ -216,6 +216,67 @@ pub fn start_tls(
         .build_task()
         .name(&format!("{}::run_tls({name}, {addr})", module_path!()))
         .spawn(run_tls(arbiter, name, router, addr, config))?;
+    Ok(())
+}
+
+/// authentik-rs: [`run_tls`] with the configuration chosen per `ClientHello`
+/// (Go's `GetConfigForClient`).
+async fn run_tls_per_hello(
+    arbiter: Arbiter,
+    name: &str,
+    router: Router,
+    addr: net::SocketAddr,
+    config_for_hello: ConfigForHello,
+) -> Result<()> {
+    info!(addr = addr.to_string(), "starting {name} server");
+
+    let handle = Handle::new();
+    arbiter.add_net_handle(handle.clone()).await;
+
+    axum_server::from_tcp(go_listen(addr)?)?
+        .acceptor(CatchPanicAcceptor::new(
+            GoTcpAcceptor::new(
+                ProxyProtocolAcceptor::new().acceptor(LazyTlsAcceptor::new(
+                    DefaultAcceptor::new(),
+                    config_for_hello,
+                )),
+                Some(TLS_KEEPALIVE_IDLE),
+            ),
+            arbiter.clone(),
+        ))
+        .handle(handle)
+        .serve(router.into_make_service_with_connect_info::<net::SocketAddr>())
+        .await?;
+
+    Ok(())
+}
+
+/// authentik-rs: start a TLS server whose configuration is chosen for each
+/// connection from its `ClientHello`.
+///
+/// `name` is only used for observability purposes and should describe which module is starting the
+/// server.
+pub fn start_tls_per_hello(
+    tasks: &mut Tasks,
+    name: &'static str,
+    router: Router,
+    addr: net::SocketAddr,
+    config_for_hello: ConfigForHello,
+) -> Result<()> {
+    let arbiter = tasks.arbiter();
+    tasks
+        .build_task()
+        .name(&format!(
+            "{}::run_tls_per_hello({name}, {addr})",
+            module_path!()
+        ))
+        .spawn(run_tls_per_hello(
+            arbiter,
+            name,
+            router,
+            addr,
+            config_for_hello,
+        ))?;
     Ok(())
 }
 

@@ -66,7 +66,33 @@ Evidence: `tests/differential/metrics/compare.py` checks status, headers and 404
 
 Deviation (unavoidable): Go's 29 `go_*` runtime families have no Rust equivalent and are not emitted. A Prometheus `Accept` asking for protobuf gets text here.
 
-Still open in M2: brand TLS SQL against the 2026.2.7 schema; the embedded outpost's hello omits `golangVersion`, `opensslEnabled`, `opensslVersion` and `fipsEnabled`, which Django stores and shows in outpost health (needs an owner decision on what a Rust outpost reports); the Go embedded outpost connects over TCP to `listen.http`, while Rust uses the server's unix socket; non-default `web.path`; untrusted-proxy header paths (unit-tested only); Go's exact 502 error text; `%q` quoting of non-ASCII Unicode format characters in upgrade errors is approximate.
+### Brand TLS on :9443 (batch 7)
+
+Upstream Rust's brand TLS differed from 2026.2.7's Go `GetConfigForClient` in selection, client-certificate handling and the TLS surface. It is now a port (`src/brands/tls.rs`, `src/server/tls.rs`, `ak-axum` `LazyTlsAcceptor`), with one configuration per ClientHello:
+- **Selection (`brand_tls.Watcher`):** brands in API order (`domain`). Every brand is a candidate: the pinned Go API client marks `web_certificate` as set even when it is `null` (checked in `goauthentik.io/api/v3` at the go.mod version). The last default brand, then the last brand whose domain is a plain suffix of the SNI (no dot boundary), wins. With no SNI, the default brand is used.
+- **Certificates (`CryptoStore`):** keyed by the stored `fingerprint_sha256`; a keypair with an empty stored fingerprint is never loaded, and a changed keypair that fails to load keeps the previous one. Without a private key the leaf is only usable as a client CA, and as a web certificate the handshake fails, as in Go. The check runs when Django is up, then every 3 minutes.
+- **Client certificates:** only for the selected brand, `RequestClientCert` semantics: the CA subjects are sent, any certificate (or none) is accepted without chain verification, and the CertificateVerify signature is still checked. The certificate reaches Django as `X-Forwarded-Client-Cert`.
+- **TLS surface (`GetTLSConfig` + `GOFIPS=1`, which the 2026.2.7 image sets):**
+  - TLS 1.2/1.3; TLS 1.3 AES-GCM; TLS 1.2 ECDHE AES-GCM; groups P-256/P-384, chosen in server order (AES-128 first).
+  - Signatures and requested client-cert signatures use Go's scheme order (PSS-SHA256 first; no PKCS#1 in TLS 1.3).
+  - One session ticket, with a 7-day hint in TLS 1.3 and none in TLS 1.2, written right after the handshake. Ticket keys are shared across connections.
+- **Fallback certificate:** as Go's: RSA-2048, `authentik default certificate`, SAN `*`, critical Basic Constraints encoded `30 00`, no key identifiers.
+
+Evidence: `tests/differential/tls/brands.sh` seeds identical keypairs and brands into ref, ref2 and cand. The seed covers RSA and ECDSA certificates, a keypair without a key, an empty stored fingerprint, a client-certificate-only brand and the default brand. The script compares 11 SNIs (certificate, client CA names, requested signature algorithms, acceptance of an unrelated client certificate) plus the probe of versions, ciphers, groups, the default negotiation, signatures and tickets (`probe.sh`). Reference vs candidate: identical; reference vs reference: identical.
+
+Deviations (reviewed, kept):
+- Go sends its TLS 1.3 ticket in the server's first flight; rustls sends it after the client Finished, one round trip later. A client that closes immediately misses it.
+- rustls ticket keys rotate every 6 hours, so resumption works for about 12 hours where Go allows 7 days.
+- Without `GOFIPS=1`, Go would also offer TLS 1.2 CBC and RSA key-exchange suites, which rustls does not implement.
+- SNI matching is case-insensitive in rustls (it lowercases); Go compares as sent.
+- The fallback certificate lists SAN first (rcgen's order).
+- A brand change is picked up within 3 minutes; Go also re-checks on every embedded-outpost refresh.
+
+### Non-default `web.path` (batch 7)
+
+With `web.path` other than `/`, gorilla mux in 2026.2.7 routes only `/` (an `http.Redirect` 302 to `web.path`, with Go's HTML body) and the prefix. Everything else gets `http.NotFound` without the router's middleware. The health route is `<web.path>-/health/live/`, since gorilla prepends the prefix template to the later `Path`, and it probes Django at `<web.path>-/health/live/`. The embedded outpost's ping exists only at `/outpost.goauthentik.io/ping` under the default path. All of this is ported. Evidence: `WEB_PATH=/authentik/ tests/differential/http/run.sh` replays all 504 cases under the prefix plus 15 prefix-edge paths, anonymous and with a token: 534 cases, 530 equal, 4 nondeterministic, 0 different. The schema guard is clean.
+
+Still open in M2: the embedded outpost's hello omits `golangVersion`, `opensslEnabled`, `opensslVersion` and `fipsEnabled`, which Django stores and shows in outpost health (needs an owner decision on what a Rust outpost reports); the Go embedded outpost connects over TCP to `listen.http`, while Rust uses the server's unix socket; untrusted-proxy header paths (unit-tested only); Go's exact 502 error text; `%q` quoting of non-ASCII Unicode format characters in upgrade errors is approximate.
 
 ## Not verified / open
 

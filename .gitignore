@@ -6,4 +6,6 @@
 /rust/target/
 *.secret
 /tests/differential/http/last-report.json
+/tests/differential/http/last-report-web-path.json
 /tests/differential/http/noise-report.json
+.DS_Store

@@ -87,7 +87,11 @@ fn worker_pid_file() -> PathBuf {
 
 /// `checkWorker`: the PID in the worker's PID file must accept signal 0.
 fn check_worker() -> Result<()> {
-    let pid = fs::read_to_string(worker_pid_file())
+    check_worker_pid_file(&worker_pid_file())
+}
+
+fn check_worker_pid_file(path: &std::path::Path) -> Result<()> {
+    let pid = fs::read_to_string(path)
         .inspect_err(|err| warn!(?err, "failed to check worker PID file"))?;
     // strconv.Atoi: optional sign, decimal digits.
     let pid: i32 = pid
@@ -111,18 +115,13 @@ mod tests {
 
     use super::*;
 
-    /// One test, since `TMPDIR` is process-wide.
     #[test]
     fn worker_pid_check() {
         let dir = tempfile::tempdir().expect("temp dir");
-        #[expect(unsafe_code, reason = "testing")]
-        // SAFETY: testing
-        unsafe {
-            env::set_var("TMPDIR", dir.path());
-        }
+        let path = dir.path().join("authentik-worker.pid");
         let check = |contents: &str| {
-            fs::write(dir.path().join("authentik-worker.pid"), contents).expect("write");
-            check_worker()
+            fs::write(&path, contents).expect("write");
+            check_worker_pid_file(&path)
         };
         check(&format!(" {}\n", process::id())).expect("own PID is alive");
         check(&format!("+{}", process::id())).expect("Atoi accepts a sign");
@@ -130,6 +129,8 @@ mod tests {
         for contents in ["2147483647", "0", "-1", "abc", ""] {
             assert!(check(contents).is_err(), "{contents:?}");
         }
+        fs::remove_file(&path).expect("remove");
+        let _err = check_worker_pid_file(&path).expect_err("missing PID file");
     }
 
     #[test]

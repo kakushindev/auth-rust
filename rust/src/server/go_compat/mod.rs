@@ -626,12 +626,16 @@ pub(super) fn go_forward_headers(
     host
 }
 
-/// `/-/health/live/` in `internal/web/proxy.go`: probe Django and answer with
-/// an empty 200 or 502, independent of the startup state.
+/// `/-/health/live/` in `internal/web/proxy.go`: probe Django's
+/// `<web.path>-/health/live/` and answer with an empty 200 or 502,
+/// independent of the startup state.
 pub(super) async fn health_live(State(server): State<Arc<Server>>) -> Response {
     let probe = Request::builder()
         .method(Method::GET)
-        .uri("http://localhost:8000/-/health/live/")
+        .uri(format!(
+            "http://localhost:8000{}-/health/live/",
+            ak_common::config::get().web.path
+        ))
         .header(HOST, "localhost:8000")
         .header(USER_AGENT, "goauthentik.io/router/healthcheck")
         .header(ACCEPT_ENCODING, "gzip")
@@ -650,6 +654,70 @@ pub(super) async fn health_live(State(server): State<Arc<Server>>) -> Response {
     } else {
         StatusCode::BAD_GATEWAY
     };
+    response
+}
+
+/// `http.NotFound`, which gorilla mux answers unmatched paths with before any
+/// router middleware runs.
+pub(crate) async fn go_not_found() -> Response {
+    let mut response = Response::new(Body::from("404 page not found\n"));
+    *response.status_mut() = StatusCode::NOT_FOUND;
+    let headers = response.headers_mut();
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    response
+}
+
+/// `http.Redirect` to an absolute path: `Location` with non-ASCII bytes
+/// hex-escaped, and for GET a short HTML body (for GET and HEAD a
+/// `Content-Type`).
+pub(super) fn go_redirect(method: &Method, url: &str, status: StatusCode) -> Response {
+    let mut clean = mux_clean(url);
+    if url.ends_with('/') && !clean.ends_with('/') {
+        clean.push('/');
+    }
+    let location: String = clean
+        .bytes()
+        .map(|b| {
+            if b.is_ascii() {
+                char::from(b).to_string()
+            } else {
+                format!("%{b:02x}")
+            }
+        })
+        .collect();
+    let get = method == Method::GET;
+    let body = if get {
+        let escaped = clean
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&#34;")
+            .replace('\'', "&#39;");
+        format!(
+            "<a href=\"{escaped}\">{}</a>.\n\n",
+            status.canonical_reason().unwrap_or_default()
+        )
+    } else {
+        String::new()
+    };
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = status;
+    if let Ok(location) = HeaderValue::from_str(&location) {
+        response.headers_mut().insert(LOCATION, location);
+    }
+    if get || method == Method::HEAD {
+        response.headers_mut().insert(
+            CONTENT_TYPE,
+            HeaderValue::from_static("text/html; charset=utf-8"),
+        );
+    }
     response
 }
 

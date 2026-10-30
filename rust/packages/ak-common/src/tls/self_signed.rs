@@ -1,7 +1,7 @@
 use eyre::Result;
 use rcgen::{
-    Certificate, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, KeyPair,
-    KeyUsagePurpose, PKCS_RSA_SHA256, SanType,
+    Certificate, CertificateParams, CustomExtension, DistinguishedName, DnType,
+    ExtendedKeyUsagePurpose, KeyPair, KeyUsagePurpose, PKCS_RSA_SHA256, SanType,
 };
 use rustls::{
     crypto::aws_lc_rs::sign::any_supported_type,
@@ -28,6 +28,16 @@ pub fn generate() -> Result<(Certificate, KeyPair)> {
         KeyUsagePurpose::KeyEncipherment,
     ];
     params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    // authentik-rs: Go's template sets `BasicConstraintsValid`, which emits
+    // a critical basic constraints extension encoding `CA:FALSE` as the empty
+    // sequence, and no subject key identifier (rcgen's `ExplicitNoCa` would
+    // add one and encode the default explicitly).
+    params.custom_extensions = vec![{
+        let mut basic_constraints =
+            CustomExtension::from_oid_content(&[2, 5, 29, 19], vec![0x30, 0x00]);
+        basic_constraints.set_criticality(true);
+        basic_constraints
+    }];
 
     let cert = params.self_signed(&signing_key)?;
 

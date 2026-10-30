@@ -85,7 +85,7 @@ fn build_router(state: Arc<Metrics>) -> Router {
     if Mode::get() == Mode::Server {
         return Router::new()
             .route("/metrics", any(handlers::go_metrics_handler))
-            .fallback(handlers::go_not_found)
+            .fallback(crate::server::go_compat::go_not_found)
             .with_state(state)
             .layer(from_fn(crate::server::go_compat::mux_clean_path))
             .layer(from_fn(crate::server::go_compat::net_http_framing));

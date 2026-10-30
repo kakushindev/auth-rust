@@ -2,6 +2,16 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 7 — 2026-10-30
+
+- **Brand TLS (:9443)** ported from Go `brand_tls`/`web_tls.go`/`CryptoStore`: per-ClientHello config (`ak-axum` `LazyTlsAcceptor`), Go's brand selection quirks, `RequestClientCert`, the GOFIPS TLS surface with Go's cipher/signature order and tickets, and Go's fallback certificate. `tests/differential/tls/brands.sh`: reference and candidate identical (11 SNIs plus the full TLS probe).
+- **Non-default `web.path`**: `/` redirect, NotFound outside the prefix, prefixed health probe, ping only at the default path. `WEB_PATH=/authentik/ tests/differential/http/run.sh`: 534 cases, 0 different.
+- Default HTTP differential 504/0 different, metrics differential 0 differences, schema guard clean, clippy clean (core and core+proxy). The healthcheck test no longer mutates `TMPDIR`, which had broken temp-dir tests under plain `cargo test`.
+- Production note: apps.mysoc.id terminates TLS at HAProxy and proxies to :9000, so :9443 is not in its live path.
+
+### Exact next action
+M2 remainder: the embedded outpost's transport (Go: TCP to `listen.http`; Rust: the unix socket) and its hello fields (owner decision pending), Go's exact 502 text, and untrusted-proxy header paths beyond unit tests. Then start M4 (`ak-models` read models).
+
 ## Batch 6 — 2026-10-30
 
 - **Plan**: owner decisions recorded as R5 and milestones M18 (rebrand: name and logo), M19 (CI/CD) and M20 (auto-deploy to apps.mysoc.id via Flux image automation in omb-ipb-si/infrastructure), all after the 100 % Rust rewrite (M17). Still owed by the owner: the new name, logo files, and the registry org/image.
