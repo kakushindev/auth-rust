@@ -50,7 +50,7 @@ fn validate(n: u64, r: u64, p: u64) -> Result<u8, HashError> {
     if r == 0 || p == 0 || p > SCRYPT_PR_MAX / r {
         return Err(combo());
     }
-    if 16 * r <= 63 && n >= 1u64 << (16 * r) {
+    if 16 * r <= 63 && n >= 1_u64 << (16 * r) {
         return Err(combo());
     }
     let b_len = p * 128 * r;
@@ -88,7 +88,7 @@ impl ScryptHasher {
             u32::try_from(p).map_err(|_| invalid("p"))?,
         )
         .map_err(|e| invalid(&e.to_string()))?;
-        let mut out = [0u8; DKLEN];
+        let mut out = [0_u8; DKLEN];
         scrypt::scrypt(password.as_bytes(), salt.as_bytes(), &params, &mut out)
             .map_err(|e| invalid(&e.to_string()))?;
         let hash = STANDARD.encode(out);
@@ -109,7 +109,11 @@ impl ScryptHasher {
         if *algorithm != ALGORITHM {
             return Err(malformed("algorithm mismatch"));
         }
-        let int = |v: &str, what| parse_python_int(v).map(u64::from).ok_or(malformed(what));
+        let int = |v: &str, what| {
+            parse_python_int(v)
+                .map(u64::from)
+                .ok_or_else(|| malformed(what))
+        };
         Ok(Decoded {
             work_factor: int(work_factor, "work factor")?,
             salt,
@@ -165,10 +169,13 @@ mod tests {
 
     #[test]
     fn openssl_memory_limit() {
-        assert!(validate(1 << 14, 8, 1).is_ok());
+        assert_eq!(validate(1 << 14, 8, 1), Ok(14));
         // 128 * r * (N + 2) exceeds 32 MiB for N = 2^15, r = 8.
-        assert!(validate(1 << 15, 8, 1).is_err());
-        assert!(validate(3, 8, 1).is_err());
-        assert!(validate(1, 8, 1).is_err());
+        for (n, r, p) in [(1_u64 << 15_u32, 8_u64, 1_u64), (3, 8, 1), (1, 8, 1)] {
+            assert!(matches!(
+                validate(n, r, p),
+                Err(HashError::InvalidParameters { .. })
+            ));
+        }
     }
 }

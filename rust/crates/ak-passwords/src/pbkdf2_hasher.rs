@@ -73,7 +73,7 @@ impl Pbkdf2 {
         if algorithm != self.algorithm {
             return Err(malformed("algorithm mismatch"));
         }
-        let iterations = parse_python_int(iterations).ok_or(malformed("iterations"))?;
+        let iterations = parse_python_int(iterations).ok_or_else(|| malformed("iterations"))?;
         Ok(Decoded { iterations, salt })
     }
 }
@@ -168,8 +168,17 @@ mod tests {
     #[test]
     fn malformed_hash_errors_like_django() {
         let hasher = Pbkdf2Hasher::default();
-        assert!(hasher.verify("pw", "pbkdf2_sha256$abc$salt$hash").is_err());
-        assert!(hasher.verify("pw", "pbkdf2_sha256$1000").is_err());
-        assert!(hasher.must_update("pbkdf2_sha256").is_err());
+        assert!(matches!(
+            hasher.verify("pw", "pbkdf2_sha256$abc$salt$hash"),
+            Err(HashError::Malformed { .. })
+        ));
+        assert!(matches!(
+            hasher.verify("pw", "pbkdf2_sha256$1000"),
+            Err(HashError::Malformed { .. })
+        ));
+        assert!(matches!(
+            hasher.must_update("pbkdf2_sha256"),
+            Err(HashError::Malformed { .. })
+        ));
     }
 }

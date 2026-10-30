@@ -96,7 +96,7 @@ impl BCryptSha256Hasher {
         }
         parse_python_int(work_factor)
             .map(i64::from)
-            .ok_or(malformed("work factor"))
+            .ok_or_else(|| malformed("work factor"))
     }
 }
 
@@ -107,7 +107,7 @@ impl Hasher for BCryptSha256Hasher {
 
     /// `bcrypt.gensalt(rounds)`
     fn salt(&self) -> String {
-        let mut raw = [0u8; 16];
+        let mut raw = [0_u8; 16];
         rand::fill(&mut raw);
         format!("$2b${:02}${}", self.rounds, BCRYPT_B64.encode(raw))
     }
@@ -140,7 +140,7 @@ impl Hasher for BCryptSha256Hasher {
                 })?;
         // Work factor is logarithmic, adding one doubles the load.
         if let Some(diff) = self.rounds.checked_sub(rounds) {
-            for _ in 1..(1u64 << diff.min(63)) {
+            for _ in 1..(1_u64 << diff.min(63)) {
                 Self::encode_raw(password, salt)?;
             }
         }

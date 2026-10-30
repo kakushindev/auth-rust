@@ -1,0 +1,55 @@
+[licenses]
+allow = [
+  "Apache-2.0 WITH LLVM-exception",
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MPL-2.0",
+  "OpenSSL",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+[bans.workspace-dependencies]
+duplicates = "deny"
+include-path-dependencies = true
+unused = "deny"
+
+# No non-FIPS compliant dependencies
+[[bans.deny]]
+name = "native-tls"
+[[bans.deny]]
+name = "openssl"
+[[bans.deny]]
+name = "openssl-sys"
+[[bans.deny]]
+name = "ring"
+[[bans.features]]
+allow = [
+  "alloc",
+  "aws-lc-sys",
+  "default",
+  "fips",
+  "prebuilt-nasm",
+  "ring-io",
+  "ring-sig-verify",
+]
+name = "aws-lc-rs"
+exact = true
+
+[advisories]
+ignore = [
+  # https://github.com/askama-rs/askama/issues/594
+  { id = "RUSTSEC-2026-0374", reason = "basic-toml is a build-time only dependency of the askama template engine, not shipped in the app or daemon; remove when askama drops basic-toml" },
+  # https://github.com/rustls/webpki-roots/releases/tag/v%2F0.26.11
+  { id = "RUSTSEC-2026-0381", reason = "webpki-roots 0.26.11 (via tokio-tungstenite) is a shim re-exporting webpki-roots 1.0.10, which is patched; remove when tokio-tungstenite depends on webpki-roots 1.x" },
+]

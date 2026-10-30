@@ -5,3 +5,5 @@
 /reference/custom-templates/
 /rust/target/
 *.secret
+/tests/differential/http/last-report.json
+/tests/differential/http/noise-report.json

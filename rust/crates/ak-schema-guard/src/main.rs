@@ -104,7 +104,8 @@ async fn main() -> ExitCode {
     let result = match Cli::parse().command {
         Command::Snapshot { database_url, out } => capture(&database_url).await.and_then(|s| {
             let json = serde_json::to_string_pretty(&s).map_err(|e| e.to_string())?;
-            std::fs::write(&out, json + "\n").map_err(|e| format!("{}: {e}", out.display()))?;
+            std::fs::write(&out, format!("{json}\n"))
+                .map_err(|e| format!("{}: {e}", out.display()))?;
             let objects: usize = s
                 .sections
                 .values()

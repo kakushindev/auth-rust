@@ -148,7 +148,7 @@ impl Hasher for Argon2Hasher {
             reason: e.to_string(),
         };
         let params = self.params(DEFAULT_HASH_LENGTH).map_err(invalid)?;
-        let mut out = [0u8; DEFAULT_HASH_LENGTH];
+        let mut out = [0_u8; DEFAULT_HASH_LENGTH];
         Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
             .hash_password_into(password.as_bytes(), salt.as_bytes(), &mut out)
             .map_err(invalid)?;
@@ -193,7 +193,7 @@ impl Hasher for Argon2Hasher {
         ) else {
             return Ok(false);
         };
-        let mut out = vec![0u8; decoded.hash.len()];
+        let mut out = vec![0_u8; decoded.hash.len()];
         if Argon2::new(decoded.algorithm, version, params)
             .hash_password_into(password.as_bytes(), &decoded.salt, &mut out)
             .is_err()

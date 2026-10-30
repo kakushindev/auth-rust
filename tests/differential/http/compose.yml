@@ -1,0 +1,65 @@
+# Three isolated stacks restored from the same database snapshot:
+#   ref  - pinned upstream image          http://127.0.0.1:29000
+#   ref2 - pinned upstream image again    http://127.0.0.1:29200 (noise floor)
+#   cand - candidate image (rust/ binary)  http://127.0.0.1:29100
+# Both use reference/.env, so SECRET_KEY and bootstrap credentials match.
+x-db: &db
+  image: docker.io/library/postgres:16-alpine
+  env_file: ../../../reference/.env
+  environment:
+    POSTGRES_DB: authentik
+    POSTGRES_USER: authentik
+    POSTGRES_PASSWORD: ${PG_PASS:?run via run.sh}
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -d authentik -U authentik"]
+    interval: 5s
+    retries: 20
+  volumes:
+    - ${SNAPSHOT_DIR:?run via run.sh}/snapshot.dump:/snapshot/snapshot.dump:ro
+    - ./restore-snapshot.sh:/docker-entrypoint-initdb.d/10-restore.sh:ro
+
+x-server: &server
+  command: server
+  env_file: ../../../reference/.env
+  shm_size: 512mb
+
+services:
+  ref-db:
+    <<: *db
+    ports: ["127.0.0.1:25432:5432"]
+  cand-db:
+    <<: *db
+    ports: ["127.0.0.1:25532:5432"]
+  ref2-db:
+    <<: *db
+    ports: ["127.0.0.1:25632:5432"]
+  ref:
+    <<: *server
+    image: ghcr.io/goauthentik/server:2026.8.5
+    depends_on: { ref-db: { condition: service_healthy } }
+    environment:
+      AUTHENTIK_POSTGRESQL__HOST: ref-db
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+    ports: ["127.0.0.1:29000:9000"]
+  ref2:
+    <<: *server
+    image: ghcr.io/goauthentik/server:2026.8.5
+    depends_on: { ref2-db: { condition: service_healthy } }
+    environment:
+      AUTHENTIK_POSTGRESQL__HOST: ref2-db
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+    ports: ["127.0.0.1:29200:9000"]
+  cand:
+    <<: *server
+    image: ${CANDIDATE_IMAGE:-authentik-rs-candidate:dev}
+    depends_on: { cand-db: { condition: service_healthy } }
+    environment:
+      AUTHENTIK_POSTGRESQL__HOST: cand-db
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+    ports: ["127.0.0.1:29100:9000"]

@@ -19,7 +19,7 @@ const USER_NAMESPACES: &str = "n.nspname not in ('pg_catalog', 'information_sche
 
 /// Objects created by an extension are versioned by the extension, not by authentik.
 const NOT_FROM_EXTENSION: &str = "not exists (select 1 from pg_depend dep \
-     where dep.objid = {oid} and dep.deptype = 'e')";
+     where dep.objid = $OID and dep.deptype = 'e')";
 
 type Section = BTreeMap<String, Value>;
 
@@ -135,7 +135,7 @@ async fn collect(
 }
 
 fn ext(oid: &str) -> String {
-    NOT_FROM_EXTENSION.replace("{oid}", oid)
+    NOT_FROM_EXTENSION.replace("$OID", oid)
 }
 
 /// Capture a snapshot of every user schema in the connected database.

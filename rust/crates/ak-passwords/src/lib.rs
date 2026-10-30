@@ -216,11 +216,8 @@ pub(crate) fn constant_time_compare(a: &str, b: &str) -> bool {
 /// `must_update_salt(salt, expected_entropy)`
 pub(crate) fn must_update_salt(salt: &str, expected_entropy: f64) -> bool {
     // Each character in the salt provides log_2(len(alphabet)) bits of entropy.
-    #[expect(clippy::cast_precision_loss, reason = "salt lengths are tiny")]
-    let len = salt.chars().count() as f64;
-    #[expect(clippy::cast_precision_loss, reason = "alphabet length is 62")]
-    let bits_per_char = (random::RANDOM_STRING_CHARS.len() as f64).log2();
-    len * bits_per_char < expected_entropy
+    let len = f64::from(u32::try_from(salt.chars().count()).unwrap_or(u32::MAX));
+    len * random::BITS_PER_CHAR < expected_entropy
 }
 
 /// `BasePasswordHasher._check_encode_args`

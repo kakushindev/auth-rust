@@ -2,6 +2,15 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 2 — 2026-10-30
+
+- Decision R1: full Rust, no embedded CPython; expressions need a Rust Python-subset engine (M9b).
+- Upstream Rust server vendored into `rust/` (byte-identical except the compat seam); our crates moved onto upstream's pinned workspace deps, with `ring` removed per upstream's FIPS `deny.toml`. Upstream lockfile versions are unchanged.
+- Candidate image `candidate/Dockerfile` builds; 3-stack HTTP differential: 444 equal / 26 nondeterministic / 0 different; schema guard clean on all DBs.
+- Not full Rust: Django still serves every request (see `docs/COMPATIBILITY_REPORT.md`).
+- Deployment to apps.mysoc.id NOT done: production runs authentik **2026.2.7**, while this project targets 2026.8.5.
+
+
 ## Batch 1 — 2026-10-30
 
 ### Completed (all verified by commands that ran in this batch)
