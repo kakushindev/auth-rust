@@ -1,0 +1,7 @@
+/upstream/
+/reference/.env
+/reference/data/
+/reference/certs/
+/reference/custom-templates/
+/rust/target/
+*.secret

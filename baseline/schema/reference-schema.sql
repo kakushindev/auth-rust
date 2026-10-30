@@ -1,0 +1,13553 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict oQdWcT79wEdZCEIpaQ8VSlGjz7mOpsrOgAswtWfPB7VLSbrQRSLQQVInTcQqjvd
+
+-- Dumped from database version 16.15
+-- Dumped by pg_dump version 16.15
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: template; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA template;
+
+
+--
+-- Name: _pgtrigger_should_ignore(name); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public._pgtrigger_should_ignore(trigger_name name) RETURNS boolean
+    LANGUAGE plpgsql
+    AS $$
+                DECLARE
+                    _pgtrigger_ignore TEXT[];
+                    _result BOOLEAN;
+                BEGIN
+                    BEGIN
+                        SELECT INTO _pgtrigger_ignore
+                            CURRENT_SETTING('pgtrigger.ignore');
+                        EXCEPTION WHEN OTHERS THEN
+                    END;
+                    IF _pgtrigger_ignore IS NOT NULL THEN
+                        SELECT trigger_name = ANY(_pgtrigger_ignore)
+                        INTO _result;
+                        RETURN _result;
+                    ELSE
+                        RETURN FALSE;
+                    END IF;
+                END;
+            $$;
+
+
+--
+-- Name: pgtrigger_notify_enqueueing_0bc94(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.pgtrigger_notify_enqueueing_0bc94() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+                
+                BEGIN
+                    IF ("public"._pgtrigger_should_ignore(TG_NAME) IS TRUE) THEN
+                        IF (TG_OP = 'DELETE') THEN
+                            RETURN OLD;
+                        ELSE
+                            RETURN NEW;
+                        END IF;
+                    END IF;
+                    
+                    PERFORM pg_notify(
+                        'authentik.tasks.' || NEW.queue_name || '.enqueue',
+                        NEW.message_id::text
+                    );
+                    RETURN NEW;
+                
+                END;
+            $$;
+
+
+--
+-- Name: pgtrigger_notify_new_channels_message_d21ae(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.pgtrigger_notify_new_channels_message_d21ae() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+                DECLARE payload text; encoded_message text; epoch text;
+                BEGIN
+                    IF ("public"._pgtrigger_should_ignore(TG_NAME) IS TRUE) THEN
+                        IF (TG_OP = 'DELETE') THEN
+                            RETURN OLD;
+                        ELSE
+                            RETURN NEW;
+                        END IF;
+                    END IF;
+                    
+                    encoded_message := encode(NEW.message, 'base64');
+                    epoch := extract(epoch from NEW.expires)::text;
+                    IF octet_length(NEW.id::text) + octet_length(NEW.channel) + octet_length(epoch) + octet_length(encoded_message) + 3 < 8000 THEN
+                        payload := NEW.id::text || ':' || NEW.channel || ':' || epoch || ':' || encoded_message;
+                    ELSE
+                        payload := NEW.id::text || ':' || NEW.channel || ':' || epoch;
+                    END IF;
+
+                    PERFORM pg_notify('channels_messages', payload);
+                    RETURN NEW;
+                
+                END;
+            $$;
+
+
+--
+-- Name: pgtrigger_refresh_groupancestry_62450(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.pgtrigger_refresh_groupancestry_62450() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+                
+                BEGIN
+                    IF ("public"._pgtrigger_should_ignore(TG_NAME) IS TRUE) THEN
+                        IF (TG_OP = 'DELETE') THEN
+                            RETURN OLD;
+                        ELSE
+                            RETURN NEW;
+                        END IF;
+                    END IF;
+                    
+                    REFRESH MATERIALIZED VIEW CONCURRENTLY authentik_core_groupancestry;
+                    RETURN NULL;
+                
+                END;
+            $$;
+
+
+--
+-- Name: pgtrigger_set_next_run_on_paused_95c6d(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.pgtrigger_set_next_run_on_paused_95c6d() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+                
+                BEGIN
+                    IF ("public"._pgtrigger_should_ignore(TG_NAME) IS TRUE) THEN
+                        IF (TG_OP = 'DELETE') THEN
+                            RETURN OLD;
+                        ELSE
+                            RETURN NEW;
+                        END IF;
+                    END IF;
+                    
+                    NEW.next_run = to_timestamp(0);
+                    RETURN NEW;
+                
+                END;
+            $$;
+
+
+--
+-- Name: pgtrigger_update_aggregated_status_f18c4(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.pgtrigger_update_aggregated_status_f18c4() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+                
+                BEGIN
+                    IF ("public"._pgtrigger_should_ignore(TG_NAME) IS TRUE) THEN
+                        IF (TG_OP = 'DELETE') THEN
+                            RETURN OLD;
+                        ELSE
+                            RETURN NEW;
+                        END IF;
+                    END IF;
+                    
+                    IF NEW.state != 'done' THEN
+                        NEW.aggregated_status := NEW.state;
+                    ELSE
+                        SELECT CASE
+                            WHEN bool_or(log_level = 'error') THEN 'error'
+                            WHEN bool_or(log_level = 'warning') THEN 'warning'
+                            WHEN bool_or(log_level = 'info') THEN 'info'
+                            ELSE 'done'
+                        END
+                        INTO NEW.aggregated_status
+                        FROM authentik_tasks_tasklog
+                        WHERE task_id = NEW.message_id AND NOT previous;
+                    END IF;
+
+                    RETURN NEW;
+                
+                END;
+            $$;
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: auth_group; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.auth_group (
+    id integer NOT NULL,
+    name character varying(150) NOT NULL
+);
+
+
+--
+-- Name: auth_group_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.auth_group ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.auth_group_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: auth_group_permissions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.auth_group_permissions (
+    id integer NOT NULL,
+    group_id integer NOT NULL,
+    permission_id integer NOT NULL
+);
+
+
+--
+-- Name: auth_group_permissions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.auth_group_permissions ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.auth_group_permissions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: auth_permission; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.auth_permission (
+    id integer NOT NULL,
+    name character varying(255) NOT NULL,
+    content_type_id integer NOT NULL,
+    codename character varying(100) NOT NULL
+);
+
+
+--
+-- Name: auth_permission_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.auth_permission ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.auth_permission_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_agents_agent; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_agents_agent (
+    actor_ptr_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_blueprints_blueprintinstance; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_blueprints_blueprintinstance (
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    managed text,
+    instance_uuid uuid NOT NULL,
+    name text NOT NULL,
+    metadata jsonb NOT NULL,
+    path text NOT NULL,
+    context jsonb NOT NULL,
+    last_applied timestamp with time zone NOT NULL,
+    last_applied_hash text NOT NULL,
+    status text NOT NULL,
+    enabled boolean NOT NULL,
+    managed_models text[] NOT NULL,
+    content text NOT NULL
+);
+
+
+--
+-- Name: authentik_brands_brand; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_brands_brand (
+    brand_uuid uuid NOT NULL,
+    domain text NOT NULL,
+    "default" boolean NOT NULL,
+    branding_title text NOT NULL,
+    branding_logo text NOT NULL,
+    flow_authentication_id uuid,
+    flow_invalidation_id uuid,
+    flow_recovery_id uuid,
+    flow_unenrollment_id uuid,
+    branding_favicon text NOT NULL,
+    web_certificate_id uuid,
+    flow_user_settings_id uuid,
+    attributes jsonb NOT NULL,
+    flow_device_code_id uuid,
+    default_application_id uuid,
+    branding_custom_css text NOT NULL,
+    branding_default_flow_background text NOT NULL,
+    flow_lockdown_id uuid,
+    flow_request_id uuid,
+    flow_user_switch_id uuid,
+    branding_map_tiles text NOT NULL
+);
+
+
+--
+-- Name: authentik_brands_brand_client_certificates; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_brands_brand_client_certificates (
+    id integer NOT NULL,
+    brand_id uuid NOT NULL,
+    certificatekeypair_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_brands_brand_client_certificates_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_brands_brand_client_certificates ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_brands_brand_client_certificates_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_actor; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_actor (
+    user_ptr_id integer NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    policy_behavior text NOT NULL,
+    parent_id integer
+);
+
+
+--
+-- Name: authentik_core_application; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_application (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    name text NOT NULL,
+    slug text NOT NULL,
+    meta_launch_url text NOT NULL,
+    meta_description text NOT NULL,
+    meta_publisher text NOT NULL,
+    provider_id integer,
+    meta_icon text NOT NULL,
+    "group" text NOT NULL,
+    open_in_new_tab boolean NOT NULL,
+    meta_hide boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_core_applicationentitlement; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_applicationentitlement (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    attributes jsonb NOT NULL,
+    name text NOT NULL,
+    app_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_core_authenticatedsession; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_authenticatedsession (
+    session_id character varying(40) NOT NULL,
+    uuid uuid NOT NULL,
+    user_id integer NOT NULL,
+    user_switching_session_id character varying(64)
+);
+
+
+--
+-- Name: authentik_core_group; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_group (
+    group_uuid uuid NOT NULL,
+    name text NOT NULL,
+    attributes jsonb NOT NULL,
+    is_superuser boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_core_group_roles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_group_roles (
+    id integer NOT NULL,
+    group_id uuid NOT NULL,
+    role_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_core_group_roles_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_group_roles ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_group_roles_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_groupparentage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_groupparentage (
+    uuid uuid NOT NULL,
+    child_id uuid NOT NULL,
+    parent_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_core_groupancestry; Type: MATERIALIZED VIEW; Schema: public; Owner: -
+--
+
+CREATE MATERIALIZED VIEW public.authentik_core_groupancestry AS
+ WITH RECURSIVE accumulator AS (
+         SELECT (((authentik_core_groupparentage.child_id)::text || '-'::text) || (authentik_core_groupparentage.parent_id)::text) AS id,
+            authentik_core_groupparentage.child_id AS descendant_id,
+            authentik_core_groupparentage.parent_id AS ancestor_id
+           FROM public.authentik_core_groupparentage
+        UNION
+         SELECT (((accumulator_1.descendant_id)::text || '-'::text) || (current.parent_id)::text) AS id,
+            accumulator_1.descendant_id,
+            current.parent_id AS ancestor_id
+           FROM (accumulator accumulator_1
+             JOIN public.authentik_core_groupparentage current ON ((accumulator_1.ancestor_id = current.child_id)))
+        )
+ SELECT id,
+    descendant_id,
+    ancestor_id
+   FROM accumulator
+  WITH NO DATA;
+
+
+--
+-- Name: authentik_core_groupsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_groupsourceconnection (
+    id integer NOT NULL,
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    identifier text NOT NULL,
+    group_id uuid NOT NULL,
+    source_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_core_groupsourceconnection_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_groupsourceconnection ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_groupsourceconnection_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_objectattribute; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_objectattribute (
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    managed text,
+    attribute_id uuid NOT NULL,
+    enabled boolean NOT NULL,
+    label text NOT NULL,
+    "group" text NOT NULL,
+    key text NOT NULL,
+    type text NOT NULL,
+    is_unique boolean NOT NULL,
+    is_required boolean NOT NULL,
+    regex text NOT NULL,
+    is_array boolean NOT NULL,
+    object_type_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_core_propertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_propertymapping (
+    pm_uuid uuid NOT NULL,
+    name text NOT NULL,
+    expression text NOT NULL,
+    managed text
+);
+
+
+--
+-- Name: authentik_core_provider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_provider (
+    id integer NOT NULL,
+    authorization_flow_id uuid,
+    name text NOT NULL,
+    authentication_flow_id uuid,
+    backchannel_application_id uuid,
+    is_backchannel boolean NOT NULL,
+    invalidation_flow_id uuid
+);
+
+
+--
+-- Name: authentik_core_provider_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_provider ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_provider_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_provider_property_mappings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_provider_property_mappings (
+    id integer NOT NULL,
+    provider_id integer NOT NULL,
+    propertymapping_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_core_provider_property_mappings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_provider_property_mappings ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_provider_property_mappings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_session; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_session (
+    session_key character varying(40) NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    session_data bytea NOT NULL,
+    last_ip inet NOT NULL,
+    last_user_agent text NOT NULL,
+    last_used timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: authentik_core_source; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_source (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    name text NOT NULL,
+    slug text NOT NULL,
+    enabled boolean NOT NULL,
+    authentication_flow_id uuid,
+    enrollment_flow_id uuid,
+    managed text,
+    user_matching_mode text NOT NULL,
+    user_path_template text NOT NULL,
+    icon text NOT NULL,
+    group_matching_mode text NOT NULL,
+    promoted boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_core_source_group_property_mappings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_source_group_property_mappings (
+    id integer NOT NULL,
+    source_id uuid NOT NULL,
+    propertymapping_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_core_source_group_property_mappings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_source_group_property_mappings ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_source_group_property_mappings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_source_user_property_mappings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_source_user_property_mappings (
+    id integer NOT NULL,
+    source_id uuid NOT NULL,
+    propertymapping_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_core_source_user_property_mappings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_source_user_property_mappings ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_source_user_property_mappings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_token; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_token (
+    token_uuid uuid NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    description text NOT NULL,
+    user_id integer NOT NULL,
+    intent text NOT NULL,
+    identifier character varying(255) NOT NULL,
+    key text NOT NULL,
+    managed text
+);
+
+
+--
+-- Name: authentik_core_user; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_user (
+    id integer NOT NULL,
+    password character varying(128) NOT NULL,
+    last_login timestamp with time zone,
+    username character varying(150) NOT NULL,
+    first_name character varying(150) NOT NULL,
+    last_name character varying(150) NOT NULL,
+    email character varying(254) NOT NULL,
+    is_active boolean NOT NULL,
+    date_joined timestamp with time zone NOT NULL,
+    uuid uuid NOT NULL,
+    name text NOT NULL,
+    password_change_date timestamp with time zone NOT NULL,
+    attributes jsonb NOT NULL,
+    path text NOT NULL,
+    type text NOT NULL,
+    last_updated timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: authentik_core_user_groups; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_user_groups (
+    id integer NOT NULL,
+    user_id integer NOT NULL,
+    group_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_core_user_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_user ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_user_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_user_pb_groups_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_user_groups ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_user_pb_groups_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_user_roles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_user_roles (
+    id integer NOT NULL,
+    user_id integer NOT NULL,
+    role_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_core_user_roles_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_user_roles ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_user_roles_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_usersourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_usersourceconnection (
+    id integer NOT NULL,
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    source_id uuid NOT NULL,
+    user_id integer NOT NULL,
+    identifier text NOT NULL
+);
+
+
+--
+-- Name: authentik_core_usersourceconnection_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_core_usersourceconnection ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_core_usersourceconnection_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_core_userswitchingsession; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_core_userswitchingsession (
+    token character varying(64) NOT NULL,
+    current_session_id character varying(40)
+);
+
+
+--
+-- Name: authentik_crypto_certificatekeypair; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_crypto_certificatekeypair (
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    kp_uuid uuid NOT NULL,
+    name text NOT NULL,
+    certificate_data text NOT NULL,
+    key_data text NOT NULL,
+    managed text,
+    cert_expiry timestamp with time zone,
+    cert_subject text,
+    fingerprint_sha1 character varying(59),
+    fingerprint_sha256 character varying(95),
+    key_type character varying(16),
+    kid character varying(128)
+);
+
+
+--
+-- Name: authentik_endpoints_connector; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connector (
+    connector_uuid uuid NOT NULL,
+    name text NOT NULL,
+    enabled boolean NOT NULL,
+    snapshot_expiry text NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_agent_agentconnector (
+    connector_ptr_id uuid NOT NULL,
+    nss_uid_offset integer NOT NULL,
+    nss_gid_offset integer NOT NULL,
+    auth_terminate_session_on_expiry boolean NOT NULL,
+    refresh_interval text NOT NULL,
+    authorization_flow_id uuid,
+    challenge_key_id uuid,
+    auth_session_duration text NOT NULL,
+    challenge_idle_timeout text NOT NULL,
+    challenge_trigger_check_in boolean NOT NULL,
+    CONSTRAINT authentik_endpoints_connectors_agent_agent_nss_gid_offset_check CHECK ((nss_gid_offset >= 0)),
+    CONSTRAINT authentik_endpoints_connectors_agent_agent_nss_uid_offset_check CHECK ((nss_uid_offset >= 0))
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6 (
+    id integer NOT NULL,
+    agentconnector_id uuid NOT NULL,
+    oauth2provider_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector_jwt__id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6 ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_endpoints_connectors_agent_agentconnector_jwt__id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentdeviceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_agent_agentdeviceconnection (
+    deviceconnection_ptr_id uuid NOT NULL,
+    apple_signing_key text NOT NULL,
+    apple_encryption_key text NOT NULL,
+    apple_key_exchange_key text NOT NULL,
+    apple_sign_key_id text NOT NULL,
+    apple_enc_key_id text NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentdeviceuserbinding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_agent_agentdeviceuserbinding (
+    deviceuserbinding_ptr_id uuid NOT NULL,
+    apple_secure_enclave_key text NOT NULL,
+    apple_enclave_key_id text NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_appleindependentsecure0d47; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_agent_appleindependentsecure0d47 (
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    name character varying(64) NOT NULL,
+    confirmed boolean NOT NULL,
+    last_used timestamp with time zone,
+    uuid uuid NOT NULL,
+    apple_secure_enclave_key text NOT NULL,
+    apple_enclave_key_id text NOT NULL,
+    device_type text NOT NULL,
+    user_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_applenonce; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_agent_applenonce (
+    id integer NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    nonce text NOT NULL,
+    device_token_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_applenonce_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_endpoints_connectors_agent_applenonce ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_endpoints_connectors_agent_applenonce_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_deviceauthenticationtoken; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_agent_deviceauthenticationtoken (
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    identifier uuid NOT NULL,
+    token text NOT NULL,
+    connector_id uuid NOT NULL,
+    device_id uuid NOT NULL,
+    device_token_id uuid NOT NULL,
+    user_id integer
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_devicetoken; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_agent_devicetoken (
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    token_uuid uuid NOT NULL,
+    key text NOT NULL,
+    device_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_enrollmenttoken; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_agent_enrollmenttoken (
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    token_uuid uuid NOT NULL,
+    name text NOT NULL,
+    key text NOT NULL,
+    connector_id uuid NOT NULL,
+    device_group_id uuid
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_fleet_fleetconnector; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_fleet_fleetconnector (
+    connector_ptr_id uuid NOT NULL,
+    url character varying(200) NOT NULL,
+    token text NOT NULL,
+    map_users boolean NOT NULL,
+    map_teams_access_group boolean NOT NULL,
+    headers_mapping_id uuid
+);
+
+
+--
+-- Name: authentik_endpoints_connectors_google_chrome_googlechromeco19cb; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_connectors_google_chrome_googlechromeco19cb (
+    connector_ptr_id uuid NOT NULL,
+    credentials jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_device; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_device (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    attributes jsonb NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    device_uuid uuid NOT NULL,
+    name text NOT NULL,
+    identifier text NOT NULL,
+    access_group_id uuid
+);
+
+
+--
+-- Name: authentik_endpoints_deviceaccessgroup; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_deviceaccessgroup (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    name text NOT NULL,
+    attributes jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_deviceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_deviceconnection (
+    device_connection_uuid uuid NOT NULL,
+    connector_id uuid NOT NULL,
+    device_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_devicefactsnapshot; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_devicefactsnapshot (
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    snapshot_id uuid NOT NULL,
+    data jsonb NOT NULL,
+    created timestamp with time zone NOT NULL,
+    connection_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_endpoints_deviceuserbinding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_deviceuserbinding (
+    policybinding_ptr_id uuid NOT NULL,
+    is_primary boolean NOT NULL,
+    connector_id uuid
+);
+
+
+--
+-- Name: authentik_endpoints_endpointstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_endpoints_endpointstage (
+    stage_ptr_id uuid NOT NULL,
+    connector_id uuid NOT NULL,
+    mode text NOT NULL
+);
+
+
+--
+-- Name: authentik_enterprise_license; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_enterprise_license (
+    license_uuid uuid NOT NULL,
+    key text NOT NULL,
+    name text NOT NULL,
+    expiry timestamp with time zone NOT NULL,
+    internal_users bigint NOT NULL,
+    external_users bigint NOT NULL
+);
+
+
+--
+-- Name: authentik_enterprise_licenseusage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_enterprise_licenseusage (
+    expiring boolean NOT NULL,
+    expires timestamp with time zone NOT NULL,
+    usage_uuid uuid NOT NULL,
+    internal_user_count bigint NOT NULL,
+    external_user_count bigint NOT NULL,
+    record_date timestamp with time zone NOT NULL,
+    status text NOT NULL
+);
+
+
+--
+-- Name: authentik_events_event; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_events_event (
+    event_uuid uuid NOT NULL,
+    action text NOT NULL,
+    app text NOT NULL,
+    context jsonb NOT NULL,
+    client_ip inet,
+    created timestamp with time zone NOT NULL,
+    "user" jsonb NOT NULL,
+    expires timestamp with time zone NOT NULL,
+    expiring boolean NOT NULL,
+    brand jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_events_notification; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_events_notification (
+    uuid uuid NOT NULL,
+    severity text NOT NULL,
+    body text NOT NULL,
+    created timestamp with time zone NOT NULL,
+    seen boolean NOT NULL,
+    event_id uuid,
+    user_id integer NOT NULL,
+    hyperlink text,
+    hyperlink_label text
+);
+
+
+--
+-- Name: authentik_events_notificationrule; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_events_notificationrule (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    name text NOT NULL,
+    severity text NOT NULL,
+    destination_group_id uuid,
+    destination_event_user boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_events_notificationrule_transports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_events_notificationrule_transports (
+    id integer NOT NULL,
+    notificationrule_id uuid NOT NULL,
+    notificationtransport_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_events_notificationrule_transports_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_events_notificationrule_transports ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_events_notificationrule_transports_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_events_notificationtransport; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_events_notificationtransport (
+    uuid uuid NOT NULL,
+    name text NOT NULL,
+    mode text NOT NULL,
+    webhook_url text NOT NULL,
+    send_once boolean NOT NULL,
+    webhook_mapping_body_id uuid,
+    webhook_mapping_headers_id uuid,
+    email_subject_prefix text NOT NULL,
+    email_template text NOT NULL,
+    webhook_ca_id uuid
+);
+
+
+--
+-- Name: authentik_events_notificationwebhookmapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_events_notificationwebhookmapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_flows_flow; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_flows_flow (
+    flow_uuid uuid NOT NULL,
+    name text NOT NULL,
+    slug text NOT NULL,
+    designation character varying(100) NOT NULL,
+    policybindingmodel_ptr_id uuid NOT NULL,
+    title text NOT NULL,
+    background text NOT NULL,
+    compatibility_mode boolean NOT NULL,
+    layout text NOT NULL,
+    denied_action text NOT NULL,
+    authentication text NOT NULL
+);
+
+
+--
+-- Name: authentik_flows_flowstagebinding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_flows_flowstagebinding (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    fsb_uuid uuid NOT NULL,
+    re_evaluate_policies boolean NOT NULL,
+    "order" integer NOT NULL,
+    target_id uuid NOT NULL,
+    stage_id uuid NOT NULL,
+    evaluate_on_plan boolean NOT NULL,
+    invalid_response_action text NOT NULL
+);
+
+
+--
+-- Name: authentik_flows_flowtoken; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_flows_flowtoken (
+    token_ptr_id uuid NOT NULL,
+    _plan text NOT NULL,
+    flow_id uuid NOT NULL,
+    revoke_on_execution boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_flows_stage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_flows_stage (
+    stage_uuid uuid NOT NULL,
+    name text NOT NULL
+);
+
+
+--
+-- Name: authentik_install_id; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_install_id (
+    id text NOT NULL
+);
+
+
+--
+-- Name: authentik_lifecycle_lifecycleiteration; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_lifecycle_lifecycleiteration (
+    managed text,
+    id uuid NOT NULL,
+    object_id text NOT NULL,
+    state character varying(10) NOT NULL,
+    opened_on timestamp with time zone NOT NULL,
+    content_type_id integer NOT NULL,
+    rule_id uuid
+);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_lifecycle_lifecyclerule (
+    id uuid NOT NULL,
+    name text NOT NULL,
+    object_id text,
+    "interval" text NOT NULL,
+    grace_period text NOT NULL,
+    min_reviewers smallint NOT NULL,
+    min_reviewers_is_per_group boolean NOT NULL,
+    content_type_id integer NOT NULL,
+    CONSTRAINT authentik_lifecycle_lifecyclerule_min_reviewers_check CHECK ((min_reviewers >= 0))
+);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_notification_transports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_lifecycle_lifecyclerule_notification_transports (
+    id integer NOT NULL,
+    lifecyclerule_id uuid NOT NULL,
+    notificationtransport_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_notification_transport_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_lifecycle_lifecyclerule_notification_transports ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_lifecycle_lifecyclerule_notification_transport_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewer_groups; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_lifecycle_lifecyclerule_reviewer_groups (
+    id integer NOT NULL,
+    lifecyclerule_id uuid NOT NULL,
+    group_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewer_groups_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_lifecycle_lifecyclerule_reviewer_groups ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_lifecycle_lifecyclerule_reviewer_groups_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_lifecycle_lifecyclerule_reviewers (
+    id integer NOT NULL,
+    lifecyclerule_id uuid NOT NULL,
+    user_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_lifecycle_lifecyclerule_reviewers ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_lifecycle_lifecyclerule_reviewers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_lifecycle_review; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_lifecycle_review (
+    id uuid NOT NULL,
+    "timestamp" timestamp with time zone NOT NULL,
+    note text,
+    iteration_id uuid NOT NULL,
+    reviewer_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_lifecycle_useroffboarding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_lifecycle_useroffboarding (
+    id uuid NOT NULL,
+    scheduled_at timestamp with time zone NOT NULL,
+    action text NOT NULL,
+    revoke_sessions boolean NOT NULL,
+    revoke_tokens boolean NOT NULL,
+    status text NOT NULL,
+    attempts smallint NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    executed_at timestamp with time zone,
+    created_by_id integer,
+    user_id integer NOT NULL,
+    CONSTRAINT authentik_lifecycle_useroffboarding_attempts_check CHECK ((attempts >= 0))
+);
+
+
+--
+-- Name: authentik_outposts_dockerserviceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_outposts_dockerserviceconnection (
+    outpostserviceconnection_ptr_id uuid NOT NULL,
+    url text NOT NULL,
+    tls_authentication_id uuid,
+    tls_verification_id uuid
+);
+
+
+--
+-- Name: authentik_outposts_kubernetesserviceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_outposts_kubernetesserviceconnection (
+    outpostserviceconnection_ptr_id uuid NOT NULL,
+    kubeconfig jsonb NOT NULL,
+    verify_ssl boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_outposts_outpost; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_outposts_outpost (
+    uuid uuid NOT NULL,
+    name text NOT NULL,
+    _config jsonb NOT NULL,
+    type text NOT NULL,
+    service_connection_id uuid,
+    managed text
+);
+
+
+--
+-- Name: authentik_outposts_outpost_providers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_outposts_outpost_providers (
+    id integer NOT NULL,
+    outpost_id uuid NOT NULL,
+    provider_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_outposts_outpost_providers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_outposts_outpost_providers ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_outposts_outpost_providers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_outposts_outpostserviceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_outposts_outpostserviceconnection (
+    uuid uuid NOT NULL,
+    name text NOT NULL,
+    local boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_policies_dummy_dummypolicy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_dummy_dummypolicy (
+    policy_ptr_id uuid NOT NULL,
+    result boolean NOT NULL,
+    wait_min integer NOT NULL,
+    wait_max integer NOT NULL
+);
+
+
+--
+-- Name: authentik_policies_event_matcher_eventmatcherpolicy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_event_matcher_eventmatcherpolicy (
+    policy_ptr_id uuid NOT NULL,
+    action text,
+    client_ip text,
+    app text,
+    model text,
+    query text
+);
+
+
+--
+-- Name: authentik_policies_expiry_passwordexpirypolicy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_expiry_passwordexpirypolicy (
+    policy_ptr_id uuid NOT NULL,
+    deny_only boolean NOT NULL,
+    days integer NOT NULL
+);
+
+
+--
+-- Name: authentik_policies_expression_expressionpolicy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_expression_expressionpolicy (
+    policy_ptr_id uuid NOT NULL,
+    expression text NOT NULL
+);
+
+
+--
+-- Name: authentik_policies_geoip_geoippolicy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_geoip_geoippolicy (
+    policy_ptr_id uuid NOT NULL,
+    asns integer[] NOT NULL,
+    countries character varying(746) NOT NULL,
+    check_history_distance boolean NOT NULL,
+    check_impossible_travel boolean NOT NULL,
+    distance_tolerance_km integer NOT NULL,
+    history_login_count integer NOT NULL,
+    history_max_distance_km bigint NOT NULL,
+    impossible_tolerance_km integer NOT NULL,
+    CONSTRAINT authentik_policies_geoip_geoippol_history_max_distance_km_check CHECK ((history_max_distance_km >= 0)),
+    CONSTRAINT authentik_policies_geoip_geoippol_impossible_tolerance_km_check CHECK ((impossible_tolerance_km >= 0)),
+    CONSTRAINT authentik_policies_geoip_geoippolic_distance_tolerance_km_check CHECK ((distance_tolerance_km >= 0)),
+    CONSTRAINT authentik_policies_geoip_geoippolicy_history_login_count_check CHECK ((history_login_count >= 0))
+);
+
+
+--
+-- Name: authentik_policies_password_passwordpolicy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_password_passwordpolicy (
+    policy_ptr_id uuid NOT NULL,
+    amount_uppercase integer NOT NULL,
+    amount_lowercase integer NOT NULL,
+    amount_symbols integer NOT NULL,
+    length_min integer NOT NULL,
+    symbol_charset text NOT NULL,
+    error_message text NOT NULL,
+    password_field text NOT NULL,
+    amount_digits integer NOT NULL,
+    check_have_i_been_pwned boolean NOT NULL,
+    check_static_rules boolean NOT NULL,
+    check_zxcvbn boolean NOT NULL,
+    hibp_allowed_count integer NOT NULL,
+    zxcvbn_score_threshold integer NOT NULL,
+    CONSTRAINT authentik_policies_pass_amount_lowercase_9d79427e_check CHECK ((amount_lowercase >= 0)),
+    CONSTRAINT authentik_policies_pass_amount_symbols_d57af249_check CHECK ((amount_symbols >= 0)),
+    CONSTRAINT authentik_policies_pass_amount_uppercase_7c908a32_check CHECK ((amount_uppercase >= 0)),
+    CONSTRAINT authentik_policies_pass_length_min_7acd2128_check CHECK ((length_min >= 0)),
+    CONSTRAINT authentik_policies_password_passwo_zxcvbn_score_threshold_check CHECK ((zxcvbn_score_threshold >= 0)),
+    CONSTRAINT authentik_policies_password_passwordpo_hibp_allowed_count_check CHECK ((hibp_allowed_count >= 0)),
+    CONSTRAINT authentik_policies_password_passwordpolicy_amount_digits_check CHECK ((amount_digits >= 0))
+);
+
+
+--
+-- Name: authentik_policies_policy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_policy (
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    policy_uuid uuid NOT NULL,
+    name text NOT NULL,
+    execution_logging boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_policies_policybinding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_policybinding (
+    policy_binding_uuid uuid NOT NULL,
+    enabled boolean NOT NULL,
+    "order" integer NOT NULL,
+    policy_id uuid,
+    target_id uuid NOT NULL,
+    negate boolean NOT NULL,
+    timeout integer NOT NULL,
+    group_id uuid,
+    user_id integer,
+    failure_result boolean NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    CONSTRAINT authentik_policies_policybinding_timeout_b41b0d57_check CHECK ((timeout >= 0))
+);
+
+
+--
+-- Name: authentik_policies_policybindingmodel; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_policybindingmodel (
+    pbm_uuid uuid NOT NULL,
+    policy_engine_mode text NOT NULL
+);
+
+
+--
+-- Name: authentik_policies_reputation_reputation; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_reputation_reputation (
+    reputation_uuid uuid NOT NULL,
+    identifier text NOT NULL,
+    ip inet NOT NULL,
+    ip_geo_data jsonb NOT NULL,
+    score bigint NOT NULL,
+    updated timestamp with time zone NOT NULL,
+    expires timestamp with time zone NOT NULL,
+    expiring boolean NOT NULL,
+    ip_asn_data jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_policies_reputation_reputationpolicy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_reputation_reputationpolicy (
+    policy_ptr_id uuid NOT NULL,
+    check_ip boolean NOT NULL,
+    check_username boolean NOT NULL,
+    threshold integer NOT NULL
+);
+
+
+--
+-- Name: authentik_policies_unique_password_uniquepasswordpolicy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_unique_password_uniquepasswordpolicy (
+    policy_ptr_id uuid NOT NULL,
+    password_field text NOT NULL,
+    num_historical_passwords integer NOT NULL,
+    CONSTRAINT authentik_policies_unique_passwo_num_historical_passwords_check CHECK ((num_historical_passwords >= 0))
+);
+
+
+--
+-- Name: authentik_policies_unique_password_userpasswordhistory; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_policies_unique_password_userpasswordhistory (
+    id integer NOT NULL,
+    old_password character varying(128) NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    hibp_prefix_sha1 character varying(5) NOT NULL,
+    hibp_pw_hash text NOT NULL,
+    user_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_policies_unique_password_userpasswordhistory_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_policies_unique_password_userpasswordhistory ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_policies_unique_password_userpasswordhistory_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide63d9; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_google_workspace_googleworkspaceprovide63d9 (
+    id integer NOT NULL,
+    googleworkspaceprovider_id integer NOT NULL,
+    propertymapping_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprov_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_google_workspace_googleworkspaceprovide63d9 ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_google_workspace_googleworkspaceprov_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide423f; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_google_workspace_googleworkspaceprovide423f (
+    id uuid NOT NULL,
+    google_id text NOT NULL,
+    provider_id integer NOT NULL,
+    user_id integer NOT NULL,
+    attributes jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide8e50; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_google_workspace_googleworkspaceprovide8e50 (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovidee2fc; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_google_workspace_googleworkspaceprovidee2fc (
+    id uuid NOT NULL,
+    google_id text NOT NULL,
+    group_id uuid NOT NULL,
+    provider_id integer NOT NULL,
+    attributes jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_google_workspace_googleworkspaceprovider (
+    provider_ptr_id integer NOT NULL,
+    delegated_subject character varying(254) NOT NULL,
+    credentials jsonb NOT NULL,
+    scopes text NOT NULL,
+    default_group_email_domain text NOT NULL,
+    exclude_users_service_account boolean NOT NULL,
+    user_delete_action text NOT NULL,
+    group_delete_action text NOT NULL,
+    filter_group_id uuid,
+    dry_run boolean NOT NULL,
+    sync_page_size integer NOT NULL,
+    sync_page_timeout text NOT NULL,
+    discovery_enabled boolean NOT NULL,
+    CONSTRAINT authentik_providers_google_workspace_googl_sync_page_size_check CHECK ((sync_page_size >= 0))
+);
+
+
+--
+-- Name: authentik_providers_ldap_ldapprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_ldap_ldapprovider (
+    provider_ptr_id integer NOT NULL,
+    base_dn text NOT NULL,
+    certificate_id uuid,
+    tls_server_name text NOT NULL,
+    gid_start_number integer NOT NULL,
+    uid_start_number integer NOT NULL,
+    search_mode text NOT NULL,
+    bind_mode text NOT NULL,
+    mfa_support boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovider_9f0b; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_microsoft_entra_microsoftentraprovider_9f0b (
+    id integer NOT NULL,
+    microsoftentraprovider_id integer NOT NULL,
+    propertymapping_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovid_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_microsoft_entra_microsoftentraprovider_9f0b ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_microsoft_entra_microsoftentraprovid_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_microsoft_entra_microsoftentraprovider (
+    provider_ptr_id integer NOT NULL,
+    client_id text NOT NULL,
+    client_secret text NOT NULL,
+    tenant_id text NOT NULL,
+    exclude_users_service_account boolean NOT NULL,
+    user_delete_action text NOT NULL,
+    group_delete_action text NOT NULL,
+    filter_group_id uuid,
+    dry_run boolean NOT NULL,
+    sync_page_size integer NOT NULL,
+    sync_page_timeout text NOT NULL,
+    discovery_enabled boolean NOT NULL,
+    CONSTRAINT authentik_providers_microsoft_entra_micros_sync_page_size_check CHECK ((sync_page_size >= 0))
+);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovidergroup; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_microsoft_entra_microsoftentraprovidergroup (
+    id uuid NOT NULL,
+    microsoft_id text NOT NULL,
+    group_id uuid NOT NULL,
+    provider_id integer NOT NULL,
+    attributes jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraproviderm5d26; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_microsoft_entra_microsoftentraproviderm5d26 (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovideruser; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_microsoft_entra_microsoftentraprovideruser (
+    id uuid NOT NULL,
+    microsoft_id text NOT NULL,
+    provider_id integer NOT NULL,
+    user_id integer NOT NULL,
+    attributes jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_accesstoken (
+    id integer NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    revoked boolean NOT NULL,
+    _scope text NOT NULL,
+    token text NOT NULL,
+    _id_token text NOT NULL,
+    provider_id integer NOT NULL,
+    user_id integer NOT NULL,
+    auth_time timestamp with time zone NOT NULL,
+    session_id character varying(40),
+    actor_id integer
+);
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_oauth2_accesstoken ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_oauth2_accesstoken_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_authorizationcode (
+    id integer NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    _scope text NOT NULL,
+    code character varying(255) NOT NULL,
+    nonce text,
+    code_challenge character varying(255),
+    code_challenge_method character varying(255),
+    provider_id integer NOT NULL,
+    user_id integer NOT NULL,
+    revoked boolean NOT NULL,
+    auth_time timestamp with time zone NOT NULL,
+    session_id character varying(40),
+    dpop_jkt character varying(255),
+    actor_id integer
+);
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_oauth2_authorizationcode ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_oauth2_authorizationcode_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_devicetoken (
+    id integer NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    device_code text NOT NULL,
+    user_code text NOT NULL,
+    _scope text NOT NULL,
+    provider_id integer NOT NULL,
+    user_id integer,
+    session_id character varying(40),
+    dpop_jkt character varying(255)
+);
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_oauth2_devicetoken ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_oauth2_devicetoken_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_oauth2_dynamicclientregistrationpropert3221; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_dynamicclientregistrationpropert3221 (
+    id integer NOT NULL,
+    property_mapping_id uuid NOT NULL,
+    dynamic_client_registration_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_oauth2_dynamicclientregistrationprop_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_oauth2_dynamicclientregistrationpropert3221 ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_oauth2_dynamicclientregistrationprop_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2dynamicclientregistration; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_oauth2dynamicclientregistration (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    default_application_group text NOT NULL,
+    access_token_validity text NOT NULL,
+    refresh_token_validity text NOT NULL,
+    allowed_grant_types text[] NOT NULL,
+    override_authorization_flow_id uuid,
+    override_invalidation_flow_id uuid,
+    provider_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_oauth2provider (
+    provider_ptr_id integer NOT NULL,
+    client_type character varying(30) NOT NULL,
+    client_id character varying(255) NOT NULL,
+    client_secret character varying(255) NOT NULL,
+    include_claims_in_id_token boolean NOT NULL,
+    refresh_token_validity text NOT NULL,
+    signing_key_id uuid,
+    sub_mode text NOT NULL,
+    issuer_mode text NOT NULL,
+    access_code_validity text NOT NULL,
+    access_token_validity text NOT NULL,
+    encryption_key_id uuid,
+    _redirect_uris jsonb NOT NULL,
+    refresh_token_threshold text NOT NULL,
+    logout_method text NOT NULL,
+    logout_uri text NOT NULL,
+    grant_types text[] NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 (
+    id integer NOT NULL,
+    oauth2provider_id integer NOT NULL,
+    oauthsource_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwks_sources_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_oauth2_oauth2provider_jwks_sources_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002 (
+    id integer NOT NULL,
+    from_oauth2provider_id integer NOT NULL,
+    to_oauth2provider_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002 ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_oauth2_oauth2provider_jwt_federation_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_refreshtoken (
+    id integer NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    _scope text NOT NULL,
+    _id_token text NOT NULL,
+    provider_id integer NOT NULL,
+    user_id integer NOT NULL,
+    revoked boolean NOT NULL,
+    token text NOT NULL,
+    auth_time timestamp with time zone NOT NULL,
+    session_id character varying(40),
+    dpop_jkt character varying(255),
+    actor_id integer
+);
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_oauth2_refreshtoken ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_oauth2_refreshtoken_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_oauth2_scopemapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_oauth2_scopemapping (
+    propertymapping_ptr_id uuid NOT NULL,
+    scope_name text NOT NULL,
+    description text NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_proxy_proxyprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_proxy_proxyprovider (
+    oauth2provider_ptr_id integer NOT NULL,
+    internal_host text NOT NULL,
+    external_host text NOT NULL,
+    cookie_secret text NOT NULL,
+    certificate_id uuid,
+    skip_path_regex text NOT NULL,
+    internal_host_ssl_validation boolean NOT NULL,
+    basic_auth_enabled boolean NOT NULL,
+    basic_auth_password_attribute text NOT NULL,
+    basic_auth_user_attribute text NOT NULL,
+    cookie_domain text NOT NULL,
+    mode text NOT NULL,
+    intercept_header_auth boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_proxy_proxysession; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_proxy_proxysession (
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    uuid uuid NOT NULL,
+    session_key text NOT NULL,
+    user_id uuid,
+    session_data jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_rac_connectiontoken; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_rac_connectiontoken (
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    connection_token_uuid uuid NOT NULL,
+    token text NOT NULL,
+    settings jsonb NOT NULL,
+    endpoint_id uuid NOT NULL,
+    provider_id integer NOT NULL,
+    session_id character varying(40) NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_rac_endpoint; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_rac_endpoint (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    name text NOT NULL,
+    host text NOT NULL,
+    protocol text NOT NULL,
+    settings jsonb NOT NULL,
+    auth_mode text NOT NULL,
+    provider_id integer NOT NULL,
+    maximum_connections integer NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_rac_endpoint_property_mappings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_rac_endpoint_property_mappings (
+    id integer NOT NULL,
+    endpoint_id uuid NOT NULL,
+    propertymapping_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_rac_endpoint_property_mappings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_rac_endpoint_property_mappings ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_rac_endpoint_property_mappings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_rac_racpropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_rac_racpropertymapping (
+    propertymapping_ptr_id uuid NOT NULL,
+    static_settings jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_rac_racprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_rac_racprovider (
+    provider_ptr_id integer NOT NULL,
+    settings jsonb NOT NULL,
+    auth_mode text NOT NULL,
+    connection_expiry text NOT NULL,
+    delete_token_on_disconnect boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_radius_radiusprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_radius_radiusprovider (
+    provider_ptr_id integer NOT NULL,
+    shared_secret text NOT NULL,
+    client_networks text NOT NULL,
+    mfa_support boolean NOT NULL,
+    certificate_id uuid
+);
+
+
+--
+-- Name: authentik_providers_radius_radiusproviderpropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_radius_radiusproviderpropertymapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_saml_samlpropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_saml_samlpropertymapping (
+    propertymapping_ptr_id uuid NOT NULL,
+    saml_name text NOT NULL,
+    friendly_name text
+);
+
+
+--
+-- Name: authentik_providers_saml_samlprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_saml_samlprovider (
+    provider_ptr_id integer NOT NULL,
+    acs_url text NOT NULL,
+    audience text NOT NULL,
+    issuer_override text NOT NULL,
+    assertion_valid_not_before text NOT NULL,
+    assertion_valid_not_on_or_after text NOT NULL,
+    session_valid_not_on_or_after text NOT NULL,
+    digest_algorithm text NOT NULL,
+    signature_algorithm text NOT NULL,
+    signing_kp_id uuid,
+    sp_binding text NOT NULL,
+    verification_kp_id uuid,
+    name_id_mapping_id uuid,
+    default_relay_state text NOT NULL,
+    encryption_kp_id uuid,
+    sign_assertion boolean NOT NULL,
+    sign_response boolean NOT NULL,
+    authn_context_class_ref_mapping_id uuid,
+    default_name_id_policy text NOT NULL,
+    logout_method text NOT NULL,
+    sign_logout_request boolean NOT NULL,
+    sls_binding text NOT NULL,
+    sls_url text NOT NULL,
+    sign_logout_response boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_saml_samlsession; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_saml_samlsession (
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    saml_session_id uuid NOT NULL,
+    session_index text NOT NULL,
+    name_id text NOT NULL,
+    name_id_format text NOT NULL,
+    created timestamp with time zone NOT NULL,
+    provider_id integer NOT NULL,
+    session_id character varying(40) NOT NULL,
+    user_id integer NOT NULL,
+    issuer text
+);
+
+
+--
+-- Name: authentik_providers_scim_scimmapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_scim_scimmapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_scim_scimprovider (
+    provider_ptr_id integer NOT NULL,
+    url text NOT NULL,
+    token text NOT NULL,
+    exclude_users_service_account boolean NOT NULL,
+    verify_certificates boolean NOT NULL,
+    dry_run boolean NOT NULL,
+    compatibility_mode character varying(30) NOT NULL,
+    auth_mode text NOT NULL,
+    auth_oauth_id uuid,
+    auth_oauth_params jsonb NOT NULL,
+    auth_oauth_user_id integer,
+    sync_page_size integer NOT NULL,
+    sync_page_timeout text NOT NULL,
+    service_provider_config_cache_timeout text NOT NULL,
+    discovery_enabled boolean NOT NULL,
+    CONSTRAINT authentik_providers_scim_scimprovider_sync_page_size_check CHECK ((sync_page_size >= 0))
+);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_group_filters; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_scim_scimprovider_group_filters (
+    id integer NOT NULL,
+    scimprovider_id integer NOT NULL,
+    group_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_group_filters_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_scim_scimprovider_group_filters ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_scim_scimprovider_group_filters_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_property_mappings_group; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_scim_scimprovider_property_mappings_group (
+    id integer NOT NULL,
+    scimprovider_id integer NOT NULL,
+    propertymapping_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_property_mappings__id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_scim_scimprovider_property_mappings_group ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_scim_scimprovider_property_mappings__id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_scim_scimprovidergroup; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_scim_scimprovidergroup (
+    id uuid NOT NULL,
+    group_id uuid NOT NULL,
+    provider_id integer NOT NULL,
+    scim_id text NOT NULL,
+    attributes jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_scim_scimprovideruser; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_scim_scimprovideruser (
+    id uuid NOT NULL,
+    provider_id integer NOT NULL,
+    user_id integer NOT NULL,
+    scim_id text NOT NULL,
+    attributes jsonb NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_ssf_ssfprovider (
+    provider_ptr_id integer NOT NULL,
+    event_retention text NOT NULL,
+    signing_key_id uuid NOT NULL,
+    token_id uuid,
+    push_verify_certificates boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider_oidc_auth_providers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_ssf_ssfprovider_oidc_auth_providers (
+    id integer NOT NULL,
+    ssfprovider_id integer NOT NULL,
+    oauth2provider_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider_oidc_auth_providers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_providers_ssf_ssfprovider_oidc_auth_providers ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_providers_ssf_ssfprovider_oidc_auth_providers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_providers_ssf_stream; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_ssf_stream (
+    uuid uuid NOT NULL,
+    delivery_method text NOT NULL,
+    endpoint_url text,
+    events_requested text[] NOT NULL,
+    format text NOT NULL,
+    aud text[] NOT NULL,
+    iss text NOT NULL,
+    provider_id integer NOT NULL,
+    authorization_header text,
+    status text NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_ssf_streamevent; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_ssf_streamevent (
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    uuid uuid NOT NULL,
+    status text NOT NULL,
+    type text NOT NULL,
+    payload jsonb NOT NULL,
+    stream_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_providers_ws_federation_wsfederationprovider; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_providers_ws_federation_wsfederationprovider (
+    samlprovider_ptr_id integer NOT NULL,
+    saml_version text NOT NULL
+);
+
+
+--
+-- Name: authentik_rbac_initialpermissions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_rbac_initialpermissions (
+    id integer NOT NULL,
+    name text NOT NULL,
+    role_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_rbac_initialpermissions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_rbac_initialpermissions ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_rbac_initialpermissions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_rbac_initialpermissions_permissions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_rbac_initialpermissions_permissions (
+    id integer NOT NULL,
+    initialpermissions_id integer NOT NULL,
+    permission_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_rbac_initialpermissions_permissions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_rbac_initialpermissions_permissions ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_rbac_initialpermissions_permissions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_rbac_role; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_rbac_role (
+    uuid uuid NOT NULL,
+    name text NOT NULL,
+    managed text
+);
+
+
+--
+-- Name: authentik_reports_dataexport; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_reports_dataexport (
+    id uuid NOT NULL,
+    requested_on timestamp with time zone NOT NULL,
+    query_params jsonb NOT NULL,
+    file text NOT NULL,
+    completed boolean NOT NULL,
+    content_type_id integer NOT NULL,
+    requested_by_id integer
+);
+
+
+--
+-- Name: authentik_requests_grantrequest; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_requests_grantrequest (
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    uuid uuid NOT NULL,
+    requester_data jsonb NOT NULL,
+    fulfiller_data jsonb NOT NULL,
+    status text NOT NULL,
+    requested_expiry text NOT NULL,
+    created_by_id integer NOT NULL,
+    fulfilled_by_id integer,
+    revoked_by_id integer,
+    agent_owner_id integer
+);
+
+
+--
+-- Name: authentik_requests_grantrequestapproval; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_requests_grantrequestapproval (
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    attributes jsonb NOT NULL,
+    uuid uuid NOT NULL,
+    status text NOT NULL,
+    request_id uuid NOT NULL,
+    reviewer_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_requests_grantrequesttarget; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_requests_grantrequesttarget (
+    uuid uuid NOT NULL,
+    binding_id uuid,
+    request_id uuid NOT NULL,
+    target_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_requests_requestrule; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_requests_requestrule (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    uuid uuid NOT NULL,
+    name text NOT NULL,
+    min_reviewers smallint NOT NULL,
+    min_reviewers_is_per_group boolean NOT NULL,
+    notification_mode text NOT NULL,
+    request_flow_id uuid,
+    CONSTRAINT authentik_requests_requestrule_min_reviewers_check CHECK ((min_reviewers >= 0))
+);
+
+
+--
+-- Name: authentik_requests_requestrulebinding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_requests_requestrulebinding (
+    policybindingmodel_ptr_id uuid NOT NULL,
+    uuid uuid NOT NULL,
+    expiry_pending text NOT NULL,
+    expiry_granted_max text NOT NULL,
+    rule_id uuid NOT NULL,
+    target_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_requests_requestrulechildbinding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_requests_requestrulechildbinding (
+    uuid uuid NOT NULL,
+    binding_id uuid NOT NULL,
+    target_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_requests_requestrulenotificationtransport; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_requests_requestrulenotificationtransport (
+    id integer NOT NULL,
+    notification_transport_id uuid NOT NULL,
+    rule_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_requests_requestrulenotificationtransport_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_requests_requestrulenotificationtransport ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_requests_requestrulenotificationtransport_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_sources_kerberos_groupkerberossourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_kerberos_groupkerberossourceconnection (
+    groupsourceconnection_ptr_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_kerberos_kerberossource; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_kerberos_kerberossource (
+    source_ptr_id uuid NOT NULL,
+    realm text NOT NULL,
+    krb5_conf text NOT NULL,
+    sync_users boolean NOT NULL,
+    sync_users_password boolean NOT NULL,
+    sync_principal text NOT NULL,
+    sync_password text NOT NULL,
+    sync_keytab text NOT NULL,
+    sync_ccache text NOT NULL,
+    spnego_server_name text NOT NULL,
+    spnego_keytab text NOT NULL,
+    spnego_ccache text NOT NULL,
+    password_login_update_internal_password boolean NOT NULL,
+    kadmin_type text NOT NULL,
+    sync_outgoing_trigger_mode text NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_kerberos_kerberossourcepropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_kerberos_kerberossourcepropertymapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_kerberos_userkerberossourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_kerberos_userkerberossourceconnection (
+    usersourceconnection_ptr_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_ldap_groupldapsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_ldap_groupldapsourceconnection (
+    groupsourceconnection_ptr_id integer NOT NULL,
+    validated_by uuid
+);
+
+
+--
+-- Name: authentik_sources_ldap_ldapsource; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_ldap_ldapsource (
+    source_ptr_id uuid NOT NULL,
+    server_uri text NOT NULL,
+    bind_cn text NOT NULL,
+    bind_password text NOT NULL,
+    start_tls boolean NOT NULL,
+    base_dn text NOT NULL,
+    additional_user_dn text NOT NULL,
+    additional_group_dn text NOT NULL,
+    user_object_filter text NOT NULL,
+    group_object_filter text NOT NULL,
+    object_uniqueness_field text NOT NULL,
+    sync_groups boolean NOT NULL,
+    sync_parent_group_id uuid,
+    sync_users boolean NOT NULL,
+    sync_users_password boolean NOT NULL,
+    group_membership_field text NOT NULL,
+    peer_certificate_id uuid,
+    client_certificate_id uuid,
+    sni boolean NOT NULL,
+    password_login_update_internal_password boolean NOT NULL,
+    lookup_groups_from_user boolean NOT NULL,
+    delete_not_found_objects boolean NOT NULL,
+    user_membership_attribute text NOT NULL,
+    sync_outgoing_trigger_mode text NOT NULL,
+    sync_group_hierarchy boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_ldap_ldapsourcepropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_ldap_ldapsourcepropertymapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_ldap_userldapsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_ldap_userldapsourceconnection (
+    usersourceconnection_ptr_id integer NOT NULL,
+    validated_by uuid
+);
+
+
+--
+-- Name: authentik_sources_oauth_groupoauthsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_oauth_groupoauthsourceconnection (
+    groupsourceconnection_ptr_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_oauth_oauthsource; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_oauth_oauthsource (
+    source_ptr_id uuid NOT NULL,
+    provider_type character varying(255) NOT NULL,
+    request_token_url text,
+    authorization_url text,
+    access_token_url text,
+    profile_url text,
+    consumer_key text NOT NULL,
+    consumer_secret text NOT NULL,
+    additional_scopes text NOT NULL,
+    oidc_jwks jsonb NOT NULL,
+    oidc_jwks_url text NOT NULL,
+    oidc_well_known_url text NOT NULL,
+    authorization_code_auth_method text NOT NULL,
+    pkce text NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_oauth_oauthsourcepropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_oauth_oauthsourcepropertymapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_oauth_useroauthsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_oauth_useroauthsourceconnection (
+    usersourceconnection_ptr_id integer NOT NULL,
+    access_token text,
+    expires timestamp with time zone NOT NULL,
+    refresh_token text
+);
+
+
+--
+-- Name: authentik_sources_plex_groupplexsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_plex_groupplexsourceconnection (
+    groupsourceconnection_ptr_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_plex_plexsource; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_plex_plexsource (
+    source_ptr_id uuid NOT NULL,
+    client_id text NOT NULL,
+    allowed_servers text[] NOT NULL,
+    allow_friends boolean NOT NULL,
+    plex_token text NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_plex_plexsourcepropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_plex_plexsourcepropertymapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_plex_userplexsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_plex_userplexsourceconnection (
+    usersourceconnection_ptr_id integer NOT NULL,
+    plex_token text NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_saml_groupsamlsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_saml_groupsamlsourceconnection (
+    groupsourceconnection_ptr_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_saml_samlsource; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_saml_samlsource (
+    source_ptr_id uuid NOT NULL,
+    issuer_override text NOT NULL,
+    sso_url text NOT NULL,
+    slo_url text,
+    signing_kp_id uuid,
+    binding_type character varying(100) NOT NULL,
+    temporary_user_delete_after text NOT NULL,
+    name_id_policy text NOT NULL,
+    allow_idp_initiated boolean NOT NULL,
+    digest_algorithm text NOT NULL,
+    signature_algorithm text NOT NULL,
+    pre_authentication_flow_id uuid NOT NULL,
+    verification_kp_id uuid,
+    encryption_kp_id uuid,
+    signed_assertion boolean NOT NULL,
+    signed_response boolean NOT NULL,
+    force_authn boolean NOT NULL,
+    audience_override text NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_saml_samlsourcepropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_saml_samlsourcepropertymapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_saml_usersamlsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_saml_usersamlsourceconnection (
+    usersourceconnection_ptr_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_scim_scimsource; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_scim_scimsource (
+    source_ptr_id uuid NOT NULL,
+    token_id uuid
+);
+
+
+--
+-- Name: authentik_sources_scim_scimsourcegroup; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_scim_scimsourcegroup (
+    id text NOT NULL,
+    attributes jsonb NOT NULL,
+    group_id uuid NOT NULL,
+    source_id uuid NOT NULL,
+    external_id text NOT NULL,
+    last_update timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_scim_scimsourcepropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_scim_scimsourcepropertymapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_scim_scimsourceuser; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_scim_scimsourceuser (
+    id text NOT NULL,
+    attributes jsonb NOT NULL,
+    source_id uuid NOT NULL,
+    user_id integer NOT NULL,
+    external_id text NOT NULL,
+    last_update timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_telegram_grouptelegramsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_telegram_grouptelegramsourceconnection (
+    groupsourceconnection_ptr_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_telegram_telegramsource; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_telegram_telegramsource (
+    source_ptr_id uuid NOT NULL,
+    bot_username text NOT NULL,
+    bot_token text NOT NULL,
+    request_message_access boolean NOT NULL,
+    pre_authentication_flow_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_telegram_telegramsourcepropertymapping; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_telegram_telegramsourcepropertymapping (
+    propertymapping_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_sources_telegram_usertelegramsourceconnection; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_sources_telegram_usertelegramsourceconnection (
+    usersourceconnection_ptr_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_account_lockdown_accountlockdownstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_account_lockdown_accountlockdownstage (
+    stage_ptr_id uuid NOT NULL,
+    deactivate_user boolean NOT NULL,
+    set_unusable_password boolean NOT NULL,
+    delete_sessions boolean NOT NULL,
+    revoke_tokens boolean NOT NULL,
+    self_service_completion_flow_id uuid
+);
+
+
+--
+-- Name: authentik_stages_authenticator_duo_authenticatorduostage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_duo_authenticatorduostage (
+    stage_ptr_id uuid NOT NULL,
+    client_id text NOT NULL,
+    client_secret text NOT NULL,
+    api_hostname text NOT NULL,
+    configure_flow_id uuid,
+    admin_integration_key text NOT NULL,
+    admin_secret_key text NOT NULL,
+    friendly_name text NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_duo_duodevice; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_duo_duodevice (
+    id integer NOT NULL,
+    name character varying(64) NOT NULL,
+    confirmed boolean NOT NULL,
+    duo_user_id text NOT NULL,
+    stage_id uuid NOT NULL,
+    user_id integer NOT NULL,
+    last_t timestamp with time zone NOT NULL,
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    last_used timestamp with time zone
+);
+
+
+--
+-- Name: authentik_stages_authenticator_duo_duodevice_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_duo_duodevice ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_duo_duodevice_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_email_authenticatoremailstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_email_authenticatoremailstage (
+    stage_ptr_id uuid NOT NULL,
+    friendly_name text NOT NULL,
+    use_global_settings boolean NOT NULL,
+    host text NOT NULL,
+    port integer NOT NULL,
+    username text NOT NULL,
+    password text NOT NULL,
+    use_tls boolean NOT NULL,
+    use_ssl boolean NOT NULL,
+    timeout integer NOT NULL,
+    from_address character varying(254) NOT NULL,
+    token_expiry text NOT NULL,
+    subject text NOT NULL,
+    template text NOT NULL,
+    configure_flow_id uuid
+);
+
+
+--
+-- Name: authentik_stages_authenticator_email_emaildevice; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_email_emaildevice (
+    id integer NOT NULL,
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    name character varying(64) NOT NULL,
+    confirmed boolean NOT NULL,
+    token character varying(16),
+    valid_until timestamp with time zone NOT NULL,
+    email character varying(254) NOT NULL,
+    last_used timestamp with time zone NOT NULL,
+    stage_id uuid NOT NULL,
+    user_id integer NOT NULL,
+    throttling_failure_count integer NOT NULL,
+    throttling_failure_timestamp timestamp with time zone,
+    CONSTRAINT authentik_stages_authenticator_e_throttling_failure_count_check CHECK ((throttling_failure_count >= 0))
+);
+
+
+--
+-- Name: authentik_stages_authenticator_email_emaildevice_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_email_emaildevice ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_email_emaildevice_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_authenticatore2741; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_endpoint_gdtc_authenticatore2741 (
+    stage_ptr_id uuid NOT NULL,
+    friendly_name text NOT NULL,
+    credentials jsonb NOT NULL,
+    configure_flow_id uuid
+);
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc (
+    id integer NOT NULL,
+    attributes jsonb NOT NULL,
+    device_id uuid NOT NULL,
+    stage_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_endpointdev_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_endpoint_gdtc_endpointdev_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_endpointdevice; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice (
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    name character varying(64) NOT NULL,
+    confirmed boolean NOT NULL,
+    last_used timestamp with time zone,
+    uuid uuid NOT NULL,
+    host_identifier text NOT NULL,
+    data jsonb NOT NULL,
+    user_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_sms_authenticatorsmsstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_sms_authenticatorsmsstage (
+    stage_ptr_id uuid NOT NULL,
+    provider text NOT NULL,
+    account_sid text NOT NULL,
+    auth text NOT NULL,
+    configure_flow_id uuid,
+    from_number text NOT NULL,
+    auth_password text NOT NULL,
+    auth_type text NOT NULL,
+    verify_only boolean NOT NULL,
+    mapping_id uuid,
+    friendly_name text NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_sms_smsdevice; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_sms_smsdevice (
+    id integer NOT NULL,
+    name character varying(64) NOT NULL,
+    confirmed boolean NOT NULL,
+    token character varying(16),
+    valid_until timestamp with time zone NOT NULL,
+    phone_number text NOT NULL,
+    stage_id uuid NOT NULL,
+    user_id integer NOT NULL,
+    last_t timestamp with time zone NOT NULL,
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    last_used timestamp with time zone,
+    throttling_failure_count integer NOT NULL,
+    throttling_failure_timestamp timestamp with time zone,
+    CONSTRAINT authentik_stages_authenticator_s_throttling_failure_count_check CHECK ((throttling_failure_count >= 0))
+);
+
+
+--
+-- Name: authentik_stages_authenticator_sms_smsdevice_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_sms_smsdevice ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_sms_smsdevice_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_static_authenticatorstaticstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_static_authenticatorstaticstage (
+    stage_ptr_id uuid NOT NULL,
+    token_count integer NOT NULL,
+    configure_flow_id uuid,
+    friendly_name text NOT NULL,
+    token_length integer NOT NULL,
+    CONSTRAINT authentik_stages_authen_token_count_72138a40_check CHECK ((token_count >= 0)),
+    CONSTRAINT authentik_stages_authenticator_static_authen_token_length_check CHECK ((token_length >= 0))
+);
+
+
+--
+-- Name: authentik_stages_authenticator_static_staticdevice; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_static_staticdevice (
+    id integer NOT NULL,
+    name character varying(64) NOT NULL,
+    confirmed boolean NOT NULL,
+    user_id integer NOT NULL,
+    throttling_failure_count integer NOT NULL,
+    throttling_failure_timestamp timestamp with time zone,
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    last_used timestamp with time zone,
+    CONSTRAINT authentik_stages_authenticator__throttling_failure_count_check1 CHECK ((throttling_failure_count >= 0))
+);
+
+
+--
+-- Name: authentik_stages_authenticator_static_staticdevice_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_static_staticdevice ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_static_staticdevice_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_static_statictoken; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_static_statictoken (
+    id integer NOT NULL,
+    token character varying(100) NOT NULL,
+    device_id integer NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_static_statictoken_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_static_statictoken ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_static_statictoken_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_totp_authenticatortotpstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_totp_authenticatortotpstage (
+    stage_ptr_id uuid NOT NULL,
+    digits integer NOT NULL,
+    configure_flow_id uuid,
+    friendly_name text NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_totp_totpdevice; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_totp_totpdevice (
+    id integer NOT NULL,
+    name character varying(64) NOT NULL,
+    confirmed boolean NOT NULL,
+    key character varying(80) NOT NULL,
+    step smallint NOT NULL,
+    t0 bigint NOT NULL,
+    digits smallint NOT NULL,
+    tolerance smallint NOT NULL,
+    drift smallint NOT NULL,
+    last_t bigint NOT NULL,
+    user_id integer NOT NULL,
+    throttling_failure_count integer NOT NULL,
+    throttling_failure_timestamp timestamp with time zone,
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    last_used timestamp with time zone,
+    CONSTRAINT authentik_stages_authenticator_t_throttling_failure_count_check CHECK ((throttling_failure_count >= 0)),
+    CONSTRAINT authentik_stages_authenticator_totp_totpdevice_digits_check CHECK ((digits >= 0)),
+    CONSTRAINT authentik_stages_authenticator_totp_totpdevice_step_check CHECK ((step >= 0)),
+    CONSTRAINT authentik_stages_authenticator_totp_totpdevice_tolerance_check CHECK ((tolerance >= 0))
+);
+
+
+--
+-- Name: authentik_stages_authenticator_totp_totpdevice_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_totp_totpdevice ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_totp_totpdevice_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida8318; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_validate_authenticatorvalida8318 (
+    id integer NOT NULL,
+    authenticatorvalidatestage_id uuid NOT NULL,
+    webauthndevicetype_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorva_id_seq1; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_validate_authenticatorvalida8318 ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_validate_authenticatorva_id_seq1
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida3e25; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_validate_authenticatorvalida3e25 (
+    id integer NOT NULL,
+    authenticatorvalidatestage_id uuid NOT NULL,
+    stage_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorval_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_validate_authenticatorvalida3e25 ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_validate_authenticatorval_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida499c; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_validate_authenticatorvalida499c (
+    stage_ptr_id uuid NOT NULL,
+    not_configured_action text NOT NULL,
+    device_classes text[] NOT NULL,
+    last_auth_threshold text NOT NULL,
+    webauthn_user_verification text NOT NULL,
+    webauthn_hints text[] NOT NULL,
+    email_otp_throttling_factor double precision NOT NULL,
+    sms_otp_throttling_factor double precision NOT NULL,
+    static_otp_throttling_factor double precision NOT NULL,
+    totp_otp_throttling_factor double precision NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorwebaute3a7; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_webauthn_authenticatorwebaute3a7 (
+    id integer NOT NULL,
+    authenticatorwebauthnstage_id uuid NOT NULL,
+    webauthndevicetype_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorweb_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_webauthn_authenticatorwebaute3a7 ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_webauthn_authenticatorweb_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f (
+    stage_ptr_id uuid NOT NULL,
+    configure_flow_id uuid,
+    user_verification text NOT NULL,
+    authenticator_attachment text,
+    resident_key_requirement text NOT NULL,
+    friendly_name text NOT NULL,
+    max_attempts integer NOT NULL,
+    hints text[] NOT NULL,
+    CONSTRAINT authentik_stages_authenticator_webauthn_auth_max_attempts_check CHECK ((max_attempts >= 0))
+);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_webauthndevice; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_webauthn_webauthndevice (
+    id integer NOT NULL,
+    name text NOT NULL,
+    credential_id text NOT NULL,
+    public_key text NOT NULL,
+    sign_count integer NOT NULL,
+    rp_id character varying(253) NOT NULL,
+    created_on timestamp with time zone NOT NULL,
+    last_t timestamp with time zone NOT NULL,
+    user_id integer NOT NULL,
+    confirmed boolean NOT NULL,
+    device_type_id uuid,
+    aaguid text NOT NULL,
+    created timestamp with time zone NOT NULL,
+    last_updated timestamp with time zone NOT NULL,
+    last_used timestamp with time zone,
+    attestation_certificate_fingerprint text,
+    attestation_certificate_pem text
+);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_webauthndevice_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_authenticator_webauthn_webauthndevice ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_authenticator_webauthn_webauthndevice_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_webauthndevicetype; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_authenticator_webauthn_webauthndevicetype (
+    aaguid uuid NOT NULL,
+    description text NOT NULL,
+    icon text
+);
+
+
+--
+-- Name: authentik_stages_captcha_captchastage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_captcha_captchastage (
+    stage_ptr_id uuid NOT NULL,
+    public_key text NOT NULL,
+    private_key text NOT NULL,
+    api_url text NOT NULL,
+    js_url text NOT NULL,
+    error_on_invalid_score boolean NOT NULL,
+    score_max_threshold double precision NOT NULL,
+    score_min_threshold double precision NOT NULL,
+    interactive boolean NOT NULL,
+    request_content_type text NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_consent_consentstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_consent_consentstage (
+    stage_ptr_id uuid NOT NULL,
+    consent_expire_in text NOT NULL,
+    mode text NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_consent_userconsent; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_consent_userconsent (
+    id integer NOT NULL,
+    expires timestamp with time zone,
+    expiring boolean NOT NULL,
+    application_id uuid NOT NULL,
+    user_id integer NOT NULL,
+    permissions text NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_consent_userconsent_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_consent_userconsent ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_consent_userconsent_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_deny_denystage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_deny_denystage (
+    stage_ptr_id uuid NOT NULL,
+    deny_message text NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_dummy_dummystage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_dummy_dummystage (
+    stage_ptr_id uuid NOT NULL,
+    throw_error boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_email_emailstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_email_emailstage (
+    stage_ptr_id uuid NOT NULL,
+    host text NOT NULL,
+    port integer NOT NULL,
+    username text NOT NULL,
+    password text NOT NULL,
+    use_tls boolean NOT NULL,
+    use_ssl boolean NOT NULL,
+    timeout integer NOT NULL,
+    from_address character varying(254) NOT NULL,
+    token_expiry text NOT NULL,
+    subject text NOT NULL,
+    template text NOT NULL,
+    use_global_settings boolean NOT NULL,
+    activate_user_on_success boolean NOT NULL,
+    recovery_cache_timeout text NOT NULL,
+    recovery_max_attempts integer NOT NULL,
+    CONSTRAINT authentik_stages_email_emailstage_recovery_max_attempts_check CHECK ((recovery_max_attempts >= 0))
+);
+
+
+--
+-- Name: authentik_stages_identification_identificationstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_identification_identificationstage (
+    stage_ptr_id uuid NOT NULL,
+    user_fields character varying(100)[] NOT NULL,
+    enrollment_flow_id uuid,
+    recovery_flow_id uuid,
+    case_insensitive_matching boolean NOT NULL,
+    show_matched_user boolean NOT NULL,
+    password_stage_id uuid,
+    show_source_labels boolean NOT NULL,
+    passwordless_flow_id uuid,
+    pretend_user_exists boolean NOT NULL,
+    captcha_stage_id uuid,
+    enable_remember_me boolean NOT NULL,
+    webauthn_stage_id uuid
+);
+
+
+--
+-- Name: authentik_stages_identification_identificationstage_sources; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_identification_identificationstage_sources (
+    id integer NOT NULL,
+    identificationstage_id uuid NOT NULL,
+    source_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_identification_identificationstage_sour_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_identification_identificationstage_sources ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_identification_identificationstage_sour_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_invitation_invitation; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_invitation_invitation (
+    invite_uuid uuid NOT NULL,
+    expires timestamp with time zone,
+    fixed_data jsonb NOT NULL,
+    created_by_id integer NOT NULL,
+    single_use boolean NOT NULL,
+    expiring boolean NOT NULL,
+    name text NOT NULL,
+    flow_id uuid
+);
+
+
+--
+-- Name: authentik_stages_invitation_invitationstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_invitation_invitationstage (
+    stage_ptr_id uuid NOT NULL,
+    continue_flow_without_invitation boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_mtls_mutualtlsstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_mtls_mutualtlsstage (
+    stage_ptr_id uuid NOT NULL,
+    mode text NOT NULL,
+    cert_attribute text NOT NULL,
+    user_attribute text NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_mtls_mutualtlsstage_certificate_authorities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_mtls_mutualtlsstage_certificate_authorities (
+    id integer NOT NULL,
+    mutualtlsstage_id uuid NOT NULL,
+    certificatekeypair_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_mtls_mutualtlsstage_certificate_authori_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_mtls_mutualtlsstage_certificate_authorities ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_mtls_mutualtlsstage_certificate_authori_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_password_passwordstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_password_passwordstage (
+    stage_ptr_id uuid NOT NULL,
+    backends text[] NOT NULL,
+    configure_flow_id uuid,
+    failed_attempts_before_cancel integer NOT NULL,
+    allow_show_password boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_prompt_prompt; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_prompt_prompt (
+    prompt_uuid uuid NOT NULL,
+    field_key text NOT NULL,
+    label text NOT NULL,
+    type character varying(100) NOT NULL,
+    required boolean NOT NULL,
+    placeholder text NOT NULL,
+    "order" integer NOT NULL,
+    sub_text text NOT NULL,
+    placeholder_expression boolean NOT NULL,
+    name text NOT NULL,
+    initial_value text NOT NULL,
+    initial_value_expression boolean NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_prompt_promptstage (
+    stage_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_fields; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_prompt_promptstage_fields (
+    id integer NOT NULL,
+    promptstage_id uuid NOT NULL,
+    prompt_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_fields_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_prompt_promptstage_fields ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_prompt_promptstage_fields_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_validation_policies; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_prompt_promptstage_validation_policies (
+    id integer NOT NULL,
+    promptstage_id uuid NOT NULL,
+    policy_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_validation_policies_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_stages_prompt_promptstage_validation_policies ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_stages_prompt_promptstage_validation_policies_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_stages_redirect_redirectstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_redirect_redirectstage (
+    stage_ptr_id uuid NOT NULL,
+    keep_context boolean NOT NULL,
+    mode text NOT NULL,
+    target_static character varying NOT NULL,
+    target_flow_id uuid
+);
+
+
+--
+-- Name: authentik_stages_source_sourcestage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_source_sourcestage (
+    stage_ptr_id uuid NOT NULL,
+    resume_timeout text NOT NULL,
+    source_id uuid NOT NULL,
+    resume_on_match_failures text[] NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_user_delete_userdeletestage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_user_delete_userdeletestage (
+    stage_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_user_login_userloginstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_user_login_userloginstage (
+    stage_ptr_id uuid NOT NULL,
+    session_duration text NOT NULL,
+    terminate_other_sessions boolean NOT NULL,
+    remember_me_offset text NOT NULL,
+    geoip_binding text NOT NULL,
+    network_binding text NOT NULL,
+    remember_device text NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_user_logout_userlogoutstage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_user_logout_userlogoutstage (
+    stage_ptr_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_stages_user_write_userwritestage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_stages_user_write_userwritestage (
+    stage_ptr_id uuid NOT NULL,
+    create_users_as_inactive boolean NOT NULL,
+    create_users_group_id uuid,
+    user_path_template text NOT NULL,
+    user_creation_mode text NOT NULL,
+    user_type text NOT NULL
+);
+
+
+--
+-- Name: authentik_tasks_schedules_schedule; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_tasks_schedules_schedule (
+    id uuid NOT NULL,
+    actor_name text NOT NULL,
+    args bytea NOT NULL,
+    kwargs bytea NOT NULL,
+    options bytea NOT NULL,
+    crontab text NOT NULL,
+    paused boolean NOT NULL,
+    next_run timestamp with time zone NOT NULL,
+    identifier text,
+    _uid text,
+    rel_obj_id text,
+    rel_obj_content_type_id integer
+);
+
+
+--
+-- Name: authentik_tasks_task; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_tasks_task (
+    message_id uuid NOT NULL,
+    queue_name text NOT NULL,
+    actor_name text NOT NULL,
+    message bytea,
+    state character varying NOT NULL,
+    mtime timestamp with time zone NOT NULL,
+    result bytea,
+    result_expiry timestamp with time zone,
+    rel_obj_id text,
+    _uid text,
+    _messages jsonb NOT NULL,
+    _previous_messages jsonb NOT NULL,
+    aggregated_status text NOT NULL,
+    rel_obj_content_type_id integer,
+    tenant_id uuid NOT NULL,
+    eta timestamp with time zone,
+    retries bigint NOT NULL,
+    CONSTRAINT authentik_tasks_task_retries_check CHECK ((retries >= 0))
+);
+
+
+--
+-- Name: authentik_tasks_taskdependency; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_tasks_taskdependency (
+    dependency_id uuid NOT NULL,
+    task_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_tasks_tasklog; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_tasks_tasklog (
+    id uuid NOT NULL,
+    event text NOT NULL,
+    log_level text NOT NULL,
+    logger text NOT NULL,
+    "timestamp" timestamp with time zone NOT NULL,
+    attributes jsonb NOT NULL,
+    previous boolean NOT NULL,
+    task_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_tasks_workerstatus; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_tasks_workerstatus (
+    id uuid NOT NULL,
+    hostname text NOT NULL,
+    version text NOT NULL,
+    last_seen timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: authentik_tenants_domain; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_tenants_domain (
+    id integer NOT NULL,
+    domain character varying(253) NOT NULL,
+    is_primary boolean NOT NULL,
+    tenant_id uuid NOT NULL
+);
+
+
+--
+-- Name: authentik_tenants_domain_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.authentik_tenants_domain ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.authentik_tenants_domain_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_tenants_tenant; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_tenants_tenant (
+    schema_name character varying(63) NOT NULL,
+    tenant_uuid uuid NOT NULL,
+    name text NOT NULL,
+    ready boolean NOT NULL,
+    avatars text NOT NULL,
+    default_user_change_name boolean NOT NULL,
+    default_user_change_email boolean NOT NULL,
+    default_user_change_username boolean NOT NULL,
+    event_retention text NOT NULL,
+    footer_links jsonb NOT NULL,
+    gdpr_compliance boolean NOT NULL,
+    impersonation boolean NOT NULL,
+    default_token_duration text NOT NULL,
+    default_token_length integer NOT NULL,
+    impersonation_require_reason boolean NOT NULL,
+    reputation_lower_limit integer NOT NULL,
+    reputation_upper_limit integer NOT NULL,
+    flags jsonb NOT NULL,
+    pagination_default_page_size integer NOT NULL,
+    pagination_max_page_size integer NOT NULL,
+    base_url character varying(200) NOT NULL,
+    CONSTRAINT authentik_tenants_tenant_default_token_length_check CHECK ((default_token_length >= 0)),
+    CONSTRAINT authentik_tenants_tenant_pagination_default_page_size_check CHECK ((pagination_default_page_size >= 0)),
+    CONSTRAINT authentik_tenants_tenant_pagination_max_page_size_check CHECK ((pagination_max_page_size >= 0))
+);
+
+
+--
+-- Name: authentik_version_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.authentik_version_history (
+    id bigint NOT NULL,
+    "timestamp" timestamp with time zone NOT NULL,
+    version text NOT NULL,
+    build text NOT NULL
+);
+
+
+--
+-- Name: authentik_version_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.authentik_version_history_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: authentik_version_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.authentik_version_history_id_seq OWNED BY public.authentik_version_history.id;
+
+
+--
+-- Name: django_channels_postgres_groupchannel; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.django_channels_postgres_groupchannel (
+    id uuid NOT NULL,
+    group_key text NOT NULL,
+    channel text NOT NULL,
+    expires timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: django_channels_postgres_message; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.django_channels_postgres_message (
+    id uuid NOT NULL,
+    channel text NOT NULL,
+    message bytea NOT NULL,
+    expires timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: django_content_type; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.django_content_type (
+    id integer NOT NULL,
+    app_label character varying(100) NOT NULL,
+    model character varying(100) NOT NULL
+);
+
+
+--
+-- Name: django_content_type_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.django_content_type ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.django_content_type_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: django_migrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.django_migrations (
+    id integer NOT NULL,
+    app character varying(255) NOT NULL,
+    name character varying(255) NOT NULL,
+    applied timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: django_migrations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.django_migrations ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.django_migrations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: django_postgres_cache_cacheentry; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.django_postgres_cache_cacheentry (
+    cache_key text NOT NULL,
+    value text NOT NULL,
+    expires timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: django_session; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.django_session (
+    session_key character varying(40) NOT NULL,
+    session_data text NOT NULL,
+    expire_date timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: guardian_rolemodelpermission; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.guardian_rolemodelpermission (
+    id integer NOT NULL,
+    content_type_id integer NOT NULL,
+    permission_id integer NOT NULL,
+    role_id uuid NOT NULL
+);
+
+
+--
+-- Name: guardian_rolemodelpermission_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.guardian_rolemodelpermission ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.guardian_rolemodelpermission_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: guardian_roleobjectpermission; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.guardian_roleobjectpermission (
+    id integer NOT NULL,
+    object_pk character varying(255) NOT NULL,
+    content_type_id integer NOT NULL,
+    permission_id integer NOT NULL,
+    role_id uuid NOT NULL
+);
+
+
+--
+-- Name: guardian_roleobjectpermission_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.guardian_roleobjectpermission ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.guardian_roleobjectpermission_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: authentik_version_history id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_version_history ALTER COLUMN id SET DEFAULT nextval('public.authentik_version_history_id_seq'::regclass);
+
+
+--
+-- Name: auth_group auth_group_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_group
+    ADD CONSTRAINT auth_group_name_key UNIQUE (name);
+
+
+--
+-- Name: auth_group_permissions auth_group_permissions_group_id_permission_id_0cd325b0_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_group_permissions
+    ADD CONSTRAINT auth_group_permissions_group_id_permission_id_0cd325b0_uniq UNIQUE (group_id, permission_id);
+
+
+--
+-- Name: auth_group_permissions auth_group_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_group_permissions
+    ADD CONSTRAINT auth_group_permissions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: auth_group auth_group_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_group
+    ADD CONSTRAINT auth_group_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: auth_permission auth_permission_content_type_id_codename_01ab375a_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_permission
+    ADD CONSTRAINT auth_permission_content_type_id_codename_01ab375a_uniq UNIQUE (content_type_id, codename);
+
+
+--
+-- Name: auth_permission auth_permission_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_permission
+    ADD CONSTRAINT auth_permission_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_agents_agent authentik_agents_agent_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_agents_agent
+    ADD CONSTRAINT authentik_agents_agent_pkey PRIMARY KEY (actor_ptr_id);
+
+
+--
+-- Name: authentik_blueprints_blueprintinstance authentik_blueprints_blueprintinstance_managed_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_blueprints_blueprintinstance
+    ADD CONSTRAINT authentik_blueprints_blueprintinstance_managed_key UNIQUE (managed);
+
+
+--
+-- Name: authentik_blueprints_blueprintinstance authentik_blueprints_blueprintinstance_name_404be626_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_blueprints_blueprintinstance
+    ADD CONSTRAINT authentik_blueprints_blueprintinstance_name_404be626_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_blueprints_blueprintinstance authentik_blueprints_blueprintinstance_name_path_982f03b6_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_blueprints_blueprintinstance
+    ADD CONSTRAINT authentik_blueprints_blueprintinstance_name_path_982f03b6_uniq UNIQUE (name, path);
+
+
+--
+-- Name: authentik_blueprints_blueprintinstance authentik_blueprints_blueprintinstance_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_blueprints_blueprintinstance
+    ADD CONSTRAINT authentik_blueprints_blueprintinstance_pkey PRIMARY KEY (instance_uuid);
+
+
+--
+-- Name: authentik_brands_brand_client_certificates authentik_brands_brand_c_brand_id_certificatekeyp_f66e9d14_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand_client_certificates
+    ADD CONSTRAINT authentik_brands_brand_c_brand_id_certificatekeyp_f66e9d14_uniq UNIQUE (brand_id, certificatekeypair_id);
+
+
+--
+-- Name: authentik_brands_brand_client_certificates authentik_brands_brand_client_certificates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand_client_certificates
+    ADD CONSTRAINT authentik_brands_brand_client_certificates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_brand_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_brand_pkey PRIMARY KEY (brand_uuid);
+
+
+--
+-- Name: authentik_core_actor authentik_core_actor_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_actor
+    ADD CONSTRAINT authentik_core_actor_pkey PRIMARY KEY (user_ptr_id);
+
+
+--
+-- Name: authentik_core_application authentik_core_application_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_application
+    ADD CONSTRAINT authentik_core_application_pkey PRIMARY KEY (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_core_application authentik_core_application_provider_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_application
+    ADD CONSTRAINT authentik_core_application_provider_id_key UNIQUE (provider_id);
+
+
+--
+-- Name: authentik_core_application authentik_core_application_slug_ab82d049_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_application
+    ADD CONSTRAINT authentik_core_application_slug_ab82d049_uniq UNIQUE (slug);
+
+
+--
+-- Name: authentik_core_applicationentitlement authentik_core_applicationentitlement_app_id_name_929e42d2_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_applicationentitlement
+    ADD CONSTRAINT authentik_core_applicationentitlement_app_id_name_929e42d2_uniq UNIQUE (app_id, name);
+
+
+--
+-- Name: authentik_core_applicationentitlement authentik_core_applicationentitlement_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_applicationentitlement
+    ADD CONSTRAINT authentik_core_applicationentitlement_pkey PRIMARY KEY (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_core_authenticatedsession authentik_core_authenticatedsession_pkey1; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_authenticatedsession
+    ADD CONSTRAINT authentik_core_authenticatedsession_pkey1 PRIMARY KEY (session_id);
+
+
+--
+-- Name: authentik_core_authenticatedsession authentik_core_authenticatedsession_uuid_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_authenticatedsession
+    ADD CONSTRAINT authentik_core_authenticatedsession_uuid_key UNIQUE (uuid);
+
+
+--
+-- Name: authentik_core_group authentik_core_group_name_9f7fc679_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_group
+    ADD CONSTRAINT authentik_core_group_name_9f7fc679_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_core_group authentik_core_group_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_group
+    ADD CONSTRAINT authentik_core_group_pkey PRIMARY KEY (group_uuid);
+
+
+--
+-- Name: authentik_core_group_roles authentik_core_group_roles_group_id_role_id_f2df9be5_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_group_roles
+    ADD CONSTRAINT authentik_core_group_roles_group_id_role_id_f2df9be5_uniq UNIQUE (group_id, role_id);
+
+
+--
+-- Name: authentik_core_group_roles authentik_core_group_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_group_roles
+    ADD CONSTRAINT authentik_core_group_roles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_groupparentage authentik_core_groupparentage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_groupparentage
+    ADD CONSTRAINT authentik_core_groupparentage_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_core_groupsourceconnection authentik_core_groupsour_group_id_source_id_f57def96_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_groupsourceconnection
+    ADD CONSTRAINT authentik_core_groupsour_group_id_source_id_f57def96_uniq UNIQUE (group_id, source_id);
+
+
+--
+-- Name: authentik_core_groupsourceconnection authentik_core_groupsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_groupsourceconnection
+    ADD CONSTRAINT authentik_core_groupsourceconnection_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_objectattribute authentik_core_objectatt_object_type_id_key_enabl_8dc462c5_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_objectattribute
+    ADD CONSTRAINT authentik_core_objectatt_object_type_id_key_enabl_8dc462c5_uniq UNIQUE (object_type_id, key, enabled);
+
+
+--
+-- Name: authentik_core_objectattribute authentik_core_objectattribute_managed_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_objectattribute
+    ADD CONSTRAINT authentik_core_objectattribute_managed_key UNIQUE (managed);
+
+
+--
+-- Name: authentik_core_objectattribute authentik_core_objectattribute_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_objectattribute
+    ADD CONSTRAINT authentik_core_objectattribute_pkey PRIMARY KEY (attribute_id);
+
+
+--
+-- Name: authentik_core_propertymapping authentik_core_propertymapping_managed_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_propertymapping
+    ADD CONSTRAINT authentik_core_propertymapping_managed_key UNIQUE (managed);
+
+
+--
+-- Name: authentik_core_propertymapping authentik_core_propertymapping_name_a457d137_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_propertymapping
+    ADD CONSTRAINT authentik_core_propertymapping_name_a457d137_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_core_propertymapping authentik_core_propertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_propertymapping
+    ADD CONSTRAINT authentik_core_propertymapping_pkey PRIMARY KEY (pm_uuid);
+
+
+--
+-- Name: authentik_core_provider_property_mappings authentik_core_provider__provider_id_propertymapp_cf242fa9_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider_property_mappings
+    ADD CONSTRAINT authentik_core_provider__provider_id_propertymapp_cf242fa9_uniq UNIQUE (provider_id, propertymapping_id);
+
+
+--
+-- Name: authentik_core_provider authentik_core_provider_name_66fc4ef4_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider
+    ADD CONSTRAINT authentik_core_provider_name_66fc4ef4_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_core_provider authentik_core_provider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider
+    ADD CONSTRAINT authentik_core_provider_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_provider_property_mappings authentik_core_provider_property_mappings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider_property_mappings
+    ADD CONSTRAINT authentik_core_provider_property_mappings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_session authentik_core_session_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_session
+    ADD CONSTRAINT authentik_core_session_pkey PRIMARY KEY (session_key);
+
+
+--
+-- Name: authentik_core_source_group_property_mappings authentik_core_source_gr_source_id_propertymappin_a1835d44_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source_group_property_mappings
+    ADD CONSTRAINT authentik_core_source_gr_source_id_propertymappin_a1835d44_uniq UNIQUE (source_id, propertymapping_id);
+
+
+--
+-- Name: authentik_core_source_group_property_mappings authentik_core_source_group_property_mappings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source_group_property_mappings
+    ADD CONSTRAINT authentik_core_source_group_property_mappings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_source authentik_core_source_managed_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source
+    ADD CONSTRAINT authentik_core_source_managed_key UNIQUE (managed);
+
+
+--
+-- Name: authentik_core_source authentik_core_source_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source
+    ADD CONSTRAINT authentik_core_source_pkey PRIMARY KEY (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_core_source authentik_core_source_slug_e15c7212_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source
+    ADD CONSTRAINT authentik_core_source_slug_e15c7212_uniq UNIQUE (slug);
+
+
+--
+-- Name: authentik_core_source_user_property_mappings authentik_core_source_us_source_id_propertymappin_d4a99fe2_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source_user_property_mappings
+    ADD CONSTRAINT authentik_core_source_us_source_id_propertymappin_d4a99fe2_uniq UNIQUE (source_id, propertymapping_id);
+
+
+--
+-- Name: authentik_core_source_user_property_mappings authentik_core_source_user_property_mappings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source_user_property_mappings
+    ADD CONSTRAINT authentik_core_source_user_property_mappings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_token authentik_core_token_identifier_af152015_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_token
+    ADD CONSTRAINT authentik_core_token_identifier_af152015_uniq UNIQUE (identifier);
+
+
+--
+-- Name: authentik_core_token authentik_core_token_managed_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_token
+    ADD CONSTRAINT authentik_core_token_managed_key UNIQUE (managed);
+
+
+--
+-- Name: authentik_core_token authentik_core_token_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_token
+    ADD CONSTRAINT authentik_core_token_pkey PRIMARY KEY (token_uuid);
+
+
+--
+-- Name: authentik_core_user_groups authentik_core_user_pb_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user_groups
+    ADD CONSTRAINT authentik_core_user_pb_groups_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_user_groups authentik_core_user_pb_groups_user_id_group_id_fa5d69c3_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user_groups
+    ADD CONSTRAINT authentik_core_user_pb_groups_user_id_group_id_fa5d69c3_uniq UNIQUE (user_id, group_id);
+
+
+--
+-- Name: authentik_core_user authentik_core_user_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user
+    ADD CONSTRAINT authentik_core_user_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_user_roles authentik_core_user_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user_roles
+    ADD CONSTRAINT authentik_core_user_roles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_user_roles authentik_core_user_roles_user_id_role_id_033ad7cb_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user_roles
+    ADD CONSTRAINT authentik_core_user_roles_user_id_role_id_033ad7cb_uniq UNIQUE (user_id, role_id);
+
+
+--
+-- Name: authentik_core_user authentik_core_user_username_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user
+    ADD CONSTRAINT authentik_core_user_username_key UNIQUE (username);
+
+
+--
+-- Name: authentik_core_user authentik_core_user_uuid_c7a047d9_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user
+    ADD CONSTRAINT authentik_core_user_uuid_c7a047d9_uniq UNIQUE (uuid);
+
+
+--
+-- Name: authentik_core_usersourceconnection authentik_core_usersourc_user_id_source_id_ad1f5aa7_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_usersourceconnection
+    ADD CONSTRAINT authentik_core_usersourc_user_id_source_id_ad1f5aa7_uniq UNIQUE (user_id, source_id);
+
+
+--
+-- Name: authentik_core_usersourceconnection authentik_core_usersourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_usersourceconnection
+    ADD CONSTRAINT authentik_core_usersourceconnection_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_core_userswitchingsession authentik_core_userswitchingsession_current_session_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_userswitchingsession
+    ADD CONSTRAINT authentik_core_userswitchingsession_current_session_id_key UNIQUE (current_session_id);
+
+
+--
+-- Name: authentik_core_userswitchingsession authentik_core_userswitchingsession_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_userswitchingsession
+    ADD CONSTRAINT authentik_core_userswitchingsession_pkey PRIMARY KEY (token);
+
+
+--
+-- Name: authentik_crypto_certificatekeypair authentik_crypto_certificatekeypair_managed_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_crypto_certificatekeypair
+    ADD CONSTRAINT authentik_crypto_certificatekeypair_managed_key UNIQUE (managed);
+
+
+--
+-- Name: authentik_crypto_certificatekeypair authentik_crypto_certificatekeypair_name_719603a4_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_crypto_certificatekeypair
+    ADD CONSTRAINT authentik_crypto_certificatekeypair_name_719603a4_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_crypto_certificatekeypair authentik_crypto_certificatekeypair_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_crypto_certificatekeypair
+    ADD CONSTRAINT authentik_crypto_certificatekeypair_pkey PRIMARY KEY (kp_uuid);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6 authentik_endpoints_conn_agentconnector_id_oauth2_71d35df2_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6
+    ADD CONSTRAINT authentik_endpoints_conn_agentconnector_id_oauth2_71d35df2_uniq UNIQUE (agentconnector_id, oauth2provider_id);
+
+
+--
+-- Name: authentik_endpoints_connector authentik_endpoints_connector_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connector
+    ADD CONSTRAINT authentik_endpoints_connector_pkey PRIMARY KEY (connector_uuid);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6 authentik_endpoints_connectors_agent_agentconnector_jwt_fe_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6
+    ADD CONSTRAINT authentik_endpoints_connectors_agent_agentconnector_jwt_fe_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector authentik_endpoints_connectors_agent_agentconnector_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentconnector
+    ADD CONSTRAINT authentik_endpoints_connectors_agent_agentconnector_pkey PRIMARY KEY (connector_ptr_id);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentdeviceconnection authentik_endpoints_connectors_agent_agentdeviceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentdeviceconnection
+    ADD CONSTRAINT authentik_endpoints_connectors_agent_agentdeviceconnection_pkey PRIMARY KEY (deviceconnection_ptr_id);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentdeviceuserbinding authentik_endpoints_connectors_agent_agentdeviceuserbindin_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentdeviceuserbinding
+    ADD CONSTRAINT authentik_endpoints_connectors_agent_agentdeviceuserbindin_pkey PRIMARY KEY (deviceuserbinding_ptr_id);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_appleindependentsecure0d47 authentik_endpoints_connectors_agent_appleindependentsecur_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_appleindependentsecure0d47
+    ADD CONSTRAINT authentik_endpoints_connectors_agent_appleindependentsecur_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_applenonce authentik_endpoints_connectors_agent_applenonce_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_applenonce
+    ADD CONSTRAINT authentik_endpoints_connectors_agent_applenonce_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_deviceauthenticationtoken authentik_endpoints_connectors_agent_deviceauthenticationt_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_deviceauthenticationtoken
+    ADD CONSTRAINT authentik_endpoints_connectors_agent_deviceauthenticationt_pkey PRIMARY KEY (identifier);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_devicetoken authentik_endpoints_connectors_agent_devicetoken_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_devicetoken
+    ADD CONSTRAINT authentik_endpoints_connectors_agent_devicetoken_pkey PRIMARY KEY (token_uuid);
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_enrollmenttoken authentik_endpoints_connectors_agent_enrollmenttoken_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_enrollmenttoken
+    ADD CONSTRAINT authentik_endpoints_connectors_agent_enrollmenttoken_pkey PRIMARY KEY (token_uuid);
+
+
+--
+-- Name: authentik_endpoints_connectors_fleet_fleetconnector authentik_endpoints_connectors_fleet_fleetconnector_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_fleet_fleetconnector
+    ADD CONSTRAINT authentik_endpoints_connectors_fleet_fleetconnector_pkey PRIMARY KEY (connector_ptr_id);
+
+
+--
+-- Name: authentik_endpoints_connectors_google_chrome_googlechromeco19cb authentik_endpoints_connectors_google_chrome_googlechromec_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_google_chrome_googlechromeco19cb
+    ADD CONSTRAINT authentik_endpoints_connectors_google_chrome_googlechromec_pkey PRIMARY KEY (connector_ptr_id);
+
+
+--
+-- Name: authentik_endpoints_device authentik_endpoints_device_identifier_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_device
+    ADD CONSTRAINT authentik_endpoints_device_identifier_key UNIQUE (identifier);
+
+
+--
+-- Name: authentik_endpoints_device authentik_endpoints_device_name_04a2350a_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_device
+    ADD CONSTRAINT authentik_endpoints_device_name_04a2350a_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_endpoints_device authentik_endpoints_device_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_device
+    ADD CONSTRAINT authentik_endpoints_device_pkey PRIMARY KEY (device_uuid);
+
+
+--
+-- Name: authentik_endpoints_device authentik_endpoints_device_policybindingmodel_ptr_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_device
+    ADD CONSTRAINT authentik_endpoints_device_policybindingmodel_ptr_id_key UNIQUE (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_endpoints_deviceconnection authentik_endpoints_deviceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_deviceconnection
+    ADD CONSTRAINT authentik_endpoints_deviceconnection_pkey PRIMARY KEY (device_connection_uuid);
+
+
+--
+-- Name: authentik_endpoints_devicefactsnapshot authentik_endpoints_devicefactsnapshot_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_devicefactsnapshot
+    ADD CONSTRAINT authentik_endpoints_devicefactsnapshot_pkey PRIMARY KEY (snapshot_id);
+
+
+--
+-- Name: authentik_endpoints_deviceaccessgroup authentik_endpoints_devicegroup_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_deviceaccessgroup
+    ADD CONSTRAINT authentik_endpoints_devicegroup_name_key UNIQUE (name);
+
+
+--
+-- Name: authentik_endpoints_deviceaccessgroup authentik_endpoints_devicegroup_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_deviceaccessgroup
+    ADD CONSTRAINT authentik_endpoints_devicegroup_pkey PRIMARY KEY (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_endpoints_deviceuserbinding authentik_endpoints_deviceuserbinding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_deviceuserbinding
+    ADD CONSTRAINT authentik_endpoints_deviceuserbinding_pkey PRIMARY KEY (policybinding_ptr_id);
+
+
+--
+-- Name: authentik_endpoints_endpointstage authentik_endpoints_endpointstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_endpointstage
+    ADD CONSTRAINT authentik_endpoints_endpointstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_enterprise_license authentik_enterprise_license_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_enterprise_license
+    ADD CONSTRAINT authentik_enterprise_license_pkey PRIMARY KEY (license_uuid);
+
+
+--
+-- Name: authentik_enterprise_licenseusage authentik_enterprise_licenseusage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_enterprise_licenseusage
+    ADD CONSTRAINT authentik_enterprise_licenseusage_pkey PRIMARY KEY (usage_uuid);
+
+
+--
+-- Name: authentik_events_event authentik_events_event_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_event
+    ADD CONSTRAINT authentik_events_event_pkey PRIMARY KEY (event_uuid);
+
+
+--
+-- Name: authentik_events_notificationrule_transports authentik_events_notific_notificationrule_id_noti_e1f5243d_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationrule_transports
+    ADD CONSTRAINT authentik_events_notific_notificationrule_id_noti_e1f5243d_uniq UNIQUE (notificationrule_id, notificationtransport_id);
+
+
+--
+-- Name: authentik_events_notification authentik_events_notification_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notification
+    ADD CONSTRAINT authentik_events_notification_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_events_notificationrule authentik_events_notificationrule_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationrule
+    ADD CONSTRAINT authentik_events_notificationrule_name_key UNIQUE (name);
+
+
+--
+-- Name: authentik_events_notificationrule authentik_events_notificationrule_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationrule
+    ADD CONSTRAINT authentik_events_notificationrule_pkey PRIMARY KEY (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_events_notificationrule_transports authentik_events_notificationrule_transports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationrule_transports
+    ADD CONSTRAINT authentik_events_notificationrule_transports_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_events_notificationtransport authentik_events_notificationtransport_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationtransport
+    ADD CONSTRAINT authentik_events_notificationtransport_name_key UNIQUE (name);
+
+
+--
+-- Name: authentik_events_notificationtransport authentik_events_notificationtransport_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationtransport
+    ADD CONSTRAINT authentik_events_notificationtransport_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_events_notificationwebhookmapping authentik_events_notificationwebhookmapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationwebhookmapping
+    ADD CONSTRAINT authentik_events_notificationwebhookmapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_flows_flow authentik_flows_flow_pbm_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flow
+    ADD CONSTRAINT authentik_flows_flow_pbm_id_key UNIQUE (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_flows_flow authentik_flows_flow_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flow
+    ADD CONSTRAINT authentik_flows_flow_pkey PRIMARY KEY (flow_uuid);
+
+
+--
+-- Name: authentik_flows_flow authentik_flows_flow_slug_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flow
+    ADD CONSTRAINT authentik_flows_flow_slug_key UNIQUE (slug);
+
+
+--
+-- Name: authentik_flows_flowstagebinding authentik_flows_flowstag_target_id_stage_id_order_f2150241_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flowstagebinding
+    ADD CONSTRAINT authentik_flows_flowstag_target_id_stage_id_order_f2150241_uniq UNIQUE (target_id, stage_id, "order");
+
+
+--
+-- Name: authentik_flows_flowstagebinding authentik_flows_flowstagebinding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flowstagebinding
+    ADD CONSTRAINT authentik_flows_flowstagebinding_pkey PRIMARY KEY (fsb_uuid);
+
+
+--
+-- Name: authentik_flows_flowstagebinding authentik_flows_flowstagebinding_policybindingmodel_ptr_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flowstagebinding
+    ADD CONSTRAINT authentik_flows_flowstagebinding_policybindingmodel_ptr_id_key UNIQUE (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_flows_flowtoken authentik_flows_flowtoken_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flowtoken
+    ADD CONSTRAINT authentik_flows_flowtoken_pkey PRIMARY KEY (token_ptr_id);
+
+
+--
+-- Name: authentik_flows_stage authentik_flows_stage_name_a2584620_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_stage
+    ADD CONSTRAINT authentik_flows_stage_name_a2584620_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_flows_stage authentik_flows_stage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_stage
+    ADD CONSTRAINT authentik_flows_stage_pkey PRIMARY KEY (stage_uuid);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewer_groups authentik_lifecycle_life_lifecyclerule_id_group_i_a61b0e2b_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_reviewer_groups
+    ADD CONSTRAINT authentik_lifecycle_life_lifecyclerule_id_group_i_a61b0e2b_uniq UNIQUE (lifecyclerule_id, group_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_notification_transports authentik_lifecycle_life_lifecyclerule_id_notific_c43651c8_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_notification_transports
+    ADD CONSTRAINT authentik_lifecycle_life_lifecyclerule_id_notific_c43651c8_uniq UNIQUE (lifecyclerule_id, notificationtransport_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewers authentik_lifecycle_life_lifecyclerule_id_user_id_a8cf7d5f_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_reviewers
+    ADD CONSTRAINT authentik_lifecycle_life_lifecyclerule_id_user_id_a8cf7d5f_uniq UNIQUE (lifecyclerule_id, user_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecycleiteration authentik_lifecycle_lifecycleiteration_managed_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecycleiteration
+    ADD CONSTRAINT authentik_lifecycle_lifecycleiteration_managed_key UNIQUE (managed);
+
+
+--
+-- Name: authentik_lifecycle_lifecycleiteration authentik_lifecycle_lifecycleiteration_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecycleiteration
+    ADD CONSTRAINT authentik_lifecycle_lifecycleiteration_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule authentik_lifecycle_lifecyclerule_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule
+    ADD CONSTRAINT authentik_lifecycle_lifecyclerule_name_key UNIQUE (name);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_notification_transports authentik_lifecycle_lifecyclerule_notification_transports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_notification_transports
+    ADD CONSTRAINT authentik_lifecycle_lifecyclerule_notification_transports_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule authentik_lifecycle_lifecyclerule_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule
+    ADD CONSTRAINT authentik_lifecycle_lifecyclerule_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewer_groups authentik_lifecycle_lifecyclerule_reviewer_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_reviewer_groups
+    ADD CONSTRAINT authentik_lifecycle_lifecyclerule_reviewer_groups_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewers authentik_lifecycle_lifecyclerule_reviewers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_reviewers
+    ADD CONSTRAINT authentik_lifecycle_lifecyclerule_reviewers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_lifecycle_review authentik_lifecycle_revi_iteration_id_reviewer_id_3cfd7b5a_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_review
+    ADD CONSTRAINT authentik_lifecycle_revi_iteration_id_reviewer_id_3cfd7b5a_uniq UNIQUE (iteration_id, reviewer_id);
+
+
+--
+-- Name: authentik_lifecycle_review authentik_lifecycle_review_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_review
+    ADD CONSTRAINT authentik_lifecycle_review_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_lifecycle_useroffboarding authentik_lifecycle_useroffboarding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_useroffboarding
+    ADD CONSTRAINT authentik_lifecycle_useroffboarding_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_outposts_dockerserviceconnection authentik_outposts_dockerserviceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_dockerserviceconnection
+    ADD CONSTRAINT authentik_outposts_dockerserviceconnection_pkey PRIMARY KEY (outpostserviceconnection_ptr_id);
+
+
+--
+-- Name: authentik_outposts_kubernetesserviceconnection authentik_outposts_kubernetesserviceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_kubernetesserviceconnection
+    ADD CONSTRAINT authentik_outposts_kubernetesserviceconnection_pkey PRIMARY KEY (outpostserviceconnection_ptr_id);
+
+
+--
+-- Name: authentik_outposts_outpost_providers authentik_outposts_outpo_outpost_id_provider_id_bee0c17e_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpost_providers
+    ADD CONSTRAINT authentik_outposts_outpo_outpost_id_provider_id_bee0c17e_uniq UNIQUE (outpost_id, provider_id);
+
+
+--
+-- Name: authentik_outposts_outpost authentik_outposts_outpost_managed_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpost
+    ADD CONSTRAINT authentik_outposts_outpost_managed_key UNIQUE (managed);
+
+
+--
+-- Name: authentik_outposts_outpost authentik_outposts_outpost_name_b07e0428_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpost
+    ADD CONSTRAINT authentik_outposts_outpost_name_b07e0428_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_outposts_outpost authentik_outposts_outpost_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpost
+    ADD CONSTRAINT authentik_outposts_outpost_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_outposts_outpost_providers authentik_outposts_outpost_providers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpost_providers
+    ADD CONSTRAINT authentik_outposts_outpost_providers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_outposts_outpostserviceconnection authentik_outposts_outpostserviceconnection_name_ec30b5ea_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpostserviceconnection
+    ADD CONSTRAINT authentik_outposts_outpostserviceconnection_name_ec30b5ea_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_outposts_outpostserviceconnection authentik_outposts_outpostserviceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpostserviceconnection
+    ADD CONSTRAINT authentik_outposts_outpostserviceconnection_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_policies_dummy_dummypolicy authentik_policies_dummy_dummypolicy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_dummy_dummypolicy
+    ADD CONSTRAINT authentik_policies_dummy_dummypolicy_pkey PRIMARY KEY (policy_ptr_id);
+
+
+--
+-- Name: authentik_policies_event_matcher_eventmatcherpolicy authentik_policies_event_matcher_eventmatcherpolicy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_event_matcher_eventmatcherpolicy
+    ADD CONSTRAINT authentik_policies_event_matcher_eventmatcherpolicy_pkey PRIMARY KEY (policy_ptr_id);
+
+
+--
+-- Name: authentik_policies_expiry_passwordexpirypolicy authentik_policies_expiry_passwordexpirypolicy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_expiry_passwordexpirypolicy
+    ADD CONSTRAINT authentik_policies_expiry_passwordexpirypolicy_pkey PRIMARY KEY (policy_ptr_id);
+
+
+--
+-- Name: authentik_policies_expression_expressionpolicy authentik_policies_expression_expressionpolicy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_expression_expressionpolicy
+    ADD CONSTRAINT authentik_policies_expression_expressionpolicy_pkey PRIMARY KEY (policy_ptr_id);
+
+
+--
+-- Name: authentik_policies_geoip_geoippolicy authentik_policies_geoip_geoippolicy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_geoip_geoippolicy
+    ADD CONSTRAINT authentik_policies_geoip_geoippolicy_pkey PRIMARY KEY (policy_ptr_id);
+
+
+--
+-- Name: authentik_policies_password_passwordpolicy authentik_policies_password_passwordpolicy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_password_passwordpolicy
+    ADD CONSTRAINT authentik_policies_password_passwordpolicy_pkey PRIMARY KEY (policy_ptr_id);
+
+
+--
+-- Name: authentik_policies_policybinding authentik_policies_polic_policy_id_target_id_orde_0a6ac3bd_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_policybinding
+    ADD CONSTRAINT authentik_policies_polic_policy_id_target_id_orde_0a6ac3bd_uniq UNIQUE (policy_id, target_id, "order");
+
+
+--
+-- Name: authentik_policies_policy authentik_policies_policy_name_48caa747_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_policy
+    ADD CONSTRAINT authentik_policies_policy_name_48caa747_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_policies_policy authentik_policies_policy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_policy
+    ADD CONSTRAINT authentik_policies_policy_pkey PRIMARY KEY (policy_uuid);
+
+
+--
+-- Name: authentik_policies_policybinding authentik_policies_policybinding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_policybinding
+    ADD CONSTRAINT authentik_policies_policybinding_pkey PRIMARY KEY (policy_binding_uuid);
+
+
+--
+-- Name: authentik_policies_policybindingmodel authentik_policies_policybindingmodel_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_policybindingmodel
+    ADD CONSTRAINT authentik_policies_policybindingmodel_pkey PRIMARY KEY (pbm_uuid);
+
+
+--
+-- Name: authentik_policies_reputation_reputation authentik_policies_reput_identifier_ip_d60de75a_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_reputation_reputation
+    ADD CONSTRAINT authentik_policies_reput_identifier_ip_d60de75a_uniq UNIQUE (identifier, ip);
+
+
+--
+-- Name: authentik_policies_reputation_reputation authentik_policies_reputation_reputation_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_reputation_reputation
+    ADD CONSTRAINT authentik_policies_reputation_reputation_pkey PRIMARY KEY (reputation_uuid);
+
+
+--
+-- Name: authentik_policies_reputation_reputationpolicy authentik_policies_reputation_reputationpolicy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_reputation_reputationpolicy
+    ADD CONSTRAINT authentik_policies_reputation_reputationpolicy_pkey PRIMARY KEY (policy_ptr_id);
+
+
+--
+-- Name: authentik_policies_unique_password_uniquepasswordpolicy authentik_policies_unique_password_uniquepasswordpolicy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_unique_password_uniquepasswordpolicy
+    ADD CONSTRAINT authentik_policies_unique_password_uniquepasswordpolicy_pkey PRIMARY KEY (policy_ptr_id);
+
+
+--
+-- Name: authentik_policies_unique_password_userpasswordhistory authentik_policies_unique_password_userpasswordhistory_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_unique_password_userpasswordhistory
+    ADD CONSTRAINT authentik_policies_unique_password_userpasswordhistory_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovidee2fc authentik_providers_goog_google_id_group_id_provi_547079a1_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovidee2fc
+    ADD CONSTRAINT authentik_providers_goog_google_id_group_id_provi_547079a1_uniq UNIQUE (google_id, group_id, provider_id);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide423f authentik_providers_goog_google_id_user_id_provid_7f502ce1_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide423f
+    ADD CONSTRAINT authentik_providers_goog_google_id_user_id_provid_7f502ce1_uniq UNIQUE (google_id, user_id, provider_id);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide63d9 authentik_providers_goog_googleworkspaceprovider__29c483cf_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide63d9
+    ADD CONSTRAINT authentik_providers_goog_googleworkspaceprovider__29c483cf_uniq UNIQUE (googleworkspaceprovider_id, propertymapping_id);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovider authentik_providers_google_workspace_googleworkspaceprovi_pkey1; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovider
+    ADD CONSTRAINT authentik_providers_google_workspace_googleworkspaceprovi_pkey1 PRIMARY KEY (provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide63d9 authentik_providers_google_workspace_googleworkspaceprovi_pkey2; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide63d9
+    ADD CONSTRAINT authentik_providers_google_workspace_googleworkspaceprovi_pkey2 PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovidee2fc authentik_providers_google_workspace_googleworkspaceprovi_pkey3; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovidee2fc
+    ADD CONSTRAINT authentik_providers_google_workspace_googleworkspaceprovi_pkey3 PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide423f authentik_providers_google_workspace_googleworkspaceprovi_pkey4; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide423f
+    ADD CONSTRAINT authentik_providers_google_workspace_googleworkspaceprovi_pkey4 PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide8e50 authentik_providers_google_workspace_googleworkspaceprovid_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide8e50
+    ADD CONSTRAINT authentik_providers_google_workspace_googleworkspaceprovid_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_providers_ldap_ldapprovider authentik_providers_ldap_ldapprovider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ldap_ldapprovider
+    ADD CONSTRAINT authentik_providers_ldap_ldapprovider_pkey PRIMARY KEY (provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovidergroup authentik_providers_micr_microsoft_id_group_id_pr_8cec1c15_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovidergroup
+    ADD CONSTRAINT authentik_providers_micr_microsoft_id_group_id_pr_8cec1c15_uniq UNIQUE (microsoft_id, group_id, provider_id);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovideruser authentik_providers_micr_microsoft_id_user_id_pro_c074b78a_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovideruser
+    ADD CONSTRAINT authentik_providers_micr_microsoft_id_user_id_pro_c074b78a_uniq UNIQUE (microsoft_id, user_id, provider_id);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovider_9f0b authentik_providers_micr_microsoftentraprovider_i_88f09da3_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovider_9f0b
+    ADD CONSTRAINT authentik_providers_micr_microsoftentraprovider_i_88f09da3_uniq UNIQUE (microsoftentraprovider_id, propertymapping_id);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovider authentik_providers_microsoft_entra_microsoftentraprovide_pkey1; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovider
+    ADD CONSTRAINT authentik_providers_microsoft_entra_microsoftentraprovide_pkey1 PRIMARY KEY (provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovider_9f0b authentik_providers_microsoft_entra_microsoftentraprovide_pkey2; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovider_9f0b
+    ADD CONSTRAINT authentik_providers_microsoft_entra_microsoftentraprovide_pkey2 PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovidergroup authentik_providers_microsoft_entra_microsoftentraprovide_pkey3; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovidergroup
+    ADD CONSTRAINT authentik_providers_microsoft_entra_microsoftentraprovide_pkey3 PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovideruser authentik_providers_microsoft_entra_microsoftentraprovide_pkey4; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovideruser
+    ADD CONSTRAINT authentik_providers_microsoft_entra_microsoftentraprovide_pkey4 PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraproviderm5d26 authentik_providers_microsoft_entra_microsoftentraprovider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraproviderm5d26
+    ADD CONSTRAINT authentik_providers_microsoft_entra_microsoftentraprovider_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002 authentik_providers_oaut_from_oauth2provider_id_t_d947abcb_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002
+    ADD CONSTRAINT authentik_providers_oaut_from_oauth2provider_id_t_d947abcb_uniq UNIQUE (from_oauth2provider_id, to_oauth2provider_id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 authentik_providers_oaut_oauth2provider_id_oauths_5151c4b7_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48
+    ADD CONSTRAINT authentik_providers_oaut_oauth2provider_id_oauths_5151c4b7_uniq UNIQUE (oauth2provider_id, oauthsource_id);
+
+
+--
+-- Name: authentik_providers_oauth2_dynamicclientregistrationpropert3221 authentik_providers_oaut_property_mapping_id_dyna_fb626d65_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_dynamicclientregistrationpropert3221
+    ADD CONSTRAINT authentik_providers_oaut_property_mapping_id_dyna_fb626d65_uniq UNIQUE (property_mapping_id, dynamic_client_registration_id);
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken authentik_providers_oauth2_accesstoken_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_accesstoken
+    ADD CONSTRAINT authentik_providers_oauth2_accesstoken_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode authentik_providers_oauth2_authorizationcode_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_authorizationcode
+    ADD CONSTRAINT authentik_providers_oauth2_authorizationcode_code_key UNIQUE (code);
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode authentik_providers_oauth2_authorizationcode_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_authorizationcode
+    ADD CONSTRAINT authentik_providers_oauth2_authorizationcode_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken authentik_providers_oauth2_devicetoken_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_devicetoken
+    ADD CONSTRAINT authentik_providers_oauth2_devicetoken_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_oauth2_dynamicclientregistrationpropert3221 authentik_providers_oauth2_dynamicclientregistrationproper_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_dynamicclientregistrationpropert3221
+    ADD CONSTRAINT authentik_providers_oauth2_dynamicclientregistrationproper_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2dynamicclientregistration authentik_providers_oauth2_oauth2dynamicclientr_provider_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2dynamicclientregistration
+    ADD CONSTRAINT authentik_providers_oauth2_oauth2dynamicclientr_provider_id_key UNIQUE (provider_id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2dynamicclientregistration authentik_providers_oauth2_oauth2dynamicclientregistration_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2dynamicclientregistration
+    ADD CONSTRAINT authentik_providers_oauth2_oauth2dynamicclientregistration_pkey PRIMARY KEY (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider authentik_providers_oauth2_oauth2provider_client_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider
+    ADD CONSTRAINT authentik_providers_oauth2_oauth2provider_client_id_key UNIQUE (client_id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 authentik_providers_oauth2_oauth2provider_jwks_sources_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48
+    ADD CONSTRAINT authentik_providers_oauth2_oauth2provider_jwks_sources_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002 authentik_providers_oauth2_oauth2provider_jwt_federation_p_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002
+    ADD CONSTRAINT authentik_providers_oauth2_oauth2provider_jwt_federation_p_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider authentik_providers_oauth2_oauth2provider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider
+    ADD CONSTRAINT authentik_providers_oauth2_oauth2provider_pkey PRIMARY KEY (provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken authentik_providers_oauth2_refreshtoken_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_refreshtoken
+    ADD CONSTRAINT authentik_providers_oauth2_refreshtoken_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_oauth2_scopemapping authentik_providers_oauth2_scopemapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_scopemapping
+    ADD CONSTRAINT authentik_providers_oauth2_scopemapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_providers_proxy_proxyprovider authentik_providers_proxy_proxyprovider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_proxy_proxyprovider
+    ADD CONSTRAINT authentik_providers_proxy_proxyprovider_pkey PRIMARY KEY (oauth2provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_proxy_proxysession authentik_providers_proxy_proxysession_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_proxy_proxysession
+    ADD CONSTRAINT authentik_providers_proxy_proxysession_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_providers_proxy_proxysession authentik_providers_proxy_proxysession_session_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_proxy_proxysession
+    ADD CONSTRAINT authentik_providers_proxy_proxysession_session_key_key UNIQUE (session_key);
+
+
+--
+-- Name: authentik_providers_rac_endpoint_property_mappings authentik_providers_rac__endpoint_id_propertymapp_0c775cd4_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_endpoint_property_mappings
+    ADD CONSTRAINT authentik_providers_rac__endpoint_id_propertymapp_0c775cd4_uniq UNIQUE (endpoint_id, propertymapping_id);
+
+
+--
+-- Name: authentik_providers_rac_connectiontoken authentik_providers_rac_connectiontoken_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_connectiontoken
+    ADD CONSTRAINT authentik_providers_rac_connectiontoken_pkey PRIMARY KEY (connection_token_uuid);
+
+
+--
+-- Name: authentik_providers_rac_endpoint authentik_providers_rac_endpoint_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_endpoint
+    ADD CONSTRAINT authentik_providers_rac_endpoint_pkey PRIMARY KEY (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_providers_rac_endpoint_property_mappings authentik_providers_rac_endpoint_property_mappings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_endpoint_property_mappings
+    ADD CONSTRAINT authentik_providers_rac_endpoint_property_mappings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_rac_racpropertymapping authentik_providers_rac_racpropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_racpropertymapping
+    ADD CONSTRAINT authentik_providers_rac_racpropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_providers_rac_racprovider authentik_providers_rac_racprovider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_racprovider
+    ADD CONSTRAINT authentik_providers_rac_racprovider_pkey PRIMARY KEY (provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_radius_radiusprovider authentik_providers_radius_radiusprovider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_radius_radiusprovider
+    ADD CONSTRAINT authentik_providers_radius_radiusprovider_pkey PRIMARY KEY (provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_radius_radiusproviderpropertymapping authentik_providers_radius_radiusproviderpropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_radius_radiusproviderpropertymapping
+    ADD CONSTRAINT authentik_providers_radius_radiusproviderpropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_providers_saml_samlpropertymapping authentik_providers_saml_samlpropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlpropertymapping
+    ADD CONSTRAINT authentik_providers_saml_samlpropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_providers_saml_samlprovider authentik_providers_saml_samlprovider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlprovider
+    ADD CONSTRAINT authentik_providers_saml_samlprovider_pkey PRIMARY KEY (provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_saml_samlsession authentik_providers_saml_samlsession_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlsession
+    ADD CONSTRAINT authentik_providers_saml_samlsession_pkey PRIMARY KEY (saml_session_id);
+
+
+--
+-- Name: authentik_providers_saml_samlsession authentik_providers_saml_session_index_provider_i_748b6d22_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlsession
+    ADD CONSTRAINT authentik_providers_saml_session_index_provider_i_748b6d22_uniq UNIQUE (session_index, provider_id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovidergroup authentik_providers_scim_scim_id_group_id_provide_3071e865_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovidergroup
+    ADD CONSTRAINT authentik_providers_scim_scim_id_group_id_provide_3071e865_uniq UNIQUE (scim_id, group_id, provider_id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovideruser authentik_providers_scim_scim_id_user_id_provider_8c6b5a21_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovideruser
+    ADD CONSTRAINT authentik_providers_scim_scim_id_user_id_provider_8c6b5a21_uniq UNIQUE (scim_id, user_id, provider_id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovidergroup authentik_providers_scim_scimgroup_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovidergroup
+    ADD CONSTRAINT authentik_providers_scim_scimgroup_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_scim_scimmapping authentik_providers_scim_scimmapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimmapping
+    ADD CONSTRAINT authentik_providers_scim_scimmapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_group_filters authentik_providers_scim_scimprovider_group_filters_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider_group_filters
+    ADD CONSTRAINT authentik_providers_scim_scimprovider_group_filters_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_group_filters authentik_providers_scim_scimprovider_id_group_id_e59f1eff_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider_group_filters
+    ADD CONSTRAINT authentik_providers_scim_scimprovider_id_group_id_e59f1eff_uniq UNIQUE (scimprovider_id, group_id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_property_mappings_group authentik_providers_scim_scimprovider_id_property_32317bb5_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider_property_mappings_group
+    ADD CONSTRAINT authentik_providers_scim_scimprovider_id_property_32317bb5_uniq UNIQUE (scimprovider_id, propertymapping_id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider authentik_providers_scim_scimprovider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider
+    ADD CONSTRAINT authentik_providers_scim_scimprovider_pkey PRIMARY KEY (provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_property_mappings_group authentik_providers_scim_scimprovider_property_mappings_gr_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider_property_mappings_group
+    ADD CONSTRAINT authentik_providers_scim_scimprovider_property_mappings_gr_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovideruser authentik_providers_scim_scimuser_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovideruser
+    ADD CONSTRAINT authentik_providers_scim_scimuser_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider_oidc_auth_providers authentik_providers_ssf__ssfprovider_id_oauth2pro_d70430b1_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_ssfprovider_oidc_auth_providers
+    ADD CONSTRAINT authentik_providers_ssf__ssfprovider_id_oauth2pro_d70430b1_uniq UNIQUE (ssfprovider_id, oauth2provider_id);
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider_oidc_auth_providers authentik_providers_ssf_ssfprovider_oidc_auth_providers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_ssfprovider_oidc_auth_providers
+    ADD CONSTRAINT authentik_providers_ssf_ssfprovider_oidc_auth_providers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider authentik_providers_ssf_ssfprovider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_ssfprovider
+    ADD CONSTRAINT authentik_providers_ssf_ssfprovider_pkey PRIMARY KEY (provider_ptr_id);
+
+
+--
+-- Name: authentik_providers_ssf_stream authentik_providers_ssf_stream_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_stream
+    ADD CONSTRAINT authentik_providers_ssf_stream_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_providers_ssf_streamevent authentik_providers_ssf_streamevent_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_streamevent
+    ADD CONSTRAINT authentik_providers_ssf_streamevent_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_providers_ws_federation_wsfederationprovider authentik_providers_ws_federation_wsfederationprovider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ws_federation_wsfederationprovider
+    ADD CONSTRAINT authentik_providers_ws_federation_wsfederationprovider_pkey PRIMARY KEY (samlprovider_ptr_id);
+
+
+--
+-- Name: authentik_rbac_initialpermissions_permissions authentik_rbac_initialpe_initialpermissions_id_pe_f5a0e7eb_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_initialpermissions_permissions
+    ADD CONSTRAINT authentik_rbac_initialpe_initialpermissions_id_pe_f5a0e7eb_uniq UNIQUE (initialpermissions_id, permission_id);
+
+
+--
+-- Name: authentik_rbac_initialpermissions authentik_rbac_initialpermissions_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_initialpermissions
+    ADD CONSTRAINT authentik_rbac_initialpermissions_name_key UNIQUE (name);
+
+
+--
+-- Name: authentik_rbac_initialpermissions_permissions authentik_rbac_initialpermissions_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_initialpermissions_permissions
+    ADD CONSTRAINT authentik_rbac_initialpermissions_permissions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_rbac_initialpermissions authentik_rbac_initialpermissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_initialpermissions
+    ADD CONSTRAINT authentik_rbac_initialpermissions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_rbac_role authentik_rbac_role_managed_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_role
+    ADD CONSTRAINT authentik_rbac_role_managed_key UNIQUE (managed);
+
+
+--
+-- Name: authentik_rbac_role authentik_rbac_role_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_role
+    ADD CONSTRAINT authentik_rbac_role_name_key UNIQUE (name);
+
+
+--
+-- Name: authentik_rbac_role authentik_rbac_role_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_role
+    ADD CONSTRAINT authentik_rbac_role_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_reports_dataexport authentik_reports_dataexport_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_reports_dataexport
+    ADD CONSTRAINT authentik_reports_dataexport_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_requests_grantrequestapproval authentik_requests_grant_request_id_reviewer_id_28f17669_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequestapproval
+    ADD CONSTRAINT authentik_requests_grant_request_id_reviewer_id_28f17669_uniq UNIQUE (request_id, reviewer_id);
+
+
+--
+-- Name: authentik_requests_grantrequesttarget authentik_requests_grant_request_id_target_id_ea793610_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequesttarget
+    ADD CONSTRAINT authentik_requests_grant_request_id_target_id_ea793610_uniq UNIQUE (request_id, target_id);
+
+
+--
+-- Name: authentik_requests_grantrequest authentik_requests_grantrequest_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequest
+    ADD CONSTRAINT authentik_requests_grantrequest_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_requests_grantrequestapproval authentik_requests_grantrequestapproval_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequestapproval
+    ADD CONSTRAINT authentik_requests_grantrequestapproval_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_requests_grantrequesttarget authentik_requests_grantrequesttarget_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequesttarget
+    ADD CONSTRAINT authentik_requests_grantrequesttarget_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_requests_requestrulechildbinding authentik_requests_reque_binding_id_target_id_ded19764_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulechildbinding
+    ADD CONSTRAINT authentik_requests_reque_binding_id_target_id_ded19764_uniq UNIQUE (binding_id, target_id);
+
+
+--
+-- Name: authentik_requests_requestrulenotificationtransport authentik_requests_reque_rule_id_notification_tra_fb869f1c_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulenotificationtransport
+    ADD CONSTRAINT authentik_requests_reque_rule_id_notification_tra_fb869f1c_uniq UNIQUE (rule_id, notification_transport_id);
+
+
+--
+-- Name: authentik_requests_requestrulebinding authentik_requests_reque_rule_id_target_id_77e5a496_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulebinding
+    ADD CONSTRAINT authentik_requests_reque_rule_id_target_id_77e5a496_uniq UNIQUE (rule_id, target_id);
+
+
+--
+-- Name: authentik_requests_requestrule authentik_requests_requestrule_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrule
+    ADD CONSTRAINT authentik_requests_requestrule_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_requests_requestrule authentik_requests_requestrule_policybindingmodel_ptr_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrule
+    ADD CONSTRAINT authentik_requests_requestrule_policybindingmodel_ptr_id_key UNIQUE (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_requests_requestrulebinding authentik_requests_requestrulebin_policybindingmodel_ptr_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulebinding
+    ADD CONSTRAINT authentik_requests_requestrulebin_policybindingmodel_ptr_id_key UNIQUE (policybindingmodel_ptr_id);
+
+
+--
+-- Name: authentik_requests_requestrulebinding authentik_requests_requestrulebinding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulebinding
+    ADD CONSTRAINT authentik_requests_requestrulebinding_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_requests_requestrulechildbinding authentik_requests_requestrulechildbinding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulechildbinding
+    ADD CONSTRAINT authentik_requests_requestrulechildbinding_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_requests_requestrulenotificationtransport authentik_requests_requestrulenotificationtransport_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulenotificationtransport
+    ADD CONSTRAINT authentik_requests_requestrulenotificationtransport_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_sources_kerberos_groupkerberossourceconnection authentik_sources_kerberos_groupkerberossourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_kerberos_groupkerberossourceconnection
+    ADD CONSTRAINT authentik_sources_kerberos_groupkerberossourceconnection_pkey PRIMARY KEY (groupsourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_kerberos_kerberossource authentik_sources_kerberos_kerberossource_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_kerberos_kerberossource
+    ADD CONSTRAINT authentik_sources_kerberos_kerberossource_pkey PRIMARY KEY (source_ptr_id);
+
+
+--
+-- Name: authentik_sources_kerberos_kerberossource authentik_sources_kerberos_kerberossource_realm_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_kerberos_kerberossource
+    ADD CONSTRAINT authentik_sources_kerberos_kerberossource_realm_key UNIQUE (realm);
+
+
+--
+-- Name: authentik_sources_kerberos_kerberossourcepropertymapping authentik_sources_kerberos_kerberossourcepropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_kerberos_kerberossourcepropertymapping
+    ADD CONSTRAINT authentik_sources_kerberos_kerberossourcepropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_sources_kerberos_userkerberossourceconnection authentik_sources_kerberos_userkerberossourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_kerberos_userkerberossourceconnection
+    ADD CONSTRAINT authentik_sources_kerberos_userkerberossourceconnection_pkey PRIMARY KEY (usersourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_ldap_groupldapsourceconnection authentik_sources_ldap_groupldapsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_groupldapsourceconnection
+    ADD CONSTRAINT authentik_sources_ldap_groupldapsourceconnection_pkey PRIMARY KEY (groupsourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_ldap_ldapsourcepropertymapping authentik_sources_ldap_ldappropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_ldapsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_ldap_ldappropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_sources_ldap_ldapsource authentik_sources_ldap_ldapsource_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_ldapsource
+    ADD CONSTRAINT authentik_sources_ldap_ldapsource_pkey PRIMARY KEY (source_ptr_id);
+
+
+--
+-- Name: authentik_sources_ldap_userldapsourceconnection authentik_sources_ldap_userldapsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_userldapsourceconnection
+    ADD CONSTRAINT authentik_sources_ldap_userldapsourceconnection_pkey PRIMARY KEY (usersourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_oauth_groupoauthsourceconnection authentik_sources_oauth_groupoauthsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_oauth_groupoauthsourceconnection
+    ADD CONSTRAINT authentik_sources_oauth_groupoauthsourceconnection_pkey PRIMARY KEY (groupsourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_oauth_oauthsource authentik_sources_oauth_oauthsource_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_oauth_oauthsource
+    ADD CONSTRAINT authentik_sources_oauth_oauthsource_pkey PRIMARY KEY (source_ptr_id);
+
+
+--
+-- Name: authentik_sources_oauth_oauthsourcepropertymapping authentik_sources_oauth_oauthsourcepropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_oauth_oauthsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_oauth_oauthsourcepropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_sources_oauth_useroauthsourceconnection authentik_sources_oauth_useroauthsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_oauth_useroauthsourceconnection
+    ADD CONSTRAINT authentik_sources_oauth_useroauthsourceconnection_pkey PRIMARY KEY (usersourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_plex_groupplexsourceconnection authentik_sources_plex_groupplexsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_plex_groupplexsourceconnection
+    ADD CONSTRAINT authentik_sources_plex_groupplexsourceconnection_pkey PRIMARY KEY (groupsourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_plex_plexsource authentik_sources_plex_plexsource_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_plex_plexsource
+    ADD CONSTRAINT authentik_sources_plex_plexsource_pkey PRIMARY KEY (source_ptr_id);
+
+
+--
+-- Name: authentik_sources_plex_userplexsourceconnection authentik_sources_plex_plexsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_plex_userplexsourceconnection
+    ADD CONSTRAINT authentik_sources_plex_plexsourceconnection_pkey PRIMARY KEY (usersourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_plex_plexsourcepropertymapping authentik_sources_plex_plexsourcepropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_plex_plexsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_plex_plexsourcepropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_sources_saml_groupsamlsourceconnection authentik_sources_saml_groupsamlsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_groupsamlsourceconnection
+    ADD CONSTRAINT authentik_sources_saml_groupsamlsourceconnection_pkey PRIMARY KEY (groupsourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_saml_samlsource authentik_sources_saml_samlsource_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_samlsource
+    ADD CONSTRAINT authentik_sources_saml_samlsource_pkey PRIMARY KEY (source_ptr_id);
+
+
+--
+-- Name: authentik_sources_saml_samlsourcepropertymapping authentik_sources_saml_samlsourcepropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_samlsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_saml_samlsourcepropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_sources_saml_usersamlsourceconnection authentik_sources_saml_usersamlsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_usersamlsourceconnection
+    ADD CONSTRAINT authentik_sources_saml_usersamlsourceconnection_pkey PRIMARY KEY (usersourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsourcegroup authentik_sources_scim_s_external_id_source_id_2fa367fb_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourcegroup
+    ADD CONSTRAINT authentik_sources_scim_s_external_id_source_id_2fa367fb_uniq UNIQUE (external_id, source_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsourceuser authentik_sources_scim_s_external_id_source_id_7f0d54c6_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourceuser
+    ADD CONSTRAINT authentik_sources_scim_s_external_id_source_id_7f0d54c6_uniq UNIQUE (external_id, source_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsource authentik_sources_scim_scimsource_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsource
+    ADD CONSTRAINT authentik_sources_scim_scimsource_pkey PRIMARY KEY (source_ptr_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsourcegroup authentik_sources_scim_scimsourcegroup_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourcegroup
+    ADD CONSTRAINT authentik_sources_scim_scimsourcegroup_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_sources_scim_scimsourcepropertymapping authentik_sources_scim_scimsourcepropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_scim_scimsourcepropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsourceuser authentik_sources_scim_scimsourceuser_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourceuser
+    ADD CONSTRAINT authentik_sources_scim_scimsourceuser_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_sources_telegram_grouptelegramsourceconnection authentik_sources_telegram_grouptelegramsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_telegram_grouptelegramsourceconnection
+    ADD CONSTRAINT authentik_sources_telegram_grouptelegramsourceconnection_pkey PRIMARY KEY (groupsourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_sources_telegram_telegramsource authentik_sources_telegram_telegramsource_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_telegram_telegramsource
+    ADD CONSTRAINT authentik_sources_telegram_telegramsource_pkey PRIMARY KEY (source_ptr_id);
+
+
+--
+-- Name: authentik_sources_telegram_telegramsourcepropertymapping authentik_sources_telegram_telegramsourcepropertymapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_telegram_telegramsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_telegram_telegramsourcepropertymapping_pkey PRIMARY KEY (propertymapping_ptr_id);
+
+
+--
+-- Name: authentik_sources_telegram_usertelegramsourceconnection authentik_sources_telegram_usertelegramsourceconnection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_telegram_usertelegramsourceconnection
+    ADD CONSTRAINT authentik_sources_telegram_usertelegramsourceconnection_pkey PRIMARY KEY (usersourceconnection_ptr_id);
+
+
+--
+-- Name: authentik_stages_account_lockdown_accountlockdownstage authentik_stages_account_lockdown_accountlockdownstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_account_lockdown_accountlockdownstage
+    ADD CONSTRAINT authentik_stages_account_lockdown_accountlockdownstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida8318 authentik_stages_authent_authenticatorvalidatesta_a20b7460_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida8318
+    ADD CONSTRAINT authentik_stages_authent_authenticatorvalidatesta_a20b7460_uniq UNIQUE (authenticatorvalidatestage_id, webauthndevicetype_id);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida3e25 authentik_stages_authent_authenticatorvalidatesta_efe8bf64_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida3e25
+    ADD CONSTRAINT authentik_stages_authent_authenticatorvalidatesta_efe8bf64_uniq UNIQUE (authenticatorvalidatestage_id, stage_id);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorwebaute3a7 authentik_stages_authent_authenticatorwebauthnsta_e4b8d201_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_authenticatorwebaute3a7
+    ADD CONSTRAINT authentik_stages_authent_authenticatorwebauthnsta_e4b8d201_uniq UNIQUE (authenticatorwebauthnstage_id, webauthndevicetype_id);
+
+
+--
+-- Name: authentik_stages_authenticator_sms_smsdevice authentik_stages_authent_stage_id_phone_number_73b07db5_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_sms_smsdevice
+    ADD CONSTRAINT authentik_stages_authent_stage_id_phone_number_73b07db5_uniq UNIQUE (stage_id, phone_number);
+
+
+--
+-- Name: authentik_stages_authenticator_email_emaildevice authentik_stages_authent_user_id_email_9e852c67_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_email_emaildevice
+    ADD CONSTRAINT authentik_stages_authent_user_id_email_9e852c67_uniq UNIQUE (user_id, email);
+
+
+--
+-- Name: authentik_stages_authenticator_duo_authenticatorduostage authentik_stages_authenticator_duo_authenticatorduostage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_duo_authenticatorduostage
+    ADD CONSTRAINT authentik_stages_authenticator_duo_authenticatorduostage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_authenticator_duo_duodevice authentik_stages_authenticator_duo_duodevice_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_duo_duodevice
+    ADD CONSTRAINT authentik_stages_authenticator_duo_duodevice_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_email_authenticatoremailstage authentik_stages_authenticator_email_authenticatoremailsta_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_email_authenticatoremailstage
+    ADD CONSTRAINT authentik_stages_authenticator_email_authenticatoremailsta_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_authenticator_email_emaildevice authentik_stages_authenticator_email_emaildevice_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_email_emaildevice
+    ADD CONSTRAINT authentik_stages_authenticator_email_emaildevice_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_endpointdevice authentik_stages_authenticator_endpoint_gdt_host_identifier_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice
+    ADD CONSTRAINT authentik_stages_authenticator_endpoint_gdt_host_identifier_key UNIQUE (host_identifier);
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_authenticatore2741 authentik_stages_authenticator_endpoint_gdtc_authenticator_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_endpoint_gdtc_authenticatore2741
+    ADD CONSTRAINT authentik_stages_authenticator_endpoint_gdtc_authenticator_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc authentik_stages_authenticator_endpoint_gdtc_endpointdevi_pkey1; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc
+    ADD CONSTRAINT authentik_stages_authenticator_endpoint_gdtc_endpointdevi_pkey1 PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_endpointdevice authentik_stages_authenticator_endpoint_gdtc_endpointdevic_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice
+    ADD CONSTRAINT authentik_stages_authenticator_endpoint_gdtc_endpointdevic_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: authentik_stages_authenticator_sms_authenticatorsmsstage authentik_stages_authenticator_sms_authenticatorsmsstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_sms_authenticatorsmsstage
+    ADD CONSTRAINT authentik_stages_authenticator_sms_authenticatorsmsstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_authenticator_sms_smsdevice authentik_stages_authenticator_sms_smsdevice_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_sms_smsdevice
+    ADD CONSTRAINT authentik_stages_authenticator_sms_smsdevice_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_static_authenticatorstaticstage authentik_stages_authenticator_static_otpstaticstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_static_authenticatorstaticstage
+    ADD CONSTRAINT authentik_stages_authenticator_static_otpstaticstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_authenticator_static_staticdevice authentik_stages_authenticator_static_staticdevice_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_static_staticdevice
+    ADD CONSTRAINT authentik_stages_authenticator_static_staticdevice_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_static_statictoken authentik_stages_authenticator_static_statictoken_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_static_statictoken
+    ADD CONSTRAINT authentik_stages_authenticator_static_statictoken_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_totp_authenticatortotpstage authentik_stages_authenticator_totp_otptimestage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_totp_authenticatortotpstage
+    ADD CONSTRAINT authentik_stages_authenticator_totp_otptimestage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_authenticator_totp_totpdevice authentik_stages_authenticator_totp_totpdevice_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_totp_totpdevice
+    ADD CONSTRAINT authentik_stages_authenticator_totp_totpdevice_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida8318 authentik_stages_authenticator_validate_authenticatorvali_pkey1; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida8318
+    ADD CONSTRAINT authentik_stages_authenticator_validate_authenticatorvali_pkey1 PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida3e25 authentik_stages_authenticator_validate_authenticatorvalid_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida3e25
+    ADD CONSTRAINT authentik_stages_authenticator_validate_authenticatorvalid_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida499c authentik_stages_authenticator_validate_otpvalidatestage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida499c
+    ADD CONSTRAINT authentik_stages_authenticator_validate_otpvalidatestage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorwebaute3a7 authentik_stages_authenticator_webauthn_authenticatorweba_pkey1; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_authenticatorwebaute3a7
+    ADD CONSTRAINT authentik_stages_authenticator_webauthn_authenticatorweba_pkey1 PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f authentik_stages_authenticator_webauthn_authenticatorwebau_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f
+    ADD CONSTRAINT authentik_stages_authenticator_webauthn_authenticatorwebau_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_webauthndevice authentik_stages_authenticator_webauthn_webau_credential_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_webauthndevice
+    ADD CONSTRAINT authentik_stages_authenticator_webauthn_webau_credential_id_key UNIQUE (credential_id);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_webauthndevice authentik_stages_authenticator_webauthn_webauthndevice_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_webauthndevice
+    ADD CONSTRAINT authentik_stages_authenticator_webauthn_webauthndevice_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_webauthndevicetype authentik_stages_authenticator_webauthn_webauthndevicetype_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_webauthndevicetype
+    ADD CONSTRAINT authentik_stages_authenticator_webauthn_webauthndevicetype_pkey PRIMARY KEY (aaguid);
+
+
+--
+-- Name: authentik_stages_captcha_captchastage authentik_stages_captcha_captchastage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_captcha_captchastage
+    ADD CONSTRAINT authentik_stages_captcha_captchastage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_consent_consentstage authentik_stages_consent_consentstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_consent_consentstage
+    ADD CONSTRAINT authentik_stages_consent_consentstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_consent_userconsent authentik_stages_consent_user_id_application_id_p_e44c6458_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_consent_userconsent
+    ADD CONSTRAINT authentik_stages_consent_user_id_application_id_p_e44c6458_uniq UNIQUE (user_id, application_id, permissions);
+
+
+--
+-- Name: authentik_stages_consent_userconsent authentik_stages_consent_userconsent_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_consent_userconsent
+    ADD CONSTRAINT authentik_stages_consent_userconsent_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_deny_denystage authentik_stages_deny_denystage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_deny_denystage
+    ADD CONSTRAINT authentik_stages_deny_denystage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_dummy_dummystage authentik_stages_dummy_dummystage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_dummy_dummystage
+    ADD CONSTRAINT authentik_stages_dummy_dummystage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_email_emailstage authentik_stages_email_emailstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_email_emailstage
+    ADD CONSTRAINT authentik_stages_email_emailstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_identification_identificationstage_sources authentik_stages_identif_identificationstage_id_s_cdf0dfc3_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage_sources
+    ADD CONSTRAINT authentik_stages_identif_identificationstage_id_s_cdf0dfc3_uniq UNIQUE (identificationstage_id, source_id);
+
+
+--
+-- Name: authentik_stages_identification_identificationstage authentik_stages_identification_identificationstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage
+    ADD CONSTRAINT authentik_stages_identification_identificationstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_identification_identificationstage_sources authentik_stages_identification_identificationstage_source_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage_sources
+    ADD CONSTRAINT authentik_stages_identification_identificationstage_source_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_invitation_invitation authentik_stages_invitation_invitation_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_invitation_invitation
+    ADD CONSTRAINT authentik_stages_invitation_invitation_pkey PRIMARY KEY (invite_uuid);
+
+
+--
+-- Name: authentik_stages_invitation_invitationstage authentik_stages_invitation_invitationstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_invitation_invitationstage
+    ADD CONSTRAINT authentik_stages_invitation_invitationstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_mtls_mutualtlsstage_certificate_authorities authentik_stages_mtls_mu_mutualtlsstage_id_certif_22e97169_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_mtls_mutualtlsstage_certificate_authorities
+    ADD CONSTRAINT authentik_stages_mtls_mu_mutualtlsstage_id_certif_22e97169_uniq UNIQUE (mutualtlsstage_id, certificatekeypair_id);
+
+
+--
+-- Name: authentik_stages_mtls_mutualtlsstage_certificate_authorities authentik_stages_mtls_mutualtlsstage_certificate_authoriti_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_mtls_mutualtlsstage_certificate_authorities
+    ADD CONSTRAINT authentik_stages_mtls_mutualtlsstage_certificate_authoriti_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_mtls_mutualtlsstage authentik_stages_mtls_mutualtlsstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_mtls_mutualtlsstage
+    ADD CONSTRAINT authentik_stages_mtls_mutualtlsstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_password_passwordstage authentik_stages_password_passwordstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_password_passwordstage
+    ADD CONSTRAINT authentik_stages_password_passwordstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_validation_policies authentik_stages_prompt__promptstage_id_policy_id_16cd627d_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage_validation_policies
+    ADD CONSTRAINT authentik_stages_prompt__promptstage_id_policy_id_16cd627d_uniq UNIQUE (promptstage_id, policy_id);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_fields authentik_stages_prompt__promptstage_id_prompt_id_3212c07e_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage_fields
+    ADD CONSTRAINT authentik_stages_prompt__promptstage_id_prompt_id_3212c07e_uniq UNIQUE (promptstage_id, prompt_id);
+
+
+--
+-- Name: authentik_stages_prompt_prompt authentik_stages_prompt_prompt_name_789de039_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_prompt
+    ADD CONSTRAINT authentik_stages_prompt_prompt_name_789de039_uniq UNIQUE (name);
+
+
+--
+-- Name: authentik_stages_prompt_prompt authentik_stages_prompt_prompt_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_prompt
+    ADD CONSTRAINT authentik_stages_prompt_prompt_pkey PRIMARY KEY (prompt_uuid);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_fields authentik_stages_prompt_promptstage_fields_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage_fields
+    ADD CONSTRAINT authentik_stages_prompt_promptstage_fields_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage authentik_stages_prompt_promptstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage
+    ADD CONSTRAINT authentik_stages_prompt_promptstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_validation_policies authentik_stages_prompt_promptstage_validation_policies_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage_validation_policies
+    ADD CONSTRAINT authentik_stages_prompt_promptstage_validation_policies_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_stages_redirect_redirectstage authentik_stages_redirect_redirectstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_redirect_redirectstage
+    ADD CONSTRAINT authentik_stages_redirect_redirectstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_source_sourcestage authentik_stages_source_sourcestage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_source_sourcestage
+    ADD CONSTRAINT authentik_stages_source_sourcestage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_user_delete_userdeletestage authentik_stages_user_delete_userdeletestage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_user_delete_userdeletestage
+    ADD CONSTRAINT authentik_stages_user_delete_userdeletestage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_user_login_userloginstage authentik_stages_user_login_userloginstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_user_login_userloginstage
+    ADD CONSTRAINT authentik_stages_user_login_userloginstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_user_logout_userlogoutstage authentik_stages_user_logout_userlogoutstage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_user_logout_userlogoutstage
+    ADD CONSTRAINT authentik_stages_user_logout_userlogoutstage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_stages_user_write_userwritestage authentik_stages_user_write_userwritestage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_user_write_userwritestage
+    ADD CONSTRAINT authentik_stages_user_write_userwritestage_pkey PRIMARY KEY (stage_ptr_id);
+
+
+--
+-- Name: authentik_tasks_schedules_schedule authentik_tasks_schedule_actor_name_identifier_d0a4a3ab_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_schedules_schedule
+    ADD CONSTRAINT authentik_tasks_schedule_actor_name_identifier_d0a4a3ab_uniq UNIQUE (actor_name, identifier);
+
+
+--
+-- Name: authentik_tasks_schedules_schedule authentik_tasks_schedules_schedule_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_schedules_schedule
+    ADD CONSTRAINT authentik_tasks_schedules_schedule_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_tasks_task authentik_tasks_task_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_task
+    ADD CONSTRAINT authentik_tasks_task_pkey PRIMARY KEY (message_id);
+
+
+--
+-- Name: authentik_tasks_taskdependency authentik_tasks_taskdependency_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_taskdependency
+    ADD CONSTRAINT authentik_tasks_taskdependency_pkey PRIMARY KEY (task_id, dependency_id);
+
+
+--
+-- Name: authentik_tasks_tasklog authentik_tasks_tasklog_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_tasklog
+    ADD CONSTRAINT authentik_tasks_tasklog_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_tasks_workerstatus authentik_tasks_workerstatus_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_workerstatus
+    ADD CONSTRAINT authentik_tasks_workerstatus_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_tenants_domain authentik_tenants_domain_domain_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tenants_domain
+    ADD CONSTRAINT authentik_tenants_domain_domain_key UNIQUE (domain);
+
+
+--
+-- Name: authentik_tenants_domain authentik_tenants_domain_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tenants_domain
+    ADD CONSTRAINT authentik_tenants_domain_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: authentik_tenants_tenant authentik_tenants_tenant_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tenants_tenant
+    ADD CONSTRAINT authentik_tenants_tenant_pkey PRIMARY KEY (tenant_uuid);
+
+
+--
+-- Name: authentik_tenants_tenant authentik_tenants_tenant_schema_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tenants_tenant
+    ADD CONSTRAINT authentik_tenants_tenant_schema_name_key UNIQUE (schema_name);
+
+
+--
+-- Name: authentik_version_history authentik_version_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_version_history
+    ADD CONSTRAINT authentik_version_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: django_channels_postgres_groupchannel django_channels_postgres_groupchannel_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.django_channels_postgres_groupchannel
+    ADD CONSTRAINT django_channels_postgres_groupchannel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: django_channels_postgres_message django_channels_postgres_message_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.django_channels_postgres_message
+    ADD CONSTRAINT django_channels_postgres_message_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: django_content_type django_content_type_app_label_model_76bd3d3b_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.django_content_type
+    ADD CONSTRAINT django_content_type_app_label_model_76bd3d3b_uniq UNIQUE (app_label, model);
+
+
+--
+-- Name: django_content_type django_content_type_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.django_content_type
+    ADD CONSTRAINT django_content_type_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: django_migrations django_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.django_migrations
+    ADD CONSTRAINT django_migrations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: django_postgres_cache_cacheentry django_postgres_cache_cacheentry_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.django_postgres_cache_cacheentry
+    ADD CONSTRAINT django_postgres_cache_cacheentry_pkey PRIMARY KEY (cache_key);
+
+
+--
+-- Name: django_session django_session_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.django_session
+    ADD CONSTRAINT django_session_pkey PRIMARY KEY (session_key);
+
+
+--
+-- Name: guardian_rolemodelpermission guardian_rolemodelpermis_role_id_permission_id_a63dd7b5_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_rolemodelpermission
+    ADD CONSTRAINT guardian_rolemodelpermis_role_id_permission_id_a63dd7b5_uniq UNIQUE (role_id, permission_id);
+
+
+--
+-- Name: guardian_rolemodelpermission guardian_rolemodelpermission_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_rolemodelpermission
+    ADD CONSTRAINT guardian_rolemodelpermission_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: guardian_roleobjectpermission guardian_roleobjectpermi_role_id_permission_id_ob_37fa8828_uniq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_roleobjectpermission
+    ADD CONSTRAINT guardian_roleobjectpermi_role_id_permission_id_ob_37fa8828_uniq UNIQUE (role_id, permission_id, object_pk);
+
+
+--
+-- Name: guardian_roleobjectpermission guardian_roleobjectpermission_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_roleobjectpermission
+    ADD CONSTRAINT guardian_roleobjectpermission_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: auth_group_name_a6ea08ec_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX auth_group_name_a6ea08ec_like ON public.auth_group USING btree (name varchar_pattern_ops);
+
+
+--
+-- Name: auth_group_permissions_group_id_b120cbf9; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX auth_group_permissions_group_id_b120cbf9 ON public.auth_group_permissions USING btree (group_id);
+
+
+--
+-- Name: auth_group_permissions_permission_id_84c5c92e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX auth_group_permissions_permission_id_84c5c92e ON public.auth_group_permissions USING btree (permission_id);
+
+
+--
+-- Name: auth_permission_content_type_id_2f476e4b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX auth_permission_content_type_id_2f476e4b ON public.auth_permission USING btree (content_type_id);
+
+
+--
+-- Name: authentik_b_default_3ccf12_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_b_default_3ccf12_idx ON public.authentik_brands_brand USING btree ("default");
+
+
+--
+-- Name: authentik_b_domain_b9b24a_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_b_domain_b9b24a_idx ON public.authentik_brands_brand USING btree (domain);
+
+
+--
+-- Name: authentik_blueprints_blueprintinstance_managed_a2959093_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_blueprints_blueprintinstance_managed_a2959093_like ON public.authentik_blueprints_blueprintinstance USING btree (managed text_pattern_ops);
+
+
+--
+-- Name: authentik_blueprints_blueprintinstance_name_404be626_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_blueprints_blueprintinstance_name_404be626_like ON public.authentik_blueprints_blueprintinstance USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_brands_brand_cli_certificatekeypair_id_de3a87a3; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_cli_certificatekeypair_id_de3a87a3 ON public.authentik_brands_brand_client_certificates USING btree (certificatekeypair_id);
+
+
+--
+-- Name: authentik_brands_brand_client_certificates_brand_id_0b0bb011; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_client_certificates_brand_id_0b0bb011 ON public.authentik_brands_brand_client_certificates USING btree (brand_id);
+
+
+--
+-- Name: authentik_brands_brand_default_application_id_cdb5fa2d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_default_application_id_cdb5fa2d ON public.authentik_brands_brand USING btree (default_application_id);
+
+
+--
+-- Name: authentik_brands_brand_flow_authentication_id_89de959d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_flow_authentication_id_89de959d ON public.authentik_brands_brand USING btree (flow_authentication_id);
+
+
+--
+-- Name: authentik_brands_brand_flow_device_code_id_302ae2a0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_flow_device_code_id_302ae2a0 ON public.authentik_brands_brand USING btree (flow_device_code_id);
+
+
+--
+-- Name: authentik_brands_brand_flow_invalidation_id_8224d0ed; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_flow_invalidation_id_8224d0ed ON public.authentik_brands_brand USING btree (flow_invalidation_id);
+
+
+--
+-- Name: authentik_brands_brand_flow_lockdown_id_a8caca6f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_flow_lockdown_id_a8caca6f ON public.authentik_brands_brand USING btree (flow_lockdown_id);
+
+
+--
+-- Name: authentik_brands_brand_flow_recovery_id_e5d53987; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_flow_recovery_id_e5d53987 ON public.authentik_brands_brand USING btree (flow_recovery_id);
+
+
+--
+-- Name: authentik_brands_brand_flow_request_id_c93e82e0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_flow_request_id_c93e82e0 ON public.authentik_brands_brand USING btree (flow_request_id);
+
+
+--
+-- Name: authentik_brands_brand_flow_unenrollment_id_93e48a3b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_flow_unenrollment_id_93e48a3b ON public.authentik_brands_brand USING btree (flow_unenrollment_id);
+
+
+--
+-- Name: authentik_brands_brand_flow_user_settings_id_64c7fb48; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_flow_user_settings_id_64c7fb48 ON public.authentik_brands_brand USING btree (flow_user_settings_id);
+
+
+--
+-- Name: authentik_brands_brand_flow_user_switch_id_b481b73f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_flow_user_switch_id_b481b73f ON public.authentik_brands_brand USING btree (flow_user_switch_id);
+
+
+--
+-- Name: authentik_brands_brand_web_certificate_id_10360e71; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_brands_brand_web_certificate_id_10360e71 ON public.authentik_brands_brand USING btree (web_certificate_id);
+
+
+--
+-- Name: authentik_c_ancesto_974845_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_ancesto_974845_idx ON public.authentik_core_groupancestry USING btree (ancestor_id);
+
+
+--
+-- Name: authentik_c_date_jo_58c256_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_date_jo_58c256_idx ON public.authentik_core_user USING btree (date_joined);
+
+
+--
+-- Name: authentik_c_descend_f83a71_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_descend_f83a71_idx ON public.authentik_core_groupancestry USING btree (descendant_id);
+
+
+--
+-- Name: authentik_c_enabled_d72365_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_enabled_d72365_idx ON public.authentik_core_source USING btree (enabled);
+
+
+--
+-- Name: authentik_c_expires_a62b4b_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expires_a62b4b_idx ON public.authentik_core_token USING btree (expires);
+
+
+--
+-- Name: authentik_c_expires_c49143_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expires_c49143_idx ON public.authentik_core_session USING btree (expires, session_key);
+
+
+--
+-- Name: authentik_c_expires_ce0be4_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expires_ce0be4_idx ON public.authentik_core_actor USING btree (expires);
+
+
+--
+-- Name: authentik_c_expires_d2f607_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expires_d2f607_idx ON public.authentik_core_session USING btree (expires);
+
+
+--
+-- Name: authentik_c_expirin_1ab2e4_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expirin_1ab2e4_idx ON public.authentik_core_session USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_c_expirin_7c2cfb_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expirin_7c2cfb_idx ON public.authentik_core_session USING btree (expiring);
+
+
+--
+-- Name: authentik_c_expirin_a1b838_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expirin_a1b838_idx ON public.authentik_core_token USING btree (expiring);
+
+
+--
+-- Name: authentik_c_expirin_b80614_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expirin_b80614_idx ON public.authentik_core_actor USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_c_expirin_ba04d9_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expirin_ba04d9_idx ON public.authentik_core_token USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_c_expirin_fbf26f_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_expirin_fbf26f_idx ON public.authentik_core_actor USING btree (expiring);
+
+
+--
+-- Name: authentik_c_id_5d0bb4_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX authentik_c_id_5d0bb4_idx ON public.authentik_core_groupancestry USING btree (id);
+
+
+--
+-- Name: authentik_c_identif_59226f_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_identif_59226f_idx ON public.authentik_core_usersourceconnection USING btree (identifier);
+
+
+--
+-- Name: authentik_c_identif_d9d032_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_identif_d9d032_idx ON public.authentik_core_token USING btree (identifier);
+
+
+--
+-- Name: authentik_c_is_supe_1e5a97_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_is_supe_1e5a97_idx ON public.authentik_core_group USING btree (is_superuser);
+
+
+--
+-- Name: authentik_c_key_f71355_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_key_f71355_idx ON public.authentik_core_token USING btree (key);
+
+
+--
+-- Name: authentik_c_last_lo_f0179a_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_last_lo_f0179a_idx ON public.authentik_core_user USING btree (last_login);
+
+
+--
+-- Name: authentik_c_last_up_ed7486_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_last_up_ed7486_idx ON public.authentik_core_user USING btree (last_updated);
+
+
+--
+-- Name: authentik_c_name_9ba8e4_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_name_9ba8e4_idx ON public.authentik_core_group USING btree (name);
+
+
+--
+-- Name: authentik_c_name_affae6_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_name_affae6_idx ON public.authentik_core_source USING btree (name);
+
+
+--
+-- Name: authentik_c_passwor_eec915_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_passwor_eec915_idx ON public.authentik_core_user USING btree (password_change_date);
+
+
+--
+-- Name: authentik_c_path_b1f502_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_path_b1f502_idx ON public.authentik_core_user USING btree (path);
+
+
+--
+-- Name: authentik_c_slug_ccb2e5_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_slug_ccb2e5_idx ON public.authentik_core_source USING btree (slug);
+
+
+--
+-- Name: authentik_c_source__649e04_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_source__649e04_idx ON public.authentik_core_usersourceconnection USING btree (source_id, identifier);
+
+
+--
+-- Name: authentik_c_type_ecf60d_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_type_ecf60d_idx ON public.authentik_core_user USING btree (type);
+
+
+--
+-- Name: authentik_c_usernam_2f0e4b_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_usernam_2f0e4b_idx ON public.authentik_core_user USING btree (username, is_active, type);
+
+
+--
+-- Name: authentik_c_uuid_3dae2f_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_c_uuid_3dae2f_idx ON public.authentik_core_user USING btree (uuid);
+
+
+--
+-- Name: authentik_core_actor_parent_id_16d7ff83; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_actor_parent_id_16d7ff83 ON public.authentik_core_actor USING btree (parent_id);
+
+
+--
+-- Name: authentik_core_application_slug_ab82d049_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_application_slug_ab82d049_like ON public.authentik_core_application USING btree (slug text_pattern_ops);
+
+
+--
+-- Name: authentik_core_applicationentitlement_app_id_446e06be; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_applicationentitlement_app_id_446e06be ON public.authentik_core_applicationentitlement USING btree (app_id);
+
+
+--
+-- Name: authentik_core_authentic_user_switching_session_i_bb011b49_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_authentic_user_switching_session_i_bb011b49_like ON public.authentik_core_authenticatedsession USING btree (user_switching_session_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_core_authenticat_user_switching_session_id_bb011b49; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_authenticat_user_switching_session_id_bb011b49 ON public.authentik_core_authenticatedsession USING btree (user_switching_session_id);
+
+
+--
+-- Name: authentik_core_authenticatedsession_session_id_d58ab678_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_authenticatedsession_session_id_d58ab678_like ON public.authentik_core_authenticatedsession USING btree (session_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_core_authenticatedsession_user_id_5055b6cf; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_authenticatedsession_user_id_5055b6cf ON public.authentik_core_authenticatedsession USING btree (user_id);
+
+
+--
+-- Name: authentik_core_group_name_9f7fc679_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_group_name_9f7fc679_like ON public.authentik_core_group USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_core_group_roles_group_id_43a283e0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_group_roles_group_id_43a283e0 ON public.authentik_core_group_roles USING btree (group_id);
+
+
+--
+-- Name: authentik_core_group_roles_role_id_5b9a84fe; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_group_roles_role_id_5b9a84fe ON public.authentik_core_group_roles USING btree (role_id);
+
+
+--
+-- Name: authentik_core_groupparentage_child_id_7c669a70; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_groupparentage_child_id_7c669a70 ON public.authentik_core_groupparentage USING btree (child_id);
+
+
+--
+-- Name: authentik_core_groupparentage_parent_id_5b993bd1; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_groupparentage_parent_id_5b993bd1 ON public.authentik_core_groupparentage USING btree (parent_id);
+
+
+--
+-- Name: authentik_core_groupsourceconnection_group_id_2d4ee871; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_groupsourceconnection_group_id_2d4ee871 ON public.authentik_core_groupsourceconnection USING btree (group_id);
+
+
+--
+-- Name: authentik_core_groupsourceconnection_source_id_12d2d371; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_groupsourceconnection_source_id_12d2d371 ON public.authentik_core_groupsourceconnection USING btree (source_id);
+
+
+--
+-- Name: authentik_core_objectattribute_managed_783e34f3_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_objectattribute_managed_783e34f3_like ON public.authentik_core_objectattribute USING btree (managed text_pattern_ops);
+
+
+--
+-- Name: authentik_core_objectattribute_object_type_id_6ae3079c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_objectattribute_object_type_id_6ae3079c ON public.authentik_core_objectattribute USING btree (object_type_id);
+
+
+--
+-- Name: authentik_core_propertymapping_managed_e1718652_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_propertymapping_managed_e1718652_like ON public.authentik_core_propertymapping USING btree (managed text_pattern_ops);
+
+
+--
+-- Name: authentik_core_propertymapping_name_a457d137_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_propertymapping_name_a457d137_like ON public.authentik_core_propertymapping USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_core_provider_authentication_flow_id_49dea03c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_provider_authentication_flow_id_49dea03c ON public.authentik_core_provider USING btree (authentication_flow_id);
+
+
+--
+-- Name: authentik_core_provider_authorization_flow_id_1482437b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_provider_authorization_flow_id_1482437b ON public.authentik_core_provider USING btree (authorization_flow_id);
+
+
+--
+-- Name: authentik_core_provider_backchannel_application_id_a972ebd6; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_provider_backchannel_application_id_a972ebd6 ON public.authentik_core_provider USING btree (backchannel_application_id);
+
+
+--
+-- Name: authentik_core_provider_invalidation_flow_id_69c4fd1b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_provider_invalidation_flow_id_69c4fd1b ON public.authentik_core_provider USING btree (invalidation_flow_id);
+
+
+--
+-- Name: authentik_core_provider_name_66fc4ef4_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_provider_name_66fc4ef4_like ON public.authentik_core_provider USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_core_provider_pr_propertymapping_id_7d1de2b7; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_provider_pr_propertymapping_id_7d1de2b7 ON public.authentik_core_provider_property_mappings USING btree (propertymapping_id);
+
+
+--
+-- Name: authentik_core_provider_property_mappings_provider_id_10e17d5c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_provider_property_mappings_provider_id_10e17d5c ON public.authentik_core_provider_property_mappings USING btree (provider_id);
+
+
+--
+-- Name: authentik_core_session_session_key_61c71739_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_session_session_key_61c71739_like ON public.authentik_core_session USING btree (session_key varchar_pattern_ops);
+
+
+--
+-- Name: authentik_core_source_authentication_flow_id_2478087b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_source_authentication_flow_id_2478087b ON public.authentik_core_source USING btree (authentication_flow_id);
+
+
+--
+-- Name: authentik_core_source_enrollment_flow_id_7844a7b3; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_source_enrollment_flow_id_7844a7b3 ON public.authentik_core_source USING btree (enrollment_flow_id);
+
+
+--
+-- Name: authentik_core_source_grou_propertymapping_id_3cf3d0f0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_source_grou_propertymapping_id_3cf3d0f0 ON public.authentik_core_source_group_property_mappings USING btree (propertymapping_id);
+
+
+--
+-- Name: authentik_core_source_grou_source_id_001cb431; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_source_grou_source_id_001cb431 ON public.authentik_core_source_group_property_mappings USING btree (source_id);
+
+
+--
+-- Name: authentik_core_source_managed_65965884_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_source_managed_65965884_like ON public.authentik_core_source USING btree (managed text_pattern_ops);
+
+
+--
+-- Name: authentik_core_source_slug_e15c7212_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_source_slug_e15c7212_like ON public.authentik_core_source USING btree (slug text_pattern_ops);
+
+
+--
+-- Name: authentik_core_source_user_property_mappings_source_id_3f2a38bc; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_source_user_property_mappings_source_id_3f2a38bc ON public.authentik_core_source_user_property_mappings USING btree (source_id);
+
+
+--
+-- Name: authentik_core_source_user_propertymapping_id_a0453c66; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_source_user_propertymapping_id_a0453c66 ON public.authentik_core_source_user_property_mappings USING btree (propertymapping_id);
+
+
+--
+-- Name: authentik_core_token_identifier_af152015_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_token_identifier_af152015_like ON public.authentik_core_token USING btree (identifier varchar_pattern_ops);
+
+
+--
+-- Name: authentik_core_token_managed_20a845a1_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_token_managed_20a845a1_like ON public.authentik_core_token USING btree (managed text_pattern_ops);
+
+
+--
+-- Name: authentik_core_token_user_id_479d5b79; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_token_user_id_479d5b79 ON public.authentik_core_token USING btree (user_id);
+
+
+--
+-- Name: authentik_core_user_pb_groups_group_id_344046d2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_user_pb_groups_group_id_344046d2 ON public.authentik_core_user_groups USING btree (group_id);
+
+
+--
+-- Name: authentik_core_user_pb_groups_user_id_5ce7c1dc; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_user_pb_groups_user_id_5ce7c1dc ON public.authentik_core_user_groups USING btree (user_id);
+
+
+--
+-- Name: authentik_core_user_roles_role_id_832e4e27; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_user_roles_role_id_832e4e27 ON public.authentik_core_user_roles USING btree (role_id);
+
+
+--
+-- Name: authentik_core_user_roles_user_id_ea5294b9; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_user_roles_user_id_ea5294b9 ON public.authentik_core_user_roles USING btree (user_id);
+
+
+--
+-- Name: authentik_core_user_username_ba8d02c8_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_user_username_ba8d02c8_like ON public.authentik_core_user USING btree (username varchar_pattern_ops);
+
+
+--
+-- Name: authentik_core_usersourceconnection_source_id_450cff14; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_usersourceconnection_source_id_450cff14 ON public.authentik_core_usersourceconnection USING btree (source_id);
+
+
+--
+-- Name: authentik_core_usersourceconnection_user_id_7f305d6f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_usersourceconnection_user_id_7f305d6f ON public.authentik_core_usersourceconnection USING btree (user_id);
+
+
+--
+-- Name: authentik_core_userswitc_current_session_id_4eeaf999_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_userswitc_current_session_id_4eeaf999_like ON public.authentik_core_userswitchingsession USING btree (current_session_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_core_userswitchingsession_token_74cd985b_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_core_userswitchingsession_token_74cd985b_like ON public.authentik_core_userswitchingsession USING btree (token varchar_pattern_ops);
+
+
+--
+-- Name: authentik_crypto_certificatekeypair_managed_a997712a_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_crypto_certificatekeypair_managed_a997712a_like ON public.authentik_crypto_certificatekeypair USING btree (managed text_pattern_ops);
+
+
+--
+-- Name: authentik_crypto_certificatekeypair_name_719603a4_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_crypto_certificatekeypair_name_719603a4_like ON public.authentik_crypto_certificatekeypair USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_e_action_9a9dd9_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_action_9a9dd9_idx ON public.authentik_events_event USING btree (action);
+
+
+--
+-- Name: authentik_e_app_6a05ce_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_app_6a05ce_idx ON public.authentik_events_event USING btree (app);
+
+
+--
+-- Name: authentik_e_client__51f4dd_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_client__51f4dd_idx ON public.authentik_events_event USING btree (client_ip);
+
+
+--
+-- Name: authentik_e_created_6f0834_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_created_6f0834_idx ON public.authentik_events_event USING btree (created);
+
+
+--
+-- Name: authentik_e_ctx_app__idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_ctx_app__idx ON public.authentik_events_event USING btree (((context -> 'authorized_application'::text)));
+
+
+--
+-- Name: authentik_e_expires_3f2956_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expires_3f2956_idx ON public.authentik_enterprise_licenseusage USING btree (expires);
+
+
+--
+-- Name: authentik_e_expires_675725_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expires_675725_idx ON public.authentik_endpoints_connectors_agent_devicetoken USING btree (expires);
+
+
+--
+-- Name: authentik_e_expires_8c73a8_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expires_8c73a8_idx ON public.authentik_events_event USING btree (expires);
+
+
+--
+-- Name: authentik_e_expires_98b99c_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expires_98b99c_idx ON public.authentik_endpoints_connectors_agent_enrollmenttoken USING btree (expires);
+
+
+--
+-- Name: authentik_e_expires_a1e8b7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expires_a1e8b7_idx ON public.authentik_endpoints_devicefactsnapshot USING btree (expires);
+
+
+--
+-- Name: authentik_e_expires_d52fb2_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expires_d52fb2_idx ON public.authentik_endpoints_connectors_agent_deviceauthenticationtoken USING btree (expires);
+
+
+--
+-- Name: authentik_e_expires_e5d275_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expires_e5d275_idx ON public.authentik_endpoints_connectors_agent_applenonce USING btree (expires);
+
+
+--
+-- Name: authentik_e_expires_f533f5_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expires_f533f5_idx ON public.authentik_endpoints_device USING btree (expires);
+
+
+--
+-- Name: authentik_e_expirin_038503_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_038503_idx ON public.authentik_endpoints_device USING btree (expiring);
+
+
+--
+-- Name: authentik_e_expirin_0b4d8e_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_0b4d8e_idx ON public.authentik_endpoints_connectors_agent_applenonce USING btree (expiring);
+
+
+--
+-- Name: authentik_e_expirin_11d3d7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_11d3d7_idx ON public.authentik_enterprise_licenseusage USING btree (expiring);
+
+
+--
+-- Name: authentik_e_expirin_355561_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_355561_idx ON public.authentik_endpoints_connectors_agent_applenonce USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_e_expirin_4d558f_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_4d558f_idx ON public.authentik_enterprise_licenseusage USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_e_expirin_7ad82a_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_7ad82a_idx ON public.authentik_endpoints_connectors_agent_enrollmenttoken USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_e_expirin_8c95fe_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_8c95fe_idx ON public.authentik_endpoints_connectors_agent_deviceauthenticationtoken USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_e_expirin_8eb6d1_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_8eb6d1_idx ON public.authentik_endpoints_connectors_agent_devicetoken USING btree (expiring);
+
+
+--
+-- Name: authentik_e_expirin_9a17f7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_9a17f7_idx ON public.authentik_endpoints_connectors_agent_enrollmenttoken USING btree (expiring);
+
+
+--
+-- Name: authentik_e_expirin_b1eb6b_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_b1eb6b_idx ON public.authentik_endpoints_devicefactsnapshot USING btree (expiring);
+
+
+--
+-- Name: authentik_e_expirin_b26ba1_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_b26ba1_idx ON public.authentik_endpoints_device USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_e_expirin_b5cb5e_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_b5cb5e_idx ON public.authentik_events_event USING btree (expiring);
+
+
+--
+-- Name: authentik_e_expirin_bd42e6_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_bd42e6_idx ON public.authentik_endpoints_connectors_agent_devicetoken USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_e_expirin_ce06ca_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_ce06ca_idx ON public.authentik_endpoints_devicefactsnapshot USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_e_expirin_e37180_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_e37180_idx ON public.authentik_events_event USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_e_expirin_e9b873_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_expirin_e9b873_idx ON public.authentik_endpoints_connectors_agent_deviceauthenticationtoken USING btree (expiring);
+
+
+--
+-- Name: authentik_e_key_504bbc_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_key_504bbc_idx ON public.authentik_endpoints_connectors_agent_devicetoken USING btree (key);
+
+
+--
+-- Name: authentik_e_key_523e13_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_key_523e13_hash ON public.authentik_enterprise_license USING hash (key);
+
+
+--
+-- Name: authentik_e_key_8dafaf_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_key_8dafaf_idx ON public.authentik_endpoints_connectors_agent_enrollmenttoken USING btree (key);
+
+
+--
+-- Name: authentik_e_user_1be48d_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_user_1be48d_idx ON public.authentik_events_event USING btree ("user");
+
+
+--
+-- Name: authentik_e_user_pk__idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_e_user_pk__idx ON public.authentik_events_event USING btree ((("user" -> 'pk'::text)));
+
+
+--
+-- Name: authentik_endpoints_connec_agentconnector_id_b177559c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_agentconnector_id_b177559c ON public.authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6 USING btree (agentconnector_id);
+
+
+--
+-- Name: authentik_endpoints_connec_authentication_flow_id_7d400a20; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_authentication_flow_id_7d400a20 ON public.authentik_endpoints_connectors_agent_agentconnector USING btree (authorization_flow_id);
+
+
+--
+-- Name: authentik_endpoints_connec_challenge_key_id_07ed488f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_challenge_key_id_07ed488f ON public.authentik_endpoints_connectors_agent_agentconnector USING btree (challenge_key_id);
+
+
+--
+-- Name: authentik_endpoints_connec_connector_id_55c7983c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_connector_id_55c7983c ON public.authentik_endpoints_connectors_agent_enrollmenttoken USING btree (connector_id);
+
+
+--
+-- Name: authentik_endpoints_connec_connector_id_82de6ed0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_connector_id_82de6ed0 ON public.authentik_endpoints_connectors_agent_deviceauthenticationtoken USING btree (connector_id);
+
+
+--
+-- Name: authentik_endpoints_connec_device_group_id_ef065d87; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_device_group_id_ef065d87 ON public.authentik_endpoints_connectors_agent_enrollmenttoken USING btree (device_group_id);
+
+
+--
+-- Name: authentik_endpoints_connec_device_id_0d1845c2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_device_id_0d1845c2 ON public.authentik_endpoints_connectors_agent_devicetoken USING btree (device_id);
+
+
+--
+-- Name: authentik_endpoints_connec_device_id_c3021e8c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_device_id_c3021e8c ON public.authentik_endpoints_connectors_agent_deviceauthenticationtoken USING btree (device_id);
+
+
+--
+-- Name: authentik_endpoints_connec_device_token_id_19a722dc; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_device_token_id_19a722dc ON public.authentik_endpoints_connectors_agent_deviceauthenticationtoken USING btree (device_token_id);
+
+
+--
+-- Name: authentik_endpoints_connec_device_token_id_23abacd6; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_device_token_id_23abacd6 ON public.authentik_endpoints_connectors_agent_applenonce USING btree (device_token_id);
+
+
+--
+-- Name: authentik_endpoints_connec_headers_mapping_id_d010e229; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_headers_mapping_id_d010e229 ON public.authentik_endpoints_connectors_fleet_fleetconnector USING btree (headers_mapping_id);
+
+
+--
+-- Name: authentik_endpoints_connec_oauth2provider_id_2e9defac; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_oauth2provider_id_2e9defac ON public.authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6 USING btree (oauth2provider_id);
+
+
+--
+-- Name: authentik_endpoints_connec_user_id_ef28d596; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_user_id_ef28d596 ON public.authentik_endpoints_connectors_agent_deviceauthenticationtoken USING btree (user_id);
+
+
+--
+-- Name: authentik_endpoints_connec_user_id_ffad2933; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_connec_user_id_ffad2933 ON public.authentik_endpoints_connectors_agent_appleindependentsecure0d47 USING btree (user_id);
+
+
+--
+-- Name: authentik_endpoints_device_group_id_c61fa2b6; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_device_group_id_c61fa2b6 ON public.authentik_endpoints_device USING btree (access_group_id);
+
+
+--
+-- Name: authentik_endpoints_device_identifier_b5bc9132_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_device_identifier_b5bc9132_like ON public.authentik_endpoints_device USING btree (identifier text_pattern_ops);
+
+
+--
+-- Name: authentik_endpoints_device_name_04a2350a_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_device_name_04a2350a_like ON public.authentik_endpoints_device USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_endpoints_deviceconnection_connector_id_69c7a3fd; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_deviceconnection_connector_id_69c7a3fd ON public.authentik_endpoints_deviceconnection USING btree (connector_id);
+
+
+--
+-- Name: authentik_endpoints_deviceconnection_device_id_50b1a37f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_deviceconnection_device_id_50b1a37f ON public.authentik_endpoints_deviceconnection USING btree (device_id);
+
+
+--
+-- Name: authentik_endpoints_devicefactsnapshot_connection_id_04fcc030; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_devicefactsnapshot_connection_id_04fcc030 ON public.authentik_endpoints_devicefactsnapshot USING btree (connection_id);
+
+
+--
+-- Name: authentik_endpoints_devicegroup_name_42a53280_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_devicegroup_name_42a53280_like ON public.authentik_endpoints_deviceaccessgroup USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_endpoints_deviceuserbinding_connector_id_c6d48a85; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_deviceuserbinding_connector_id_c6d48a85 ON public.authentik_endpoints_deviceuserbinding USING btree (connector_id);
+
+
+--
+-- Name: authentik_endpoints_endpointstage_connector_id_6c8f7ee9; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_endpoints_endpointstage_connector_id_6c8f7ee9 ON public.authentik_endpoints_endpointstage USING btree (connector_id);
+
+
+--
+-- Name: authentik_events_notificat_notificationrule_id_eccbe1d6; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notificat_notificationrule_id_eccbe1d6 ON public.authentik_events_notificationrule_transports USING btree (notificationrule_id);
+
+
+--
+-- Name: authentik_events_notificat_notificationtransport_id_62ec0805; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notificat_notificationtransport_id_62ec0805 ON public.authentik_events_notificationrule_transports USING btree (notificationtransport_id);
+
+
+--
+-- Name: authentik_events_notificat_webhook_mapping_headers_id_5a327cc0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notificat_webhook_mapping_headers_id_5a327cc0 ON public.authentik_events_notificationtransport USING btree (webhook_mapping_headers_id);
+
+
+--
+-- Name: authentik_events_notificat_webhook_mapping_id_2a646fb6; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notificat_webhook_mapping_id_2a646fb6 ON public.authentik_events_notificationtransport USING btree (webhook_mapping_body_id);
+
+
+--
+-- Name: authentik_events_notification_event_id_ac5c4bb7; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notification_event_id_ac5c4bb7 ON public.authentik_events_notification USING btree (event_id);
+
+
+--
+-- Name: authentik_events_notification_user_id_9ea0c690; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notification_user_id_9ea0c690 ON public.authentik_events_notification USING btree (user_id);
+
+
+--
+-- Name: authentik_events_notificationrule_group_id_667f0fe0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notificationrule_group_id_667f0fe0 ON public.authentik_events_notificationrule USING btree (destination_group_id);
+
+
+--
+-- Name: authentik_events_notificationrule_name_7401a31b_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notificationrule_name_7401a31b_like ON public.authentik_events_notificationrule USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_events_notificationtransport_name_1f0bd605_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notificationtransport_name_1f0bd605_like ON public.authentik_events_notificationtransport USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_events_notificationtransport_webhook_ca_id_8e94c025; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_events_notificationtransport_webhook_ca_id_8e94c025 ON public.authentik_events_notificationtransport USING btree (webhook_ca_id);
+
+
+--
+-- Name: authentik_flows_flow_slug_3c406d87_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_flows_flow_slug_3c406d87_like ON public.authentik_flows_flow USING btree (slug text_pattern_ops);
+
+
+--
+-- Name: authentik_flows_flowstagebinding_stage_id_7a270212; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_flows_flowstagebinding_stage_id_7a270212 ON public.authentik_flows_flowstagebinding USING btree (stage_id);
+
+
+--
+-- Name: authentik_flows_flowstagebinding_target_id_4899c0f8; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_flows_flowstagebinding_target_id_4899c0f8 ON public.authentik_flows_flowstagebinding USING btree (target_id);
+
+
+--
+-- Name: authentik_flows_flowtoken_flow_id_e4c82880; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_flows_flowtoken_flow_id_e4c82880 ON public.authentik_flows_flowtoken USING btree (flow_id);
+
+
+--
+-- Name: authentik_flows_stage_name_a2584620_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_flows_stage_name_a2584620_like ON public.authentik_flows_stage USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_l_content_09c32a_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_l_content_09c32a_idx ON public.authentik_lifecycle_lifecycleiteration USING btree (content_type_id, opened_on);
+
+
+--
+-- Name: authentik_l_content_4e3a6a_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_l_content_4e3a6a_idx ON public.authentik_lifecycle_lifecyclerule USING btree (content_type_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecy_group_id_d998a382; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecy_group_id_d998a382 ON public.authentik_lifecycle_lifecyclerule_reviewer_groups USING btree (group_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecy_lifecyclerule_id_53715dc8; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecy_lifecyclerule_id_53715dc8 ON public.authentik_lifecycle_lifecyclerule_reviewers USING btree (lifecyclerule_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecy_lifecyclerule_id_6924087d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecy_lifecyclerule_id_6924087d ON public.authentik_lifecycle_lifecyclerule_notification_transports USING btree (lifecyclerule_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecy_lifecyclerule_id_8c601d22; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecy_lifecyclerule_id_8c601d22 ON public.authentik_lifecycle_lifecyclerule_reviewer_groups USING btree (lifecyclerule_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecy_notificationtransport_id_32672fbd; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecy_notificationtransport_id_32672fbd ON public.authentik_lifecycle_lifecyclerule_notification_transports USING btree (notificationtransport_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecycleiteration_content_type_id_fef62adf; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecycleiteration_content_type_id_fef62adf ON public.authentik_lifecycle_lifecycleiteration USING btree (content_type_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecycleiteration_managed_a4e3d116_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecycleiteration_managed_a4e3d116_like ON public.authentik_lifecycle_lifecycleiteration USING btree (managed text_pattern_ops);
+
+
+--
+-- Name: authentik_lifecycle_lifecycleiteration_rule_id_8994e6ef; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecycleiteration_rule_id_8994e6ef ON public.authentik_lifecycle_lifecycleiteration USING btree (rule_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_content_type_id_26cd333f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecyclerule_content_type_id_26cd333f ON public.authentik_lifecycle_lifecyclerule USING btree (content_type_id);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_name_8543c646_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecyclerule_name_8543c646_like ON public.authentik_lifecycle_lifecyclerule USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewers_user_id_4d76500e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_lifecyclerule_reviewers_user_id_4d76500e ON public.authentik_lifecycle_lifecyclerule_reviewers USING btree (user_id);
+
+
+--
+-- Name: authentik_lifecycle_review_iteration_id_24777dc1; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_review_iteration_id_24777dc1 ON public.authentik_lifecycle_review USING btree (iteration_id);
+
+
+--
+-- Name: authentik_lifecycle_review_reviewer_id_3c5b444e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_review_reviewer_id_3c5b444e ON public.authentik_lifecycle_review USING btree (reviewer_id);
+
+
+--
+-- Name: authentik_lifecycle_useroffboarding_created_by_id_497f46d8; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_useroffboarding_created_by_id_497f46d8 ON public.authentik_lifecycle_useroffboarding USING btree (created_by_id);
+
+
+--
+-- Name: authentik_lifecycle_useroffboarding_user_id_cce47e3a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_lifecycle_useroffboarding_user_id_cce47e3a ON public.authentik_lifecycle_useroffboarding USING btree (user_id);
+
+
+--
+-- Name: authentik_outposts_dockers_tls_authentication_id_942e2224; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_outposts_dockers_tls_authentication_id_942e2224 ON public.authentik_outposts_dockerserviceconnection USING btree (tls_authentication_id);
+
+
+--
+-- Name: authentik_outposts_dockers_tls_verification_id_769fac22; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_outposts_dockers_tls_verification_id_769fac22 ON public.authentik_outposts_dockerserviceconnection USING btree (tls_verification_id);
+
+
+--
+-- Name: authentik_outposts_outpost_managed_e03db044_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_outposts_outpost_managed_e03db044_like ON public.authentik_outposts_outpost USING btree (managed text_pattern_ops);
+
+
+--
+-- Name: authentik_outposts_outpost_name_b07e0428_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_outposts_outpost_name_b07e0428_like ON public.authentik_outposts_outpost USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_outposts_outpost_providers_outpost_id_eaaf025b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_outposts_outpost_providers_outpost_id_eaaf025b ON public.authentik_outposts_outpost_providers USING btree (outpost_id);
+
+
+--
+-- Name: authentik_outposts_outpost_providers_provider_id_7c5cb603; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_outposts_outpost_providers_provider_id_7c5cb603 ON public.authentik_outposts_outpost_providers USING btree (provider_id);
+
+
+--
+-- Name: authentik_outposts_outpost_service_connection_id_3eafd830; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_outposts_outpost_service_connection_id_3eafd830 ON public.authentik_outposts_outpost USING btree (service_connection_id);
+
+
+--
+-- Name: authentik_outposts_outpostserviceconnection_name_ec30b5ea_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_outposts_outpostserviceconnection_name_ec30b5ea_like ON public.authentik_outposts_outpostserviceconnection USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_p_expires_91f148_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expires_91f148_idx ON public.authentik_providers_rac_connectiontoken USING btree (expires);
+
+
+--
+-- Name: authentik_p_expires_961437_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expires_961437_idx ON public.authentik_providers_oauth2_devicetoken USING btree (expires);
+
+
+--
+-- Name: authentik_p_expires_9f24a5_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expires_9f24a5_idx ON public.authentik_providers_oauth2_accesstoken USING btree (expires);
+
+
+--
+-- Name: authentik_p_expires_a1009a_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expires_a1009a_idx ON public.authentik_policies_policybinding USING btree (expires);
+
+
+--
+-- Name: authentik_p_expires_c479a7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expires_c479a7_idx ON public.authentik_providers_oauth2_refreshtoken USING btree (expires);
+
+
+--
+-- Name: authentik_p_expires_da493f_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expires_da493f_idx ON public.authentik_policies_reputation_reputation USING btree (expires);
+
+
+--
+-- Name: authentik_p_expires_f594b2_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expires_f594b2_idx ON public.authentik_providers_oauth2_authorizationcode USING btree (expires);
+
+
+--
+-- Name: authentik_p_expirin_2a8ec7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_2a8ec7_idx ON public.authentik_policies_reputation_reputation USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_p_expirin_2ab34f_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_2ab34f_idx ON public.authentik_policies_reputation_reputation USING btree (expiring);
+
+
+--
+-- Name: authentik_p_expirin_2d9205_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_2d9205_idx ON public.authentik_providers_oauth2_accesstoken USING btree (expiring);
+
+
+--
+-- Name: authentik_p_expirin_4adf3e_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_4adf3e_idx ON public.authentik_policies_policybinding USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_p_expirin_4fd278_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_4fd278_idx ON public.authentik_providers_oauth2_devicetoken USING btree (expiring);
+
+
+--
+-- Name: authentik_p_expirin_59a5a7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_59a5a7_idx ON public.authentik_providers_rac_connectiontoken USING btree (expiring);
+
+
+--
+-- Name: authentik_p_expirin_6a5e2c_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_6a5e2c_idx ON public.authentik_providers_oauth2_authorizationcode USING btree (expiring);
+
+
+--
+-- Name: authentik_p_expirin_acb4a5_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_acb4a5_idx ON public.authentik_providers_oauth2_refreshtoken USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_p_expirin_aed3ca_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_aed3ca_idx ON public.authentik_providers_rac_connectiontoken USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_p_expirin_c0f353_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_c0f353_idx ON public.authentik_providers_oauth2_authorizationcode USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_p_expirin_c74005_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_c74005_idx ON public.authentik_providers_oauth2_accesstoken USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_p_expirin_cd6b1c_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_cd6b1c_idx ON public.authentik_providers_oauth2_devicetoken USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_p_expirin_d4d17f_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_d4d17f_idx ON public.authentik_providers_oauth2_refreshtoken USING btree (expiring);
+
+
+--
+-- Name: authentik_p_expirin_df8da3_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_expirin_df8da3_idx ON public.authentik_policies_policybinding USING btree (expiring);
+
+
+--
+-- Name: authentik_p_group_i_5d2d24_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_group_i_5d2d24_idx ON public.authentik_policies_policybinding USING btree (group_id);
+
+
+--
+-- Name: authentik_p_identif_9434d7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_identif_9434d7_idx ON public.authentik_policies_reputation_reputation USING btree (identifier);
+
+
+--
+-- Name: authentik_p_ip_7ad0df_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_ip_7ad0df_idx ON public.authentik_policies_reputation_reputation USING btree (ip);
+
+
+--
+-- Name: authentik_p_ip_d779aa_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_ip_d779aa_idx ON public.authentik_policies_reputation_reputation USING btree (ip, identifier);
+
+
+--
+-- Name: authentik_p_policy__534e15_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_policy__534e15_idx ON public.authentik_policies_policybinding USING btree (policy_id);
+
+
+--
+-- Name: authentik_p_policy__5cc4a9_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_policy__5cc4a9_idx ON public.authentik_policies_geoip_geoippolicy USING btree (policy_ptr_id);
+
+
+--
+-- Name: authentik_p_policy__648f9b_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_policy__648f9b_idx ON public.authentik_policies_dummy_dummypolicy USING btree (policy_ptr_id);
+
+
+--
+-- Name: authentik_p_policy__855e80_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_policy__855e80_idx ON public.authentik_policies_password_passwordpolicy USING btree (policy_ptr_id);
+
+
+--
+-- Name: authentik_p_policy__8f0d70_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_policy__8f0d70_idx ON public.authentik_policies_reputation_reputationpolicy USING btree (policy_ptr_id);
+
+
+--
+-- Name: authentik_p_policy__cf73a7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_policy__cf73a7_idx ON public.authentik_policies_expiry_passwordexpirypolicy USING btree (policy_ptr_id);
+
+
+--
+-- Name: authentik_p_policy__e605cf_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_policy__e605cf_idx ON public.authentik_policies_event_matcher_eventmatcherpolicy USING btree (policy_ptr_id);
+
+
+--
+-- Name: authentik_p_policy__f559aa_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_policy__f559aa_idx ON public.authentik_policies_unique_password_uniquepasswordpolicy USING btree (policy_ptr_id);
+
+
+--
+-- Name: authentik_p_policy__fb6feb_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_policy__fb6feb_idx ON public.authentik_policies_expression_expressionpolicy USING btree (policy_ptr_id);
+
+
+--
+-- Name: authentik_p_provide_92c2e4_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_provide_92c2e4_idx ON public.authentik_providers_saml_samlsession USING btree (provider_id, user_id);
+
+
+--
+-- Name: authentik_p_session_5f125f_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_session_5f125f_idx ON public.authentik_providers_saml_samlsession USING btree (session_id);
+
+
+--
+-- Name: authentik_p_session_662109_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_session_662109_idx ON public.authentik_providers_saml_samlsession USING btree (session_index);
+
+
+--
+-- Name: authentik_p_target__2e4d50_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_target__2e4d50_idx ON public.authentik_policies_policybinding USING btree (target_id);
+
+
+--
+-- Name: authentik_p_token_32e2b7_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_token_32e2b7_hash ON public.authentik_providers_oauth2_refreshtoken USING hash (token);
+
+
+--
+-- Name: authentik_p_token_e00883_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_token_e00883_hash ON public.authentik_providers_oauth2_accesstoken USING hash (token);
+
+
+--
+-- Name: authentik_p_user_id_44328e_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_user_id_44328e_idx ON public.authentik_providers_proxy_proxysession USING btree (user_id);
+
+
+--
+-- Name: authentik_p_user_id_603323_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_p_user_id_603323_idx ON public.authentik_policies_policybinding USING btree (user_id);
+
+
+--
+-- Name: authentik_policies_policy_name_48caa747_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_policies_policy_name_48caa747_like ON public.authentik_policies_policy USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_policies_policybinding_group_id_2afb13ee; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_policies_policybinding_group_id_2afb13ee ON public.authentik_policies_policybinding USING btree (group_id);
+
+
+--
+-- Name: authentik_policies_policybinding_policy_id_c07161e4; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_policies_policybinding_policy_id_c07161e4 ON public.authentik_policies_policybinding USING btree (policy_id);
+
+
+--
+-- Name: authentik_policies_policybinding_target_id_a7075d8d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_policies_policybinding_target_id_a7075d8d ON public.authentik_policies_policybinding USING btree (target_id);
+
+
+--
+-- Name: authentik_policies_policybinding_user_id_323bebdb; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_policies_policybinding_user_id_323bebdb ON public.authentik_policies_policybinding USING btree (user_id);
+
+
+--
+-- Name: authentik_policies_unique__user_id_24ca0276; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_policies_unique__user_id_24ca0276 ON public.authentik_policies_unique_password_userpasswordhistory USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_google_filter_group_id_eec535e2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_google_filter_group_id_eec535e2 ON public.authentik_providers_google_workspace_googleworkspaceprovider USING btree (filter_group_id);
+
+
+--
+-- Name: authentik_providers_google_googleworkspaceprovider_id_6b2fba04; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_google_googleworkspaceprovider_id_6b2fba04 ON public.authentik_providers_google_workspace_googleworkspaceprovide63d9 USING btree (googleworkspaceprovider_id);
+
+
+--
+-- Name: authentik_providers_google_group_id_46818bf3; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_google_group_id_46818bf3 ON public.authentik_providers_google_workspace_googleworkspaceprovidee2fc USING btree (group_id);
+
+
+--
+-- Name: authentik_providers_google_propertymapping_id_0e9cd107; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_google_propertymapping_id_0e9cd107 ON public.authentik_providers_google_workspace_googleworkspaceprovide63d9 USING btree (propertymapping_id);
+
+
+--
+-- Name: authentik_providers_google_provider_id_19d0c29e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_google_provider_id_19d0c29e ON public.authentik_providers_google_workspace_googleworkspaceprovide423f USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_google_provider_id_c0f1df13; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_google_provider_id_c0f1df13 ON public.authentik_providers_google_workspace_googleworkspaceprovidee2fc USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_google_user_id_70f46bd3; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_google_user_id_70f46bd3 ON public.authentik_providers_google_workspace_googleworkspaceprovide423f USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_ldap_ldapprovider_certificate_id_6a7a6af2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_ldap_ldapprovider_certificate_id_6a7a6af2 ON public.authentik_providers_ldap_ldapprovider USING btree (certificate_id);
+
+
+--
+-- Name: authentik_providers_micros_filter_group_id_44af6f79; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_micros_filter_group_id_44af6f79 ON public.authentik_providers_microsoft_entra_microsoftentraprovider USING btree (filter_group_id);
+
+
+--
+-- Name: authentik_providers_micros_group_id_04f83da4; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_micros_group_id_04f83da4 ON public.authentik_providers_microsoft_entra_microsoftentraprovidergroup USING btree (group_id);
+
+
+--
+-- Name: authentik_providers_micros_microsoftentraprovider_id_76718da6; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_micros_microsoftentraprovider_id_76718da6 ON public.authentik_providers_microsoft_entra_microsoftentraprovider_9f0b USING btree (microsoftentraprovider_id);
+
+
+--
+-- Name: authentik_providers_micros_propertymapping_id_626bd75c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_micros_propertymapping_id_626bd75c ON public.authentik_providers_microsoft_entra_microsoftentraprovider_9f0b USING btree (propertymapping_id);
+
+
+--
+-- Name: authentik_providers_micros_provider_id_5815d3d4; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_micros_provider_id_5815d3d4 ON public.authentik_providers_microsoft_entra_microsoftentraprovidergroup USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_micros_provider_id_d18a6155; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_micros_provider_id_d18a6155 ON public.authentik_providers_microsoft_entra_microsoftentraprovideruser USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_micros_user_id_2c83dfcb; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_micros_user_id_2c83dfcb ON public.authentik_providers_microsoft_entra_microsoftentraprovideruser USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_oaut_client_id_ae566546_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oaut_client_id_ae566546_like ON public.authentik_providers_oauth2_oauth2provider USING btree (client_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_providers_oaut_session_id_1e6dcbdb_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oaut_session_id_1e6dcbdb_like ON public.authentik_providers_oauth2_authorizationcode USING btree (session_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_providers_oaut_session_id_8fe0c4a4_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oaut_session_id_8fe0c4a4_like ON public.authentik_providers_oauth2_refreshtoken USING btree (session_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken_actor_id_5ee952a2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_accesstoken_actor_id_5ee952a2 ON public.authentik_providers_oauth2_accesstoken USING btree (actor_id);
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken_provider_id_40ef5d24; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_accesstoken_provider_id_40ef5d24 ON public.authentik_providers_oauth2_accesstoken USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken_session_id_e677fbba; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_accesstoken_session_id_e677fbba ON public.authentik_providers_oauth2_accesstoken USING btree (session_id);
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken_session_id_e677fbba_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_accesstoken_session_id_e677fbba_like ON public.authentik_providers_oauth2_accesstoken USING btree (session_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken_user_id_7261588f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_accesstoken_user_id_7261588f ON public.authentik_providers_oauth2_accesstoken USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode_actor_id_342dfa2a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_authorizationcode_actor_id_342dfa2a ON public.authentik_providers_oauth2_authorizationcode USING btree (actor_id);
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode_code_0202addc_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_authorizationcode_code_0202addc_like ON public.authentik_providers_oauth2_authorizationcode USING btree (code varchar_pattern_ops);
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode_user_id_c9a35141; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_authorizationcode_user_id_c9a35141 ON public.authentik_providers_oauth2_authorizationcode USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken_provider_id_bd1ef28a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_devicetoken_provider_id_bd1ef28a ON public.authentik_providers_oauth2_devicetoken USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken_session_id_c83e6eb0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_devicetoken_session_id_c83e6eb0 ON public.authentik_providers_oauth2_devicetoken USING btree (session_id);
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken_session_id_c83e6eb0_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_devicetoken_session_id_c83e6eb0_like ON public.authentik_providers_oauth2_devicetoken USING btree (session_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken_user_id_17317b6d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_devicetoken_user_id_17317b6d ON public.authentik_providers_oauth2_devicetoken USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_oauth2_dynamic_client_registratio_f45495ce; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_dynamic_client_registratio_f45495ce ON public.authentik_providers_oauth2_dynamicclientregistrationpropert3221 USING btree (dynamic_client_registration_id);
+
+
+--
+-- Name: authentik_providers_oauth2_encryption_key_id_b98bc751; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_encryption_key_id_b98bc751 ON public.authentik_providers_oauth2_oauth2provider USING btree (encryption_key_id);
+
+
+--
+-- Name: authentik_providers_oauth2_from_oauth2provider_id_76c73438; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_from_oauth2provider_id_76c73438 ON public.authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002 USING btree (from_oauth2provider_id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_id_c3adf184; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_oauth2provider_id_c3adf184 ON public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 USING btree (oauth2provider_id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_rsa_key_id_836efe9f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_oauth2provider_rsa_key_id_836efe9f ON public.authentik_providers_oauth2_oauth2provider USING btree (signing_key_id);
+
+
+--
+-- Name: authentik_providers_oauth2_oauthsource_id_41457c33; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_oauthsource_id_41457c33 ON public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 USING btree (oauthsource_id);
+
+
+--
+-- Name: authentik_providers_oauth2_override_authorization_flo_a001810a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_override_authorization_flo_a001810a ON public.authentik_providers_oauth2_oauth2dynamicclientregistration USING btree (override_authorization_flow_id);
+
+
+--
+-- Name: authentik_providers_oauth2_override_invalidation_flow_fa0396ab; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_override_invalidation_flow_fa0396ab ON public.authentik_providers_oauth2_oauth2dynamicclientregistration USING btree (override_invalidation_flow_id);
+
+
+--
+-- Name: authentik_providers_oauth2_property_mapping_id_99b43a14; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_property_mapping_id_99b43a14 ON public.authentik_providers_oauth2_dynamicclientregistrationpropert3221 USING btree (property_mapping_id);
+
+
+--
+-- Name: authentik_providers_oauth2_provider_id_731a3e62; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_provider_id_731a3e62 ON public.authentik_providers_oauth2_authorizationcode USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken_actor_id_349e7533; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_refreshtoken_actor_id_349e7533 ON public.authentik_providers_oauth2_refreshtoken USING btree (actor_id);
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken_provider_id_8bf99dba; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_refreshtoken_provider_id_8bf99dba ON public.authentik_providers_oauth2_refreshtoken USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken_session_id_8fe0c4a4; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_refreshtoken_session_id_8fe0c4a4 ON public.authentik_providers_oauth2_refreshtoken USING btree (session_id);
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken_user_id_ebdc1143; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_refreshtoken_user_id_ebdc1143 ON public.authentik_providers_oauth2_refreshtoken USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_oauth2_session_id_1e6dcbdb; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_session_id_1e6dcbdb ON public.authentik_providers_oauth2_authorizationcode USING btree (session_id);
+
+
+--
+-- Name: authentik_providers_oauth2_to_oauth2provider_id_bc978130; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_oauth2_to_oauth2provider_id_bc978130 ON public.authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002 USING btree (to_oauth2provider_id);
+
+
+--
+-- Name: authentik_providers_prox_session_key_ccd17ab5_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_prox_session_key_ccd17ab5_like ON public.authentik_providers_proxy_proxysession USING btree (session_key text_pattern_ops);
+
+
+--
+-- Name: authentik_providers_proxy_proxyprovider_certificate_id_b1e0c422; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_proxy_proxyprovider_certificate_id_b1e0c422 ON public.authentik_providers_proxy_proxyprovider USING btree (certificate_id);
+
+
+--
+-- Name: authentik_providers_proxy_proxysession_user_id_417a2ed1; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_proxy_proxysession_user_id_417a2ed1 ON public.authentik_providers_proxy_proxysession USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_rac__session_id_b0bb6e97_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_rac__session_id_b0bb6e97_like ON public.authentik_providers_rac_connectiontoken USING btree (session_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_providers_rac_connectiontoken_endpoint_id_5b06c6a5; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_rac_connectiontoken_endpoint_id_5b06c6a5 ON public.authentik_providers_rac_connectiontoken USING btree (endpoint_id);
+
+
+--
+-- Name: authentik_providers_rac_connectiontoken_provider_id_80702818; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_rac_connectiontoken_provider_id_80702818 ON public.authentik_providers_rac_connectiontoken USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_rac_connectiontoken_session_id_b0bb6e97; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_rac_connectiontoken_session_id_b0bb6e97 ON public.authentik_providers_rac_connectiontoken USING btree (session_id);
+
+
+--
+-- Name: authentik_providers_rac_en_endpoint_id_d7958eed; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_rac_en_endpoint_id_d7958eed ON public.authentik_providers_rac_endpoint_property_mappings USING btree (endpoint_id);
+
+
+--
+-- Name: authentik_providers_rac_en_propertymapping_id_9612cd91; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_rac_en_propertymapping_id_9612cd91 ON public.authentik_providers_rac_endpoint_property_mappings USING btree (propertymapping_id);
+
+
+--
+-- Name: authentik_providers_rac_endpoint_provider_id_2cee1085; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_rac_endpoint_provider_id_2cee1085 ON public.authentik_providers_rac_endpoint USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_radius_certificate_id_830ce25c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_radius_certificate_id_830ce25c ON public.authentik_providers_radius_radiusprovider USING btree (certificate_id);
+
+
+--
+-- Name: authentik_providers_saml_s_authn_context_class_ref_ma_71738b39; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_saml_s_authn_context_class_ref_ma_71738b39 ON public.authentik_providers_saml_samlprovider USING btree (authn_context_class_ref_mapping_id);
+
+
+--
+-- Name: authentik_providers_saml_s_name_id_mapping_id_5d45f77f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_saml_s_name_id_mapping_id_5d45f77f ON public.authentik_providers_saml_samlprovider USING btree (name_id_mapping_id);
+
+
+--
+-- Name: authentik_providers_saml_s_verification_kp_id_7b0fbd80; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_saml_s_verification_kp_id_7b0fbd80 ON public.authentik_providers_saml_samlprovider USING btree (verification_kp_id);
+
+
+--
+-- Name: authentik_providers_saml_samlprovider_encryption_kp_id_faee9966; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_saml_samlprovider_encryption_kp_id_faee9966 ON public.authentik_providers_saml_samlprovider USING btree (encryption_kp_id);
+
+
+--
+-- Name: authentik_providers_saml_samlprovider_signing_kp_id_f1bce700; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_saml_samlprovider_signing_kp_id_f1bce700 ON public.authentik_providers_saml_samlprovider USING btree (signing_kp_id);
+
+
+--
+-- Name: authentik_providers_saml_samlsession_provider_id_4af2b52e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_saml_samlsession_provider_id_4af2b52e ON public.authentik_providers_saml_samlsession USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_saml_samlsession_session_id_b3062c87; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_saml_samlsession_session_id_b3062c87 ON public.authentik_providers_saml_samlsession USING btree (session_id);
+
+
+--
+-- Name: authentik_providers_saml_samlsession_session_id_b3062c87_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_saml_samlsession_session_id_b3062c87_like ON public.authentik_providers_saml_samlsession USING btree (session_id varchar_pattern_ops);
+
+
+--
+-- Name: authentik_providers_saml_samlsession_user_id_487a792d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_saml_samlsession_user_id_487a792d ON public.authentik_providers_saml_samlsession USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_scim_s_auth_oauth_user_id_9e3b962e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_s_auth_oauth_user_id_9e3b962e ON public.authentik_providers_scim_scimprovider USING btree (auth_oauth_user_id);
+
+
+--
+-- Name: authentik_providers_scim_s_group_id_7cfe6ff1; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_s_group_id_7cfe6ff1 ON public.authentik_providers_scim_scimprovider_group_filters USING btree (group_id);
+
+
+--
+-- Name: authentik_providers_scim_s_propertymapping_id_7ea3950a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_s_propertymapping_id_7ea3950a ON public.authentik_providers_scim_scimprovider_property_mappings_group USING btree (propertymapping_id);
+
+
+--
+-- Name: authentik_providers_scim_s_scimprovider_id_1055ca26; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_s_scimprovider_id_1055ca26 ON public.authentik_providers_scim_scimprovider_group_filters USING btree (scimprovider_id);
+
+
+--
+-- Name: authentik_providers_scim_s_scimprovider_id_c3c41ae0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_s_scimprovider_id_c3c41ae0 ON public.authentik_providers_scim_scimprovider_property_mappings_group USING btree (scimprovider_id);
+
+
+--
+-- Name: authentik_providers_scim_scimgroup_group_id_071f6834; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_scimgroup_group_id_071f6834 ON public.authentik_providers_scim_scimprovidergroup USING btree (group_id);
+
+
+--
+-- Name: authentik_providers_scim_scimgroup_provider_id_29f58417; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_scimgroup_provider_id_29f58417 ON public.authentik_providers_scim_scimprovidergroup USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_auth_oauth_id_7b28ad63; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_scimprovider_auth_oauth_id_7b28ad63 ON public.authentik_providers_scim_scimprovider USING btree (auth_oauth_id);
+
+
+--
+-- Name: authentik_providers_scim_scimuser_provider_id_08127ac7; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_scimuser_provider_id_08127ac7 ON public.authentik_providers_scim_scimprovideruser USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_scim_scimuser_user_id_63e0ca83; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_scim_scimuser_user_id_63e0ca83 ON public.authentik_providers_scim_scimprovideruser USING btree (user_id);
+
+
+--
+-- Name: authentik_providers_ssf_ss_oauth2provider_id_6e229ff5; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_ssf_ss_oauth2provider_id_6e229ff5 ON public.authentik_providers_ssf_ssfprovider_oidc_auth_providers USING btree (oauth2provider_id);
+
+
+--
+-- Name: authentik_providers_ssf_ss_ssfprovider_id_004ecc14; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_ssf_ss_ssfprovider_id_004ecc14 ON public.authentik_providers_ssf_ssfprovider_oidc_auth_providers USING btree (ssfprovider_id);
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider_signing_key_id_afd45b72; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_ssf_ssfprovider_signing_key_id_afd45b72 ON public.authentik_providers_ssf_ssfprovider USING btree (signing_key_id);
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider_token_id_0ad6da12; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_ssf_ssfprovider_token_id_0ad6da12 ON public.authentik_providers_ssf_ssfprovider USING btree (token_id);
+
+
+--
+-- Name: authentik_providers_ssf_stream_provider_id_c97d58b7; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_ssf_stream_provider_id_c97d58b7 ON public.authentik_providers_ssf_stream USING btree (provider_id);
+
+
+--
+-- Name: authentik_providers_ssf_streamevent_stream_id_7bf74e5b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_providers_ssf_streamevent_stream_id_7bf74e5b ON public.authentik_providers_ssf_streamevent USING btree (stream_id);
+
+
+--
+-- Name: authentik_r_expires_7fdcf7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_r_expires_7fdcf7_idx ON public.authentik_requests_grantrequest USING btree (expires);
+
+
+--
+-- Name: authentik_r_expirin_1b428a_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_r_expirin_1b428a_idx ON public.authentik_requests_grantrequest USING btree (expiring);
+
+
+--
+-- Name: authentik_r_expirin_b80d72_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_r_expirin_b80d72_idx ON public.authentik_requests_grantrequest USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_rbac_initialperm_initialpermissions_id_791926a4; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_rbac_initialperm_initialpermissions_id_791926a4 ON public.authentik_rbac_initialpermissions_permissions USING btree (initialpermissions_id);
+
+
+--
+-- Name: authentik_rbac_initialperm_permission_id_41d32761; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_rbac_initialperm_permission_id_41d32761 ON public.authentik_rbac_initialpermissions_permissions USING btree (permission_id);
+
+
+--
+-- Name: authentik_rbac_initialpermissions_name_9161b314_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_rbac_initialpermissions_name_9161b314_like ON public.authentik_rbac_initialpermissions USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_rbac_initialpermissions_role_id_a4a06afc; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_rbac_initialpermissions_role_id_a4a06afc ON public.authentik_rbac_initialpermissions USING btree (role_id);
+
+
+--
+-- Name: authentik_rbac_role_managed_5b12694c_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_rbac_role_managed_5b12694c_like ON public.authentik_rbac_role USING btree (managed text_pattern_ops);
+
+
+--
+-- Name: authentik_rbac_role_name_94e9e999_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_rbac_role_name_94e9e999_like ON public.authentik_rbac_role USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_reports_dataexport_content_type_id_028f8e74; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_reports_dataexport_content_type_id_028f8e74 ON public.authentik_reports_dataexport USING btree (content_type_id);
+
+
+--
+-- Name: authentik_reports_dataexport_requested_by_id_20b84ac8; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_reports_dataexport_requested_by_id_20b84ac8 ON public.authentik_reports_dataexport USING btree (requested_by_id);
+
+
+--
+-- Name: authentik_requests_grantrequest_agent_owner_id_8d70d324; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_grantrequest_agent_owner_id_8d70d324 ON public.authentik_requests_grantrequest USING btree (agent_owner_id);
+
+
+--
+-- Name: authentik_requests_grantrequest_created_by_id_bcc06b49; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_grantrequest_created_by_id_bcc06b49 ON public.authentik_requests_grantrequest USING btree (created_by_id);
+
+
+--
+-- Name: authentik_requests_grantrequest_fulfilled_by_id_b4c96ba2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_grantrequest_fulfilled_by_id_b4c96ba2 ON public.authentik_requests_grantrequest USING btree (fulfilled_by_id);
+
+
+--
+-- Name: authentik_requests_grantrequest_revoked_by_id_a2805a00; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_grantrequest_revoked_by_id_a2805a00 ON public.authentik_requests_grantrequest USING btree (revoked_by_id);
+
+
+--
+-- Name: authentik_requests_grantrequestapproval_request_id_3ce93ed5; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_grantrequestapproval_request_id_3ce93ed5 ON public.authentik_requests_grantrequestapproval USING btree (request_id);
+
+
+--
+-- Name: authentik_requests_grantrequestapproval_reviewer_id_259197df; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_grantrequestapproval_reviewer_id_259197df ON public.authentik_requests_grantrequestapproval USING btree (reviewer_id);
+
+
+--
+-- Name: authentik_requests_grantrequesttarget_binding_id_1fadba70; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_grantrequesttarget_binding_id_1fadba70 ON public.authentik_requests_grantrequesttarget USING btree (binding_id);
+
+
+--
+-- Name: authentik_requests_grantrequesttarget_request_id_c7456832; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_grantrequesttarget_request_id_c7456832 ON public.authentik_requests_grantrequesttarget USING btree (request_id);
+
+
+--
+-- Name: authentik_requests_grantrequesttarget_target_id_272c04c0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_grantrequesttarget_target_id_272c04c0 ON public.authentik_requests_grantrequesttarget USING btree (target_id);
+
+
+--
+-- Name: authentik_requests_request_notification_transport_id_9b7689e4; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_request_notification_transport_id_9b7689e4 ON public.authentik_requests_requestrulenotificationtransport USING btree (notification_transport_id);
+
+
+--
+-- Name: authentik_requests_request_rule_id_de0d1a07; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_request_rule_id_de0d1a07 ON public.authentik_requests_requestrulenotificationtransport USING btree (rule_id);
+
+
+--
+-- Name: authentik_requests_requestrule_request_flow_id_4b4ac199; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_requestrule_request_flow_id_4b4ac199 ON public.authentik_requests_requestrule USING btree (request_flow_id);
+
+
+--
+-- Name: authentik_requests_requestrulebinding_rule_id_8013a0f9; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_requestrulebinding_rule_id_8013a0f9 ON public.authentik_requests_requestrulebinding USING btree (rule_id);
+
+
+--
+-- Name: authentik_requests_requestrulebinding_target_id_5e666159; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_requestrulebinding_target_id_5e666159 ON public.authentik_requests_requestrulebinding USING btree (target_id);
+
+
+--
+-- Name: authentik_requests_requestrulechildbinding_binding_id_e0de9733; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_requestrulechildbinding_binding_id_e0de9733 ON public.authentik_requests_requestrulechildbinding USING btree (binding_id);
+
+
+--
+-- Name: authentik_requests_requestrulechildbinding_target_id_0e7d4419; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_requests_requestrulechildbinding_target_id_0e7d4419 ON public.authentik_requests_requestrulechildbinding USING btree (target_id);
+
+
+--
+-- Name: authentik_s_expires_0e99e8_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_expires_0e99e8_idx ON public.authentik_stages_consent_userconsent USING btree (expires);
+
+
+--
+-- Name: authentik_s_expires_96f4b8_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_expires_96f4b8_idx ON public.authentik_stages_invitation_invitation USING btree (expires);
+
+
+--
+-- Name: authentik_s_expirin_4f8096_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_expirin_4f8096_idx ON public.authentik_stages_invitation_invitation USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_s_expirin_4f8f35_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_expirin_4f8f35_idx ON public.authentik_stages_invitation_invitation USING btree (expiring);
+
+
+--
+-- Name: authentik_s_expirin_8f51e5_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_expirin_8f51e5_idx ON public.authentik_stages_consent_userconsent USING btree (expiring);
+
+
+--
+-- Name: authentik_s_expirin_e50090_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_expirin_e50090_idx ON public.authentik_stages_consent_userconsent USING btree (expiring, expires);
+
+
+--
+-- Name: authentik_s_externa_05e346_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_externa_05e346_idx ON public.authentik_sources_scim_scimsourcegroup USING btree (external_id);
+
+
+--
+-- Name: authentik_s_externa_4bd760_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_externa_4bd760_idx ON public.authentik_sources_scim_scimsourceuser USING btree (external_id);
+
+
+--
+-- Name: authentik_s_validat_b70447_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_validat_b70447_idx ON public.authentik_sources_ldap_groupldapsourceconnection USING btree (validated_by);
+
+
+--
+-- Name: authentik_s_validat_ff2ebc_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_s_validat_ff2ebc_idx ON public.authentik_sources_ldap_userldapsourceconnection USING btree (validated_by);
+
+
+--
+-- Name: authentik_sources_kerberos_kerberossource_realm_3d988153_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_kerberos_kerberossource_realm_3d988153_like ON public.authentik_sources_kerberos_kerberossource USING btree (realm text_pattern_ops);
+
+
+--
+-- Name: authentik_sources_kerberos_kerberossource_sync_users_e7c2fddd; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_kerberos_kerberossource_sync_users_e7c2fddd ON public.authentik_sources_kerberos_kerberossource USING btree (sync_users);
+
+
+--
+-- Name: authentik_sources_kerberos_sync_users_password_a9f3aa28; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_kerberos_sync_users_password_a9f3aa28 ON public.authentik_sources_kerberos_kerberossource USING btree (sync_users_password);
+
+
+--
+-- Name: authentik_sources_ldap_lda_client_certificate_id_937bc1c9; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_ldap_lda_client_certificate_id_937bc1c9 ON public.authentik_sources_ldap_ldapsource USING btree (client_certificate_id);
+
+
+--
+-- Name: authentik_sources_ldap_ldapsource_peer_certificate_id_50528d0a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_ldap_ldapsource_peer_certificate_id_50528d0a ON public.authentik_sources_ldap_ldapsource USING btree (peer_certificate_id);
+
+
+--
+-- Name: authentik_sources_ldap_ldapsource_sync_parent_group_id_9c730e90; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_ldap_ldapsource_sync_parent_group_id_9c730e90 ON public.authentik_sources_ldap_ldapsource USING btree (sync_parent_group_id);
+
+
+--
+-- Name: authentik_sources_saml_sam_pre_authentication_flow_id_cec52f8b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_saml_sam_pre_authentication_flow_id_cec52f8b ON public.authentik_sources_saml_samlsource USING btree (pre_authentication_flow_id);
+
+
+--
+-- Name: authentik_sources_saml_samlsource_encryption_kp_id_8efc7a51; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_saml_samlsource_encryption_kp_id_8efc7a51 ON public.authentik_sources_saml_samlsource USING btree (encryption_kp_id);
+
+
+--
+-- Name: authentik_sources_saml_samlsource_signing_kp_id_faae605c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_saml_samlsource_signing_kp_id_faae605c ON public.authentik_sources_saml_samlsource USING btree (signing_kp_id);
+
+
+--
+-- Name: authentik_sources_saml_samlsource_verification_kp_id_f76620d9; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_saml_samlsource_verification_kp_id_f76620d9 ON public.authentik_sources_saml_samlsource USING btree (verification_kp_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsource_token_id_8cfd053b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_scim_scimsource_token_id_8cfd053b ON public.authentik_sources_scim_scimsource USING btree (token_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsourcegroup_group_id_c59bde52; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_scim_scimsourcegroup_group_id_c59bde52 ON public.authentik_sources_scim_scimsourcegroup USING btree (group_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsourcegroup_id_f5fe9e43_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_scim_scimsourcegroup_id_f5fe9e43_like ON public.authentik_sources_scim_scimsourcegroup USING btree (id text_pattern_ops);
+
+
+--
+-- Name: authentik_sources_scim_scimsourcegroup_source_id_000ff364; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_scim_scimsourcegroup_source_id_000ff364 ON public.authentik_sources_scim_scimsourcegroup USING btree (source_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsourceuser_id_d762d833_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_scim_scimsourceuser_id_d762d833_like ON public.authentik_sources_scim_scimsourceuser USING btree (id text_pattern_ops);
+
+
+--
+-- Name: authentik_sources_scim_scimsourceuser_source_id_f2022fad; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_scim_scimsourceuser_source_id_f2022fad ON public.authentik_sources_scim_scimsourceuser USING btree (source_id);
+
+
+--
+-- Name: authentik_sources_scim_scimsourceuser_user_id_8cd43d1e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_scim_scimsourceuser_user_id_8cd43d1e ON public.authentik_sources_scim_scimsourceuser USING btree (user_id);
+
+
+--
+-- Name: authentik_sources_telegram_pre_authentication_flow_id_2838f1db; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_sources_telegram_pre_authentication_flow_id_2838f1db ON public.authentik_sources_telegram_telegramsource USING btree (pre_authentication_flow_id);
+
+
+--
+-- Name: authentik_stages_account_l_self_service_completion_fl_59dcb701; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_account_l_self_service_completion_fl_59dcb701 ON public.authentik_stages_account_lockdown_accountlockdownstage USING btree (self_service_completion_flow_id);
+
+
+--
+-- Name: authentik_stages_authent_credential_id_4260aaee_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authent_credential_id_4260aaee_like ON public.authentik_stages_authenticator_webauthn_webauthndevice USING btree (credential_id text_pattern_ops);
+
+
+--
+-- Name: authentik_stages_authent_host_identifier_3a310b97_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authent_host_identifier_3a310b97_like ON public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice USING btree (host_identifier text_pattern_ops);
+
+
+--
+-- Name: authentik_stages_authent_token_d00a592e_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authent_token_d00a592e_like ON public.authentik_stages_authenticator_static_statictoken USING btree (token varchar_pattern_ops);
+
+
+--
+-- Name: authentik_stages_authentic_authenticatorvalidatestage_5e4af44f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_authenticatorvalidatestage_5e4af44f ON public.authentik_stages_authenticator_validate_authenticatorvalida8318 USING btree (authenticatorvalidatestage_id);
+
+
+--
+-- Name: authentik_stages_authentic_authenticatorvalidatestage_aff63c61; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_authenticatorvalidatestage_aff63c61 ON public.authentik_stages_authenticator_validate_authenticatorvalida3e25 USING btree (authenticatorvalidatestage_id);
+
+
+--
+-- Name: authentik_stages_authentic_authenticatorwebauthnstage_ac9bce0f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_authenticatorwebauthnstage_ac9bce0f ON public.authentik_stages_authenticator_webauthn_authenticatorwebaute3a7 USING btree (authenticatorwebauthnstage_id);
+
+
+--
+-- Name: authentik_stages_authentic_configure_flow_id_0e413e4d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_configure_flow_id_0e413e4d ON public.authentik_stages_authenticator_static_authenticatorstaticstage USING btree (configure_flow_id);
+
+
+--
+-- Name: authentik_stages_authentic_configure_flow_id_1debc887; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_configure_flow_id_1debc887 ON public.authentik_stages_authenticator_email_authenticatoremailstage USING btree (configure_flow_id);
+
+
+--
+-- Name: authentik_stages_authentic_configure_flow_id_4c667db1; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_configure_flow_id_4c667db1 ON public.authentik_stages_authenticator_duo_authenticatorduostage USING btree (configure_flow_id);
+
+
+--
+-- Name: authentik_stages_authentic_configure_flow_id_4d9c4040; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_configure_flow_id_4d9c4040 ON public.authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f USING btree (configure_flow_id);
+
+
+--
+-- Name: authentik_stages_authentic_configure_flow_id_4f90c912; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_configure_flow_id_4f90c912 ON public.authentik_stages_authenticator_endpoint_gdtc_authenticatore2741 USING btree (configure_flow_id);
+
+
+--
+-- Name: authentik_stages_authentic_configure_flow_id_e6d859e3; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_configure_flow_id_e6d859e3 ON public.authentik_stages_authenticator_totp_authenticatortotpstage USING btree (configure_flow_id);
+
+
+--
+-- Name: authentik_stages_authentic_configure_flow_id_ff974e9e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_configure_flow_id_ff974e9e ON public.authentik_stages_authenticator_sms_authenticatorsmsstage USING btree (configure_flow_id);
+
+
+--
+-- Name: authentik_stages_authentic_device_id_d6704f09; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_device_id_d6704f09 ON public.authentik_stages_authenticator_static_statictoken USING btree (device_id);
+
+
+--
+-- Name: authentik_stages_authentic_device_id_fcd3bb01; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_device_id_fcd3bb01 ON public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc USING btree (device_id);
+
+
+--
+-- Name: authentik_stages_authentic_device_type_id_cce3aadb; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_device_type_id_cce3aadb ON public.authentik_stages_authenticator_webauthn_webauthndevice USING btree (device_type_id);
+
+
+--
+-- Name: authentik_stages_authentic_mapping_id_72d070b3; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_mapping_id_72d070b3 ON public.authentik_stages_authenticator_sms_authenticatorsmsstage USING btree (mapping_id);
+
+
+--
+-- Name: authentik_stages_authentic_stage_id_3c37cac7; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_stage_id_3c37cac7 ON public.authentik_stages_authenticator_validate_authenticatorvalida3e25 USING btree (stage_id);
+
+
+--
+-- Name: authentik_stages_authentic_stage_id_4c643407; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_stage_id_4c643407 ON public.authentik_stages_authenticator_email_emaildevice USING btree (stage_id);
+
+
+--
+-- Name: authentik_stages_authentic_stage_id_db16e52d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_stage_id_db16e52d ON public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc USING btree (stage_id);
+
+
+--
+-- Name: authentik_stages_authentic_token_d00a592e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_token_d00a592e ON public.authentik_stages_authenticator_static_statictoken USING btree (token);
+
+
+--
+-- Name: authentik_stages_authentic_user_id_06fcc555; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_user_id_06fcc555 ON public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice USING btree (user_id);
+
+
+--
+-- Name: authentik_stages_authentic_user_id_26c9196a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_user_id_26c9196a ON public.authentik_stages_authenticator_webauthn_webauthndevice USING btree (user_id);
+
+
+--
+-- Name: authentik_stages_authentic_user_id_aa739a9d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_user_id_aa739a9d ON public.authentik_stages_authenticator_static_staticdevice USING btree (user_id);
+
+
+--
+-- Name: authentik_stages_authentic_user_id_ca447453; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_user_id_ca447453 ON public.authentik_stages_authenticator_email_emaildevice USING btree (user_id);
+
+
+--
+-- Name: authentik_stages_authentic_webauthndevicetype_id_3a629eb0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_webauthndevicetype_id_3a629eb0 ON public.authentik_stages_authenticator_validate_authenticatorvalida8318 USING btree (webauthndevicetype_id);
+
+
+--
+-- Name: authentik_stages_authentic_webauthndevicetype_id_b6c9872b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authentic_webauthndevicetype_id_b6c9872b ON public.authentik_stages_authenticator_webauthn_authenticatorwebaute3a7 USING btree (webauthndevicetype_id);
+
+
+--
+-- Name: authentik_stages_authenticator_duo_duodevice_stage_id_926e33da; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authenticator_duo_duodevice_stage_id_926e33da ON public.authentik_stages_authenticator_duo_duodevice USING btree (stage_id);
+
+
+--
+-- Name: authentik_stages_authenticator_duo_duodevice_user_id_bd340329; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authenticator_duo_duodevice_user_id_bd340329 ON public.authentik_stages_authenticator_duo_duodevice USING btree (user_id);
+
+
+--
+-- Name: authentik_stages_authenticator_sms_smsdevice_stage_id_35c87fa6; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authenticator_sms_smsdevice_stage_id_35c87fa6 ON public.authentik_stages_authenticator_sms_smsdevice USING btree (stage_id);
+
+
+--
+-- Name: authentik_stages_authenticator_sms_smsdevice_user_id_454934c5; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authenticator_sms_smsdevice_user_id_454934c5 ON public.authentik_stages_authenticator_sms_smsdevice USING btree (user_id);
+
+
+--
+-- Name: authentik_stages_authenticator_totp_totpdevice_user_id_0cdf9e55; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_authenticator_totp_totpdevice_user_id_0cdf9e55 ON public.authentik_stages_authenticator_totp_totpdevice USING btree (user_id);
+
+
+--
+-- Name: authentik_stages_consent_userconsent_application_id_ad55f58e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_consent_userconsent_application_id_ad55f58e ON public.authentik_stages_consent_userconsent USING btree (application_id);
+
+
+--
+-- Name: authentik_stages_consent_userconsent_user_id_554dc39f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_consent_userconsent_user_id_554dc39f ON public.authentik_stages_consent_userconsent USING btree (user_id);
+
+
+--
+-- Name: authentik_stages_identific_captcha_stage_id_ae5a4e7b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_identific_captcha_stage_id_ae5a4e7b ON public.authentik_stages_identification_identificationstage USING btree (captcha_stage_id);
+
+
+--
+-- Name: authentik_stages_identific_enrollment_flow_id_930e83ff; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_identific_enrollment_flow_id_930e83ff ON public.authentik_stages_identification_identificationstage USING btree (enrollment_flow_id);
+
+
+--
+-- Name: authentik_stages_identific_identificationstage_id_c119703c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_identific_identificationstage_id_c119703c ON public.authentik_stages_identification_identificationstage_sources USING btree (identificationstage_id);
+
+
+--
+-- Name: authentik_stages_identific_password_stage_id_8d68497a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_identific_password_stage_id_8d68497a ON public.authentik_stages_identification_identificationstage USING btree (password_stage_id);
+
+
+--
+-- Name: authentik_stages_identific_passwordless_flow_id_68cf3874; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_identific_passwordless_flow_id_68cf3874 ON public.authentik_stages_identification_identificationstage USING btree (passwordless_flow_id);
+
+
+--
+-- Name: authentik_stages_identific_recovery_flow_id_16f5f1c7; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_identific_recovery_flow_id_16f5f1c7 ON public.authentik_stages_identification_identificationstage USING btree (recovery_flow_id);
+
+
+--
+-- Name: authentik_stages_identific_source_id_9579fda9; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_identific_source_id_9579fda9 ON public.authentik_stages_identification_identificationstage_sources USING btree (source_id);
+
+
+--
+-- Name: authentik_stages_identific_webauthn_stage_id_b0d53d1e; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_identific_webauthn_stage_id_b0d53d1e ON public.authentik_stages_identification_identificationstage USING btree (webauthn_stage_id);
+
+
+--
+-- Name: authentik_stages_invitation_invitation_created_by_id_87fe9398; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_invitation_invitation_created_by_id_87fe9398 ON public.authentik_stages_invitation_invitation USING btree (created_by_id);
+
+
+--
+-- Name: authentik_stages_invitation_invitation_flow_id_66945236; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_invitation_invitation_flow_id_66945236 ON public.authentik_stages_invitation_invitation USING btree (flow_id);
+
+
+--
+-- Name: authentik_stages_mtls_mutu_certificatekeypair_id_770ad288; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_mtls_mutu_certificatekeypair_id_770ad288 ON public.authentik_stages_mtls_mutualtlsstage_certificate_authorities USING btree (certificatekeypair_id);
+
+
+--
+-- Name: authentik_stages_mtls_mutu_mutualtlsstage_id_7e9e20fd; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_mtls_mutu_mutualtlsstage_id_7e9e20fd ON public.authentik_stages_mtls_mutualtlsstage_certificate_authorities USING btree (mutualtlsstage_id);
+
+
+--
+-- Name: authentik_stages_password_passwordstage_change_flow_id_d56f0f83; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_password_passwordstage_change_flow_id_d56f0f83 ON public.authentik_stages_password_passwordstage USING btree (configure_flow_id);
+
+
+--
+-- Name: authentik_stages_prompt_pr_policy_id_96db92ab; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_prompt_pr_policy_id_96db92ab ON public.authentik_stages_prompt_promptstage_validation_policies USING btree (policy_id);
+
+
+--
+-- Name: authentik_stages_prompt_pr_promptstage_id_cb253bb1; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_prompt_pr_promptstage_id_cb253bb1 ON public.authentik_stages_prompt_promptstage_validation_policies USING btree (promptstage_id);
+
+
+--
+-- Name: authentik_stages_prompt_pr_promptstage_id_d3bd61cc; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_prompt_pr_promptstage_id_d3bd61cc ON public.authentik_stages_prompt_promptstage_fields USING btree (promptstage_id);
+
+
+--
+-- Name: authentik_stages_prompt_prompt_name_789de039_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_prompt_prompt_name_789de039_like ON public.authentik_stages_prompt_prompt USING btree (name text_pattern_ops);
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_fields_prompt_id_8c79d4c1; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_prompt_promptstage_fields_prompt_id_8c79d4c1 ON public.authentik_stages_prompt_promptstage_fields USING btree (prompt_id);
+
+
+--
+-- Name: authentik_stages_redirect_redirectstage_target_flow_id_f3ccf60d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_redirect_redirectstage_target_flow_id_f3ccf60d ON public.authentik_stages_redirect_redirectstage USING btree (target_flow_id);
+
+
+--
+-- Name: authentik_stages_source_sourcestage_source_id_9fd13f4f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_source_sourcestage_source_id_9fd13f4f ON public.authentik_stages_source_sourcestage USING btree (source_id);
+
+
+--
+-- Name: authentik_stages_user_writ_create_users_group_id_90b7794f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_stages_user_writ_create_users_group_id_90b7794f ON public.authentik_stages_user_write_userwritestage USING btree (create_users_group_id);
+
+
+--
+-- Name: authentik_t_message_74b8d7_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_message_74b8d7_idx ON public.authentik_tasks_task USING btree (message_id, state, eta);
+
+
+--
+-- Name: authentik_t_message_8ee59b_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_message_8ee59b_idx ON public.authentik_tasks_task USING btree (message_id, queue_name, state, eta);
+
+
+--
+-- Name: authentik_t_message_affe69_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_message_affe69_idx ON public.authentik_tasks_task USING btree (message_id, queue_name, state);
+
+
+--
+-- Name: authentik_t_queue_n_099d0d_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_queue_n_099d0d_idx ON public.authentik_tasks_task USING btree (queue_name, state, eta);
+
+
+--
+-- Name: authentik_t_queue_n_7b09fb_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_queue_n_7b09fb_idx ON public.authentik_tasks_task USING btree (queue_name);
+
+
+--
+-- Name: authentik_t_queue_n_7ff882_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_queue_n_7ff882_idx ON public.authentik_tasks_task USING btree (queue_name, state);
+
+
+--
+-- Name: authentik_t_rel_obj_3a177a_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_rel_obj_3a177a_idx ON public.authentik_tasks_task USING btree (rel_obj_content_type_id, rel_obj_id);
+
+
+--
+-- Name: authentik_t_rel_obj_575af2_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_rel_obj_575af2_idx ON public.authentik_tasks_schedules_schedule USING btree (rel_obj_content_type_id, rel_obj_id);
+
+
+--
+-- Name: authentik_t_state_bef902_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_state_bef902_idx ON public.authentik_tasks_task USING btree (state, mtime, result_expiry);
+
+
+--
+-- Name: authentik_t_task_id_aa504e_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_t_task_id_aa504e_idx ON public.authentik_tasks_tasklog USING btree (task_id, previous);
+
+
+--
+-- Name: authentik_tasks_schedules__rel_obj_content_type_id_3e3dcef8; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tasks_schedules__rel_obj_content_type_id_3e3dcef8 ON public.authentik_tasks_schedules_schedule USING btree (rel_obj_content_type_id);
+
+
+--
+-- Name: authentik_tasks_task_rel_obj_content_type_id_2a021136; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tasks_task_rel_obj_content_type_id_2a021136 ON public.authentik_tasks_task USING btree (rel_obj_content_type_id);
+
+
+--
+-- Name: authentik_tasks_task_tenant_id_a04bb198; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tasks_task_tenant_id_a04bb198 ON public.authentik_tasks_task USING btree (tenant_id);
+
+
+--
+-- Name: authentik_tasks_taskdependency_dependency_id_c7a40dcc; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tasks_taskdependency_dependency_id_c7a40dcc ON public.authentik_tasks_taskdependency USING btree (dependency_id);
+
+
+--
+-- Name: authentik_tasks_taskdependency_task_id_f9b4d794; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tasks_taskdependency_task_id_f9b4d794 ON public.authentik_tasks_taskdependency USING btree (task_id);
+
+
+--
+-- Name: authentik_tasks_tasklog_previous_1dd5542a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tasks_tasklog_previous_1dd5542a ON public.authentik_tasks_tasklog USING btree (previous);
+
+
+--
+-- Name: authentik_tasks_tasklog_task_id_a82f0835; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tasks_tasklog_task_id_a82f0835 ON public.authentik_tasks_tasklog USING btree (task_id);
+
+
+--
+-- Name: authentik_tenants_domain_domain_bbfce14d_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tenants_domain_domain_bbfce14d_like ON public.authentik_tenants_domain USING btree (domain varchar_pattern_ops);
+
+
+--
+-- Name: authentik_tenants_domain_is_primary_b9776638; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tenants_domain_is_primary_b9776638 ON public.authentik_tenants_domain USING btree (is_primary);
+
+
+--
+-- Name: authentik_tenants_domain_tenant_id_a9cbe133; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tenants_domain_tenant_id_a9cbe133 ON public.authentik_tenants_domain USING btree (tenant_id);
+
+
+--
+-- Name: authentik_tenants_tenant_schema_name_a21de895_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX authentik_tenants_tenant_schema_name_a21de895_like ON public.authentik_tenants_tenant USING btree (schema_name varchar_pattern_ops);
+
+
+--
+-- Name: django_chan_channel_e8ca51_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_chan_channel_e8ca51_idx ON public.django_channels_postgres_message USING btree (channel, expires);
+
+
+--
+-- Name: django_chan_group_k_173f44_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_chan_group_k_173f44_idx ON public.django_channels_postgres_groupchannel USING btree (group_key, channel);
+
+
+--
+-- Name: django_chan_group_k_45d2e0_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_chan_group_k_45d2e0_idx ON public.django_channels_postgres_groupchannel USING btree (group_key, expires);
+
+
+--
+-- Name: django_channels_postgres_groupchannel_channel_6a5b3e9f; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_channels_postgres_groupchannel_channel_6a5b3e9f ON public.django_channels_postgres_groupchannel USING btree (channel);
+
+
+--
+-- Name: django_channels_postgres_groupchannel_channel_6a5b3e9f_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_channels_postgres_groupchannel_channel_6a5b3e9f_like ON public.django_channels_postgres_groupchannel USING btree (channel text_pattern_ops);
+
+
+--
+-- Name: django_channels_postgres_groupchannel_expires_6df3d2e1; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_channels_postgres_groupchannel_expires_6df3d2e1 ON public.django_channels_postgres_groupchannel USING btree (expires);
+
+
+--
+-- Name: django_channels_postgres_groupchannel_group_key_9d0ad8b3; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_channels_postgres_groupchannel_group_key_9d0ad8b3 ON public.django_channels_postgres_groupchannel USING btree (group_key);
+
+
+--
+-- Name: django_channels_postgres_groupchannel_group_key_9d0ad8b3_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_channels_postgres_groupchannel_group_key_9d0ad8b3_like ON public.django_channels_postgres_groupchannel USING btree (group_key text_pattern_ops);
+
+
+--
+-- Name: django_channels_postgres_message_channel_c792608b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_channels_postgres_message_channel_c792608b ON public.django_channels_postgres_message USING btree (channel);
+
+
+--
+-- Name: django_channels_postgres_message_channel_c792608b_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_channels_postgres_message_channel_c792608b_like ON public.django_channels_postgres_message USING btree (channel text_pattern_ops);
+
+
+--
+-- Name: django_channels_postgres_message_expires_ed39f91a; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_channels_postgres_message_expires_ed39f91a ON public.django_channels_postgres_message USING btree (expires);
+
+
+--
+-- Name: django_postgres_cache_cacheentry_cache_key_54926751_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_postgres_cache_cacheentry_cache_key_54926751_like ON public.django_postgres_cache_cacheentry USING btree (cache_key text_pattern_ops);
+
+
+--
+-- Name: django_postgres_cache_cacheentry_expires_070a929b; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_postgres_cache_cacheentry_expires_070a929b ON public.django_postgres_cache_cacheentry USING btree (expires);
+
+
+--
+-- Name: django_session_expire_date_a5c62663; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_session_expire_date_a5c62663 ON public.django_session USING btree (expire_date);
+
+
+--
+-- Name: django_session_session_key_c0390e0f_like; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX django_session_session_key_c0390e0f_like ON public.django_session USING btree (session_key varchar_pattern_ops);
+
+
+--
+-- Name: guardian_ro_permiss_731f53_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_ro_permiss_731f53_idx ON public.guardian_roleobjectpermission USING btree (permission_id, role_id, content_type_id, object_pk);
+
+
+--
+-- Name: guardian_ro_permiss_eb3837_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_ro_permiss_eb3837_idx ON public.guardian_rolemodelpermission USING btree (permission_id, role_id, content_type_id);
+
+
+--
+-- Name: guardian_ro_role_id_268ee1_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_ro_role_id_268ee1_idx ON public.guardian_rolemodelpermission USING btree (role_id, content_type_id);
+
+
+--
+-- Name: guardian_ro_role_id_82d58d_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_ro_role_id_82d58d_idx ON public.guardian_roleobjectpermission USING btree (role_id, content_type_id, object_pk);
+
+
+--
+-- Name: guardian_rolemodelpermission_content_type_id_2866c748; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_rolemodelpermission_content_type_id_2866c748 ON public.guardian_rolemodelpermission USING btree (content_type_id);
+
+
+--
+-- Name: guardian_rolemodelpermission_permission_id_c72479f9; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_rolemodelpermission_permission_id_c72479f9 ON public.guardian_rolemodelpermission USING btree (permission_id);
+
+
+--
+-- Name: guardian_rolemodelpermission_role_id_642b75b2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_rolemodelpermission_role_id_642b75b2 ON public.guardian_rolemodelpermission USING btree (role_id);
+
+
+--
+-- Name: guardian_roleobjectpermission_content_type_id_655e6c1c; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_roleobjectpermission_content_type_id_655e6c1c ON public.guardian_roleobjectpermission USING btree (content_type_id);
+
+
+--
+-- Name: guardian_roleobjectpermission_permission_id_2de63617; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_roleobjectpermission_permission_id_2de63617 ON public.guardian_roleobjectpermission USING btree (permission_id);
+
+
+--
+-- Name: guardian_roleobjectpermission_role_id_76d93577; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX guardian_roleobjectpermission_role_id_76d93577 ON public.guardian_roleobjectpermission USING btree (role_id);
+
+
+--
+-- Name: pending_offboarding_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX pending_offboarding_idx ON public.authentik_lifecycle_useroffboarding USING btree (scheduled_at) WHERE (status = 'pending'::text);
+
+
+--
+-- Name: unique_pending_offboarding_per_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX unique_pending_offboarding_per_user ON public.authentik_lifecycle_useroffboarding USING btree (user_id) WHERE (status = 'pending'::text);
+
+
+--
+-- Name: authentik_tasks_task pgtrigger_notify_enqueueing_0bc94; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER pgtrigger_notify_enqueueing_0bc94 AFTER INSERT OR UPDATE ON public.authentik_tasks_task DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((new.eta IS NULL) AND ((new.state)::text = 'queued'::text))) EXECUTE FUNCTION public.pgtrigger_notify_enqueueing_0bc94();
+
+
+--
+-- Name: TRIGGER pgtrigger_notify_enqueueing_0bc94 ON authentik_tasks_task; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TRIGGER pgtrigger_notify_enqueueing_0bc94 ON public.authentik_tasks_task IS 'da36b9a6344d384e5cf4de889a06bf578eaa10ef';
+
+
+--
+-- Name: django_channels_postgres_message pgtrigger_notify_new_channels_message_d21ae; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER pgtrigger_notify_new_channels_message_d21ae AFTER INSERT ON public.django_channels_postgres_message DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.pgtrigger_notify_new_channels_message_d21ae();
+
+
+--
+-- Name: TRIGGER pgtrigger_notify_new_channels_message_d21ae ON django_channels_postgres_message; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TRIGGER pgtrigger_notify_new_channels_message_d21ae ON public.django_channels_postgres_message IS 'b86d0cf8f8062d54ade9f5e8aad147aa0263a0e7';
+
+
+--
+-- Name: authentik_core_groupparentage pgtrigger_refresh_groupancestry_62450; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER pgtrigger_refresh_groupancestry_62450 AFTER INSERT OR DELETE OR UPDATE ON public.authentik_core_groupparentage FOR EACH ROW EXECUTE FUNCTION public.pgtrigger_refresh_groupancestry_62450();
+
+
+--
+-- Name: TRIGGER pgtrigger_refresh_groupancestry_62450 ON authentik_core_groupparentage; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TRIGGER pgtrigger_refresh_groupancestry_62450 ON public.authentik_core_groupparentage IS 'a987621714359aa0389e03fd2d52f86b118e7d24';
+
+
+--
+-- Name: authentik_tasks_schedules_schedule pgtrigger_set_next_run_on_paused_95c6d; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER pgtrigger_set_next_run_on_paused_95c6d BEFORE UPDATE ON public.authentik_tasks_schedules_schedule FOR EACH ROW WHEN ((new.paused AND (NOT old.paused))) EXECUTE FUNCTION public.pgtrigger_set_next_run_on_paused_95c6d();
+
+
+--
+-- Name: TRIGGER pgtrigger_set_next_run_on_paused_95c6d ON authentik_tasks_schedules_schedule; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TRIGGER pgtrigger_set_next_run_on_paused_95c6d ON public.authentik_tasks_schedules_schedule IS '7fe580a86de70723522cfcbac712785984000f92';
+
+
+--
+-- Name: authentik_tasks_task pgtrigger_update_aggregated_status_f18c4; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER pgtrigger_update_aggregated_status_f18c4 BEFORE INSERT OR UPDATE ON public.authentik_tasks_task FOR EACH ROW EXECUTE FUNCTION public.pgtrigger_update_aggregated_status_f18c4();
+
+
+--
+-- Name: TRIGGER pgtrigger_update_aggregated_status_f18c4 ON authentik_tasks_task; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TRIGGER pgtrigger_update_aggregated_status_f18c4 ON public.authentik_tasks_task IS '1b574eaad2d07197623dc669038284b5e5eacdc8';
+
+
+--
+-- Name: auth_group_permissions auth_group_permissio_permission_id_84c5c92e_fk_auth_perm; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_group_permissions
+    ADD CONSTRAINT auth_group_permissio_permission_id_84c5c92e_fk_auth_perm FOREIGN KEY (permission_id) REFERENCES public.auth_permission(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: auth_group_permissions auth_group_permissions_group_id_b120cbf9_fk_auth_group_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_group_permissions
+    ADD CONSTRAINT auth_group_permissions_group_id_b120cbf9_fk_auth_group_id FOREIGN KEY (group_id) REFERENCES public.auth_group(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: auth_permission auth_permission_content_type_id_2f476e4b_fk_django_co; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auth_permission
+    ADD CONSTRAINT auth_permission_content_type_id_2f476e4b_fk_django_co FOREIGN KEY (content_type_id) REFERENCES public.django_content_type(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_agents_agent authentik_agents_age_actor_ptr_id_0def782a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_agents_agent
+    ADD CONSTRAINT authentik_agents_age_actor_ptr_id_0def782a_fk_authentik FOREIGN KEY (actor_ptr_id) REFERENCES public.authentik_core_actor(user_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand_client_certificates authentik_brands_bra_brand_id_0b0bb011_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand_client_certificates
+    ADD CONSTRAINT authentik_brands_bra_brand_id_0b0bb011_fk_authentik FOREIGN KEY (brand_id) REFERENCES public.authentik_brands_brand(brand_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand_client_certificates authentik_brands_bra_certificatekeypair_i_de3a87a3_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand_client_certificates
+    ADD CONSTRAINT authentik_brands_bra_certificatekeypair_i_de3a87a3_fk_authentik FOREIGN KEY (certificatekeypair_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_default_application__cdb5fa2d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_default_application__cdb5fa2d_fk_authentik FOREIGN KEY (default_application_id) REFERENCES public.authentik_core_application(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_flow_authentication__89de959d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_flow_authentication__89de959d_fk_authentik FOREIGN KEY (flow_authentication_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_flow_device_code_id_302ae2a0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_flow_device_code_id_302ae2a0_fk_authentik FOREIGN KEY (flow_device_code_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_flow_invalidation_id_8224d0ed_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_flow_invalidation_id_8224d0ed_fk_authentik FOREIGN KEY (flow_invalidation_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_flow_lockdown_id_a8caca6f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_flow_lockdown_id_a8caca6f_fk_authentik FOREIGN KEY (flow_lockdown_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_flow_recovery_id_e5d53987_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_flow_recovery_id_e5d53987_fk_authentik FOREIGN KEY (flow_recovery_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_flow_request_id_c93e82e0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_flow_request_id_c93e82e0_fk_authentik FOREIGN KEY (flow_request_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_flow_unenrollment_id_93e48a3b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_flow_unenrollment_id_93e48a3b_fk_authentik FOREIGN KEY (flow_unenrollment_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_flow_user_settings_i_64c7fb48_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_flow_user_settings_i_64c7fb48_fk_authentik FOREIGN KEY (flow_user_settings_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_flow_user_switch_id_b481b73f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_flow_user_switch_id_b481b73f_fk_authentik FOREIGN KEY (flow_user_switch_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_brands_brand authentik_brands_bra_web_certificate_id_10360e71_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_brands_brand
+    ADD CONSTRAINT authentik_brands_bra_web_certificate_id_10360e71_fk_authentik FOREIGN KEY (web_certificate_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_actor authentik_core_actor_parent_id_16d7ff83_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_actor
+    ADD CONSTRAINT authentik_core_actor_parent_id_16d7ff83_fk_authentik FOREIGN KEY (parent_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_actor authentik_core_actor_user_ptr_id_f098cd7a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_actor
+    ADD CONSTRAINT authentik_core_actor_user_ptr_id_f098cd7a_fk_authentik FOREIGN KEY (user_ptr_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_applicationentitlement authentik_core_appli_app_id_446e06be_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_applicationentitlement
+    ADD CONSTRAINT authentik_core_appli_app_id_446e06be_fk_authentik FOREIGN KEY (app_id) REFERENCES public.authentik_core_application(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_application authentik_core_appli_policybindingmodel_p_a04bee2b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_application
+    ADD CONSTRAINT authentik_core_appli_policybindingmodel_p_a04bee2b_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_applicationentitlement authentik_core_appli_policybindingmodel_p_c4dbabb2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_applicationentitlement
+    ADD CONSTRAINT authentik_core_appli_policybindingmodel_p_c4dbabb2_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_application authentik_core_appli_provider_id_357ae6c6_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_application
+    ADD CONSTRAINT authentik_core_appli_provider_id_357ae6c6_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_authenticatedsession authentik_core_authe_session_id_d58ab678_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_authenticatedsession
+    ADD CONSTRAINT authentik_core_authe_session_id_d58ab678_fk_authentik FOREIGN KEY (session_id) REFERENCES public.authentik_core_session(session_key) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_authenticatedsession authentik_core_authe_user_id_5055b6cf_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_authenticatedsession
+    ADD CONSTRAINT authentik_core_authe_user_id_5055b6cf_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_authenticatedsession authentik_core_authe_user_switching_sessi_bb011b49_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_authenticatedsession
+    ADD CONSTRAINT authentik_core_authe_user_switching_sessi_bb011b49_fk_authentik FOREIGN KEY (user_switching_session_id) REFERENCES public.authentik_core_userswitchingsession(token) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_groupparentage authentik_core_group_child_id_7c669a70_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_groupparentage
+    ADD CONSTRAINT authentik_core_group_child_id_7c669a70_fk_authentik FOREIGN KEY (child_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_groupsourceconnection authentik_core_group_group_id_2d4ee871_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_groupsourceconnection
+    ADD CONSTRAINT authentik_core_group_group_id_2d4ee871_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_group_roles authentik_core_group_group_id_43a283e0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_group_roles
+    ADD CONSTRAINT authentik_core_group_group_id_43a283e0_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_groupparentage authentik_core_group_parent_id_5b993bd1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_groupparentage
+    ADD CONSTRAINT authentik_core_group_parent_id_5b993bd1_fk_authentik FOREIGN KEY (parent_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_group_roles authentik_core_group_role_id_5b9a84fe_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_group_roles
+    ADD CONSTRAINT authentik_core_group_role_id_5b9a84fe_fk_authentik FOREIGN KEY (role_id) REFERENCES public.authentik_rbac_role(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_groupsourceconnection authentik_core_group_source_id_12d2d371_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_groupsourceconnection
+    ADD CONSTRAINT authentik_core_group_source_id_12d2d371_fk_authentik FOREIGN KEY (source_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_objectattribute authentik_core_objec_object_type_id_6ae3079c_fk_django_co; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_objectattribute
+    ADD CONSTRAINT authentik_core_objec_object_type_id_6ae3079c_fk_django_co FOREIGN KEY (object_type_id) REFERENCES public.django_content_type(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_provider authentik_core_provi_authentication_flow__49dea03c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider
+    ADD CONSTRAINT authentik_core_provi_authentication_flow__49dea03c_fk_authentik FOREIGN KEY (authentication_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_provider authentik_core_provi_authorization_flow_i_1482437b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider
+    ADD CONSTRAINT authentik_core_provi_authorization_flow_i_1482437b_fk_authentik FOREIGN KEY (authorization_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_provider authentik_core_provi_backchannel_applicat_a972ebd6_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider
+    ADD CONSTRAINT authentik_core_provi_backchannel_applicat_a972ebd6_fk_authentik FOREIGN KEY (backchannel_application_id) REFERENCES public.authentik_core_application(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_provider authentik_core_provi_invalidation_flow_id_69c4fd1b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider
+    ADD CONSTRAINT authentik_core_provi_invalidation_flow_id_69c4fd1b_fk_authentik FOREIGN KEY (invalidation_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_provider_property_mappings authentik_core_provi_propertymapping_id_7d1de2b7_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider_property_mappings
+    ADD CONSTRAINT authentik_core_provi_propertymapping_id_7d1de2b7_fk_authentik FOREIGN KEY (propertymapping_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_provider_property_mappings authentik_core_provi_provider_id_10e17d5c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_provider_property_mappings
+    ADD CONSTRAINT authentik_core_provi_provider_id_10e17d5c_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_source authentik_core_sourc_authentication_flow__2478087b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source
+    ADD CONSTRAINT authentik_core_sourc_authentication_flow__2478087b_fk_authentik FOREIGN KEY (authentication_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_source authentik_core_sourc_enrollment_flow_id_7844a7b3_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source
+    ADD CONSTRAINT authentik_core_sourc_enrollment_flow_id_7844a7b3_fk_authentik FOREIGN KEY (enrollment_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_source authentik_core_sourc_policybindingmodel_p_746c4900_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source
+    ADD CONSTRAINT authentik_core_sourc_policybindingmodel_p_746c4900_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_source_group_property_mappings authentik_core_sourc_propertymapping_id_3cf3d0f0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source_group_property_mappings
+    ADD CONSTRAINT authentik_core_sourc_propertymapping_id_3cf3d0f0_fk_authentik FOREIGN KEY (propertymapping_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_source_user_property_mappings authentik_core_sourc_propertymapping_id_a0453c66_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source_user_property_mappings
+    ADD CONSTRAINT authentik_core_sourc_propertymapping_id_a0453c66_fk_authentik FOREIGN KEY (propertymapping_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_source_group_property_mappings authentik_core_sourc_source_id_001cb431_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source_group_property_mappings
+    ADD CONSTRAINT authentik_core_sourc_source_id_001cb431_fk_authentik FOREIGN KEY (source_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_source_user_property_mappings authentik_core_sourc_source_id_3f2a38bc_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_source_user_property_mappings
+    ADD CONSTRAINT authentik_core_sourc_source_id_3f2a38bc_fk_authentik FOREIGN KEY (source_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_token authentik_core_token_user_id_479d5b79_fk_authentik_core_user_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_token
+    ADD CONSTRAINT authentik_core_token_user_id_479d5b79_fk_authentik_core_user_id FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_user_groups authentik_core_user__group_id_344046d2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user_groups
+    ADD CONSTRAINT authentik_core_user__group_id_344046d2_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_user_roles authentik_core_user__role_id_832e4e27_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user_roles
+    ADD CONSTRAINT authentik_core_user__role_id_832e4e27_fk_authentik FOREIGN KEY (role_id) REFERENCES public.authentik_rbac_role(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_user_groups authentik_core_user__user_id_5ce7c1dc_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user_groups
+    ADD CONSTRAINT authentik_core_user__user_id_5ce7c1dc_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_user_roles authentik_core_user__user_id_ea5294b9_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_user_roles
+    ADD CONSTRAINT authentik_core_user__user_id_ea5294b9_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_userswitchingsession authentik_core_users_current_session_id_4eeaf999_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_userswitchingsession
+    ADD CONSTRAINT authentik_core_users_current_session_id_4eeaf999_fk_authentik FOREIGN KEY (current_session_id) REFERENCES public.authentik_core_authenticatedsession(session_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_usersourceconnection authentik_core_users_source_id_450cff14_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_usersourceconnection
+    ADD CONSTRAINT authentik_core_users_source_id_450cff14_fk_authentik FOREIGN KEY (source_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_core_usersourceconnection authentik_core_users_user_id_7f305d6f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_core_usersourceconnection
+    ADD CONSTRAINT authentik_core_users_user_id_7f305d6f_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_device authentik_endpoints__access_group_id_54664ea9_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_device
+    ADD CONSTRAINT authentik_endpoints__access_group_id_54664ea9_fk_authentik FOREIGN KEY (access_group_id) REFERENCES public.authentik_endpoints_deviceaccessgroup(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6 authentik_endpoints__agentconnector_id_b177559c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6
+    ADD CONSTRAINT authentik_endpoints__agentconnector_id_b177559c_fk_authentik FOREIGN KEY (agentconnector_id) REFERENCES public.authentik_endpoints_connectors_agent_agentconnector(connector_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector authentik_endpoints__authorization_flow_i_d5cb5ccc_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentconnector
+    ADD CONSTRAINT authentik_endpoints__authorization_flow_i_d5cb5ccc_fk_authentik FOREIGN KEY (authorization_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector authentik_endpoints__challenge_key_id_07ed488f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentconnector
+    ADD CONSTRAINT authentik_endpoints__challenge_key_id_07ed488f_fk_authentik FOREIGN KEY (challenge_key_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_devicefactsnapshot authentik_endpoints__connection_id_04fcc030_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_devicefactsnapshot
+    ADD CONSTRAINT authentik_endpoints__connection_id_04fcc030_fk_authentik FOREIGN KEY (connection_id) REFERENCES public.authentik_endpoints_deviceconnection(device_connection_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_enrollmenttoken authentik_endpoints__connector_id_55c7983c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_enrollmenttoken
+    ADD CONSTRAINT authentik_endpoints__connector_id_55c7983c_fk_authentik FOREIGN KEY (connector_id) REFERENCES public.authentik_endpoints_connectors_agent_agentconnector(connector_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_deviceconnection authentik_endpoints__connector_id_69c7a3fd_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_deviceconnection
+    ADD CONSTRAINT authentik_endpoints__connector_id_69c7a3fd_fk_authentik FOREIGN KEY (connector_id) REFERENCES public.authentik_endpoints_connector(connector_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_endpointstage authentik_endpoints__connector_id_6c8f7ee9_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_endpointstage
+    ADD CONSTRAINT authentik_endpoints__connector_id_6c8f7ee9_fk_authentik FOREIGN KEY (connector_id) REFERENCES public.authentik_endpoints_connector(connector_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_deviceauthenticationtoken authentik_endpoints__connector_id_82de6ed0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_deviceauthenticationtoken
+    ADD CONSTRAINT authentik_endpoints__connector_id_82de6ed0_fk_authentik FOREIGN KEY (connector_id) REFERENCES public.authentik_endpoints_connectors_agent_agentconnector(connector_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_deviceuserbinding authentik_endpoints__connector_id_c6d48a85_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_deviceuserbinding
+    ADD CONSTRAINT authentik_endpoints__connector_id_c6d48a85_fk_authentik FOREIGN KEY (connector_id) REFERENCES public.authentik_endpoints_connector(connector_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_fleet_fleetconnector authentik_endpoints__connector_ptr_id_6d18fb63_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_fleet_fleetconnector
+    ADD CONSTRAINT authentik_endpoints__connector_ptr_id_6d18fb63_fk_authentik FOREIGN KEY (connector_ptr_id) REFERENCES public.authentik_endpoints_connector(connector_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector authentik_endpoints__connector_ptr_id_87287d1b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentconnector
+    ADD CONSTRAINT authentik_endpoints__connector_ptr_id_87287d1b_fk_authentik FOREIGN KEY (connector_ptr_id) REFERENCES public.authentik_endpoints_connector(connector_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_google_chrome_googlechromeco19cb authentik_endpoints__connector_ptr_id_be497b7c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_google_chrome_googlechromeco19cb
+    ADD CONSTRAINT authentik_endpoints__connector_ptr_id_be497b7c_fk_authentik FOREIGN KEY (connector_ptr_id) REFERENCES public.authentik_endpoints_connector(connector_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_enrollmenttoken authentik_endpoints__device_group_id_ef065d87_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_enrollmenttoken
+    ADD CONSTRAINT authentik_endpoints__device_group_id_ef065d87_fk_authentik FOREIGN KEY (device_group_id) REFERENCES public.authentik_endpoints_deviceaccessgroup(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_devicetoken authentik_endpoints__device_id_0d1845c2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_devicetoken
+    ADD CONSTRAINT authentik_endpoints__device_id_0d1845c2_fk_authentik FOREIGN KEY (device_id) REFERENCES public.authentik_endpoints_connectors_agent_agentdeviceconnection(deviceconnection_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_deviceconnection authentik_endpoints__device_id_50b1a37f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_deviceconnection
+    ADD CONSTRAINT authentik_endpoints__device_id_50b1a37f_fk_authentik FOREIGN KEY (device_id) REFERENCES public.authentik_endpoints_device(device_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_deviceauthenticationtoken authentik_endpoints__device_id_c3021e8c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_deviceauthenticationtoken
+    ADD CONSTRAINT authentik_endpoints__device_id_c3021e8c_fk_authentik FOREIGN KEY (device_id) REFERENCES public.authentik_endpoints_device(device_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_deviceauthenticationtoken authentik_endpoints__device_token_id_19a722dc_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_deviceauthenticationtoken
+    ADD CONSTRAINT authentik_endpoints__device_token_id_19a722dc_fk_authentik FOREIGN KEY (device_token_id) REFERENCES public.authentik_endpoints_connectors_agent_devicetoken(token_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_applenonce authentik_endpoints__device_token_id_23abacd6_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_applenonce
+    ADD CONSTRAINT authentik_endpoints__device_token_id_23abacd6_fk_authentik FOREIGN KEY (device_token_id) REFERENCES public.authentik_endpoints_connectors_agent_devicetoken(token_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentdeviceconnection authentik_endpoints__deviceconnection_ptr_2e1b641a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentdeviceconnection
+    ADD CONSTRAINT authentik_endpoints__deviceconnection_ptr_2e1b641a_fk_authentik FOREIGN KEY (deviceconnection_ptr_id) REFERENCES public.authentik_endpoints_deviceconnection(device_connection_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentdeviceuserbinding authentik_endpoints__deviceuserbinding_pt_b32d31b5_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentdeviceuserbinding
+    ADD CONSTRAINT authentik_endpoints__deviceuserbinding_pt_b32d31b5_fk_authentik FOREIGN KEY (deviceuserbinding_ptr_id) REFERENCES public.authentik_endpoints_deviceuserbinding(policybinding_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_fleet_fleetconnector authentik_endpoints__headers_mapping_id_d010e229_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_fleet_fleetconnector
+    ADD CONSTRAINT authentik_endpoints__headers_mapping_id_d010e229_fk_authentik FOREIGN KEY (headers_mapping_id) REFERENCES public.authentik_events_notificationwebhookmapping(propertymapping_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6 authentik_endpoints__oauth2provider_id_2e9defac_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6
+    ADD CONSTRAINT authentik_endpoints__oauth2provider_id_2e9defac_fk_authentik FOREIGN KEY (oauth2provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_deviceuserbinding authentik_endpoints__policybinding_ptr_id_55f72b68_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_deviceuserbinding
+    ADD CONSTRAINT authentik_endpoints__policybinding_ptr_id_55f72b68_fk_authentik FOREIGN KEY (policybinding_ptr_id) REFERENCES public.authentik_policies_policybinding(policy_binding_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_deviceaccessgroup authentik_endpoints__policybindingmodel_p_00be22ac_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_deviceaccessgroup
+    ADD CONSTRAINT authentik_endpoints__policybindingmodel_p_00be22ac_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_device authentik_endpoints__policybindingmodel_p_bbd34bda_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_device
+    ADD CONSTRAINT authentik_endpoints__policybindingmodel_p_bbd34bda_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_endpointstage authentik_endpoints__stage_ptr_id_9ac80a9b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_endpointstage
+    ADD CONSTRAINT authentik_endpoints__stage_ptr_id_9ac80a9b_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_deviceauthenticationtoken authentik_endpoints__user_id_ef28d596_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_deviceauthenticationtoken
+    ADD CONSTRAINT authentik_endpoints__user_id_ef28d596_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_endpoints_connectors_agent_appleindependentsecure0d47 authentik_endpoints__user_id_ffad2933_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_endpoints_connectors_agent_appleindependentsecure0d47
+    ADD CONSTRAINT authentik_endpoints__user_id_ffad2933_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notificationrule authentik_events_not_destination_group_id_d1f2c36e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationrule
+    ADD CONSTRAINT authentik_events_not_destination_group_id_d1f2c36e_fk_authentik FOREIGN KEY (destination_group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notification authentik_events_not_event_id_ac5c4bb7_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notification
+    ADD CONSTRAINT authentik_events_not_event_id_ac5c4bb7_fk_authentik FOREIGN KEY (event_id) REFERENCES public.authentik_events_event(event_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notificationrule_transports authentik_events_not_notificationrule_id_eccbe1d6_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationrule_transports
+    ADD CONSTRAINT authentik_events_not_notificationrule_id_eccbe1d6_fk_authentik FOREIGN KEY (notificationrule_id) REFERENCES public.authentik_events_notificationrule(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notificationrule_transports authentik_events_not_notificationtranspor_62ec0805_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationrule_transports
+    ADD CONSTRAINT authentik_events_not_notificationtranspor_62ec0805_fk_authentik FOREIGN KEY (notificationtransport_id) REFERENCES public.authentik_events_notificationtransport(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notificationrule authentik_events_not_policybindingmodel_p_74974b98_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationrule
+    ADD CONSTRAINT authentik_events_not_policybindingmodel_p_74974b98_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notificationwebhookmapping authentik_events_not_propertymapping_ptr__56d35fcd_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationwebhookmapping
+    ADD CONSTRAINT authentik_events_not_propertymapping_ptr__56d35fcd_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notification authentik_events_not_user_id_9ea0c690_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notification
+    ADD CONSTRAINT authentik_events_not_user_id_9ea0c690_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notificationtransport authentik_events_not_webhook_ca_id_8e94c025_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationtransport
+    ADD CONSTRAINT authentik_events_not_webhook_ca_id_8e94c025_fk_authentik FOREIGN KEY (webhook_ca_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notificationtransport authentik_events_not_webhook_mapping_body_39b98f60_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationtransport
+    ADD CONSTRAINT authentik_events_not_webhook_mapping_body_39b98f60_fk_authentik FOREIGN KEY (webhook_mapping_body_id) REFERENCES public.authentik_events_notificationwebhookmapping(propertymapping_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_events_notificationtransport authentik_events_not_webhook_mapping_head_5a327cc0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_events_notificationtransport
+    ADD CONSTRAINT authentik_events_not_webhook_mapping_head_5a327cc0_fk_authentik FOREIGN KEY (webhook_mapping_headers_id) REFERENCES public.authentik_events_notificationwebhookmapping(propertymapping_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_flows_flowtoken authentik_flows_flow_flow_id_e4c82880_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flowtoken
+    ADD CONSTRAINT authentik_flows_flow_flow_id_e4c82880_fk_authentik FOREIGN KEY (flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_flows_flowstagebinding authentik_flows_flow_policybindingmodel_p_20d905a6_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flowstagebinding
+    ADD CONSTRAINT authentik_flows_flow_policybindingmodel_p_20d905a6_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_flows_flow authentik_flows_flow_policybindingmodel_p_9c3c290f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flow
+    ADD CONSTRAINT authentik_flows_flow_policybindingmodel_p_9c3c290f_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_flows_flowstagebinding authentik_flows_flow_stage_id_7a270212_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flowstagebinding
+    ADD CONSTRAINT authentik_flows_flow_stage_id_7a270212_fk_authentik FOREIGN KEY (stage_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_flows_flowstagebinding authentik_flows_flow_target_id_4899c0f8_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flowstagebinding
+    ADD CONSTRAINT authentik_flows_flow_target_id_4899c0f8_fk_authentik FOREIGN KEY (target_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_flows_flowtoken authentik_flows_flow_token_ptr_id_e3047c65_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_flows_flowtoken
+    ADD CONSTRAINT authentik_flows_flow_token_ptr_id_e3047c65_fk_authentik FOREIGN KEY (token_ptr_id) REFERENCES public.authentik_core_token(token_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule authentik_lifecycle__content_type_id_26cd333f_fk_django_co; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule
+    ADD CONSTRAINT authentik_lifecycle__content_type_id_26cd333f_fk_django_co FOREIGN KEY (content_type_id) REFERENCES public.django_content_type(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_lifecycleiteration authentik_lifecycle__content_type_id_fef62adf_fk_django_co; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecycleiteration
+    ADD CONSTRAINT authentik_lifecycle__content_type_id_fef62adf_fk_django_co FOREIGN KEY (content_type_id) REFERENCES public.django_content_type(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_useroffboarding authentik_lifecycle__created_by_id_497f46d8_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_useroffboarding
+    ADD CONSTRAINT authentik_lifecycle__created_by_id_497f46d8_fk_authentik FOREIGN KEY (created_by_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewer_groups authentik_lifecycle__group_id_d998a382_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_reviewer_groups
+    ADD CONSTRAINT authentik_lifecycle__group_id_d998a382_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_review authentik_lifecycle__iteration_id_24777dc1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_review
+    ADD CONSTRAINT authentik_lifecycle__iteration_id_24777dc1_fk_authentik FOREIGN KEY (iteration_id) REFERENCES public.authentik_lifecycle_lifecycleiteration(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewers authentik_lifecycle__lifecyclerule_id_53715dc8_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_reviewers
+    ADD CONSTRAINT authentik_lifecycle__lifecyclerule_id_53715dc8_fk_authentik FOREIGN KEY (lifecyclerule_id) REFERENCES public.authentik_lifecycle_lifecyclerule(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_notification_transports authentik_lifecycle__lifecyclerule_id_6924087d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_notification_transports
+    ADD CONSTRAINT authentik_lifecycle__lifecyclerule_id_6924087d_fk_authentik FOREIGN KEY (lifecyclerule_id) REFERENCES public.authentik_lifecycle_lifecyclerule(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewer_groups authentik_lifecycle__lifecyclerule_id_8c601d22_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_reviewer_groups
+    ADD CONSTRAINT authentik_lifecycle__lifecyclerule_id_8c601d22_fk_authentik FOREIGN KEY (lifecyclerule_id) REFERENCES public.authentik_lifecycle_lifecyclerule(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_notification_transports authentik_lifecycle__notificationtranspor_32672fbd_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_notification_transports
+    ADD CONSTRAINT authentik_lifecycle__notificationtranspor_32672fbd_fk_authentik FOREIGN KEY (notificationtransport_id) REFERENCES public.authentik_events_notificationtransport(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_review authentik_lifecycle__reviewer_id_3c5b444e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_review
+    ADD CONSTRAINT authentik_lifecycle__reviewer_id_3c5b444e_fk_authentik FOREIGN KEY (reviewer_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_lifecycleiteration authentik_lifecycle__rule_id_8994e6ef_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecycleiteration
+    ADD CONSTRAINT authentik_lifecycle__rule_id_8994e6ef_fk_authentik FOREIGN KEY (rule_id) REFERENCES public.authentik_lifecycle_lifecyclerule(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_lifecyclerule_reviewers authentik_lifecycle__user_id_4d76500e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_lifecyclerule_reviewers
+    ADD CONSTRAINT authentik_lifecycle__user_id_4d76500e_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_lifecycle_useroffboarding authentik_lifecycle__user_id_cce47e3a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_lifecycle_useroffboarding
+    ADD CONSTRAINT authentik_lifecycle__user_id_cce47e3a_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_outposts_dockerserviceconnection authentik_outposts_d_outpostserviceconnec_35f196a0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_dockerserviceconnection
+    ADD CONSTRAINT authentik_outposts_d_outpostserviceconnec_35f196a0_fk_authentik FOREIGN KEY (outpostserviceconnection_ptr_id) REFERENCES public.authentik_outposts_outpostserviceconnection(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_outposts_dockerserviceconnection authentik_outposts_d_tls_authentication_i_942e2224_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_dockerserviceconnection
+    ADD CONSTRAINT authentik_outposts_d_tls_authentication_i_942e2224_fk_authentik FOREIGN KEY (tls_authentication_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_outposts_dockerserviceconnection authentik_outposts_d_tls_verification_id_769fac22_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_dockerserviceconnection
+    ADD CONSTRAINT authentik_outposts_d_tls_verification_id_769fac22_fk_authentik FOREIGN KEY (tls_verification_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_outposts_kubernetesserviceconnection authentik_outposts_k_outpostserviceconnec_f5cf691d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_kubernetesserviceconnection
+    ADD CONSTRAINT authentik_outposts_k_outpostserviceconnec_f5cf691d_fk_authentik FOREIGN KEY (outpostserviceconnection_ptr_id) REFERENCES public.authentik_outposts_outpostserviceconnection(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_outposts_outpost_providers authentik_outposts_o_outpost_id_eaaf025b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpost_providers
+    ADD CONSTRAINT authentik_outposts_o_outpost_id_eaaf025b_fk_authentik FOREIGN KEY (outpost_id) REFERENCES public.authentik_outposts_outpost(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_outposts_outpost_providers authentik_outposts_o_provider_id_7c5cb603_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpost_providers
+    ADD CONSTRAINT authentik_outposts_o_provider_id_7c5cb603_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_outposts_outpost authentik_outposts_o_service_connection_i_3eafd830_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_outposts_outpost
+    ADD CONSTRAINT authentik_outposts_o_service_connection_i_3eafd830_fk_authentik FOREIGN KEY (service_connection_id) REFERENCES public.authentik_outposts_outpostserviceconnection(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_dummy_dummypolicy authentik_policies_d_policy_ptr_id_d411c5e4_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_dummy_dummypolicy
+    ADD CONSTRAINT authentik_policies_d_policy_ptr_id_d411c5e4_fk_authentik FOREIGN KEY (policy_ptr_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_expression_expressionpolicy authentik_policies_e_policy_ptr_id_3fec413c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_expression_expressionpolicy
+    ADD CONSTRAINT authentik_policies_e_policy_ptr_id_3fec413c_fk_authentik FOREIGN KEY (policy_ptr_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_expiry_passwordexpirypolicy authentik_policies_e_policy_ptr_id_bad15341_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_expiry_passwordexpirypolicy
+    ADD CONSTRAINT authentik_policies_e_policy_ptr_id_bad15341_fk_authentik FOREIGN KEY (policy_ptr_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_event_matcher_eventmatcherpolicy authentik_policies_e_policy_ptr_id_f12a3e96_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_event_matcher_eventmatcherpolicy
+    ADD CONSTRAINT authentik_policies_e_policy_ptr_id_f12a3e96_fk_authentik FOREIGN KEY (policy_ptr_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_geoip_geoippolicy authentik_policies_g_policy_ptr_id_7501df4a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_geoip_geoippolicy
+    ADD CONSTRAINT authentik_policies_g_policy_ptr_id_7501df4a_fk_authentik FOREIGN KEY (policy_ptr_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_policybinding authentik_policies_p_group_id_2afb13ee_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_policybinding
+    ADD CONSTRAINT authentik_policies_p_group_id_2afb13ee_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_policybinding authentik_policies_p_policy_id_c07161e4_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_policybinding
+    ADD CONSTRAINT authentik_policies_p_policy_id_c07161e4_fk_authentik FOREIGN KEY (policy_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_password_passwordpolicy authentik_policies_p_policy_ptr_id_6301794d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_password_passwordpolicy
+    ADD CONSTRAINT authentik_policies_p_policy_ptr_id_6301794d_fk_authentik FOREIGN KEY (policy_ptr_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_policybinding authentik_policies_p_target_id_a7075d8d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_policybinding
+    ADD CONSTRAINT authentik_policies_p_target_id_a7075d8d_fk_authentik FOREIGN KEY (target_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_policybinding authentik_policies_p_user_id_323bebdb_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_policybinding
+    ADD CONSTRAINT authentik_policies_p_user_id_323bebdb_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_reputation_reputationpolicy authentik_policies_r_policy_ptr_id_5d5a869c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_reputation_reputationpolicy
+    ADD CONSTRAINT authentik_policies_r_policy_ptr_id_5d5a869c_fk_authentik FOREIGN KEY (policy_ptr_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_unique_password_uniquepasswordpolicy authentik_policies_u_policy_ptr_id_952465d1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_unique_password_uniquepasswordpolicy
+    ADD CONSTRAINT authentik_policies_u_policy_ptr_id_952465d1_fk_authentik FOREIGN KEY (policy_ptr_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_policies_unique_password_userpasswordhistory authentik_policies_u_user_id_24ca0276_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_policies_unique_password_userpasswordhistory
+    ADD CONSTRAINT authentik_policies_u_user_id_24ca0276_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode authentik_providers__actor_id_342dfa2a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_authorizationcode
+    ADD CONSTRAINT authentik_providers__actor_id_342dfa2a_fk_authentik FOREIGN KEY (actor_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken authentik_providers__actor_id_349e7533_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_refreshtoken
+    ADD CONSTRAINT authentik_providers__actor_id_349e7533_fk_authentik FOREIGN KEY (actor_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken authentik_providers__actor_id_5ee952a2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_accesstoken
+    ADD CONSTRAINT authentik_providers__actor_id_5ee952a2_fk_authentik FOREIGN KEY (actor_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovider authentik_providers__auth_oauth_id_7b28ad63_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider
+    ADD CONSTRAINT authentik_providers__auth_oauth_id_7b28ad63_fk_authentik FOREIGN KEY (auth_oauth_id) REFERENCES public.authentik_sources_oauth_oauthsource(source_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovider authentik_providers__auth_oauth_user_id_9e3b962e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider
+    ADD CONSTRAINT authentik_providers__auth_oauth_user_id_9e3b962e_fk_authentik FOREIGN KEY (auth_oauth_user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlprovider authentik_providers__authn_context_class__71738b39_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlprovider
+    ADD CONSTRAINT authentik_providers__authn_context_class__71738b39_fk_authentik FOREIGN KEY (authn_context_class_ref_mapping_id) REFERENCES public.authentik_providers_saml_samlpropertymapping(propertymapping_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ldap_ldapprovider authentik_providers__certificate_id_6a7a6af2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ldap_ldapprovider
+    ADD CONSTRAINT authentik_providers__certificate_id_6a7a6af2_fk_authentik FOREIGN KEY (certificate_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_radius_radiusprovider authentik_providers__certificate_id_830ce25c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_radius_radiusprovider
+    ADD CONSTRAINT authentik_providers__certificate_id_830ce25c_fk_authentik FOREIGN KEY (certificate_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_proxy_proxyprovider authentik_providers__certificate_id_b1e0c422_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_proxy_proxyprovider
+    ADD CONSTRAINT authentik_providers__certificate_id_b1e0c422_fk_authentik FOREIGN KEY (certificate_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_dynamicclientregistrationpropert3221 authentik_providers__dynamic_client_regis_f45495ce_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_dynamicclientregistrationpropert3221
+    ADD CONSTRAINT authentik_providers__dynamic_client_regis_f45495ce_fk_authentik FOREIGN KEY (dynamic_client_registration_id) REFERENCES public.authentik_providers_oauth2_oauth2dynamicclientregistration(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider authentik_providers__encryption_key_id_b98bc751_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider
+    ADD CONSTRAINT authentik_providers__encryption_key_id_b98bc751_fk_authentik FOREIGN KEY (encryption_key_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlprovider authentik_providers__encryption_kp_id_faee9966_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlprovider
+    ADD CONSTRAINT authentik_providers__encryption_kp_id_faee9966_fk_authentik FOREIGN KEY (encryption_kp_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_rac_connectiontoken authentik_providers__endpoint_id_5b06c6a5_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_connectiontoken
+    ADD CONSTRAINT authentik_providers__endpoint_id_5b06c6a5_fk_authentik FOREIGN KEY (endpoint_id) REFERENCES public.authentik_providers_rac_endpoint(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_rac_endpoint_property_mappings authentik_providers__endpoint_id_d7958eed_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_endpoint_property_mappings
+    ADD CONSTRAINT authentik_providers__endpoint_id_d7958eed_fk_authentik FOREIGN KEY (endpoint_id) REFERENCES public.authentik_providers_rac_endpoint(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovider authentik_providers__filter_group_id_44af6f79_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovider
+    ADD CONSTRAINT authentik_providers__filter_group_id_44af6f79_fk_authentik FOREIGN KEY (filter_group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovider authentik_providers__filter_group_id_eec535e2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovider
+    ADD CONSTRAINT authentik_providers__filter_group_id_eec535e2_fk_authentik FOREIGN KEY (filter_group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002 authentik_providers__from_oauth2provider__76c73438_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002
+    ADD CONSTRAINT authentik_providers__from_oauth2provider__76c73438_fk_authentik FOREIGN KEY (from_oauth2provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide63d9 authentik_providers__googleworkspaceprovi_6b2fba04_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide63d9
+    ADD CONSTRAINT authentik_providers__googleworkspaceprovi_6b2fba04_fk_authentik FOREIGN KEY (googleworkspaceprovider_id) REFERENCES public.authentik_providers_google_workspace_googleworkspaceprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovidergroup authentik_providers__group_id_04f83da4_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovidergroup
+    ADD CONSTRAINT authentik_providers__group_id_04f83da4_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovidergroup authentik_providers__group_id_071f6834_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovidergroup
+    ADD CONSTRAINT authentik_providers__group_id_071f6834_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovidee2fc authentik_providers__group_id_46818bf3_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovidee2fc
+    ADD CONSTRAINT authentik_providers__group_id_46818bf3_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_group_filters authentik_providers__group_id_7cfe6ff1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider_group_filters
+    ADD CONSTRAINT authentik_providers__group_id_7cfe6ff1_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovider_9f0b authentik_providers__microsoftentraprovid_76718da6_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovider_9f0b
+    ADD CONSTRAINT authentik_providers__microsoftentraprovid_76718da6_fk_authentik FOREIGN KEY (microsoftentraprovider_id) REFERENCES public.authentik_providers_microsoft_entra_microsoftentraprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlprovider authentik_providers__name_id_mapping_id_5d45f77f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlprovider
+    ADD CONSTRAINT authentik_providers__name_id_mapping_id_5d45f77f_fk_authentik FOREIGN KEY (name_id_mapping_id) REFERENCES public.authentik_providers_saml_samlpropertymapping(propertymapping_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider_oidc_auth_providers authentik_providers__oauth2provider_id_6e229ff5_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_ssfprovider_oidc_auth_providers
+    ADD CONSTRAINT authentik_providers__oauth2provider_id_6e229ff5_fk_authentik FOREIGN KEY (oauth2provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 authentik_providers__oauth2provider_id_c3adf184_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48
+    ADD CONSTRAINT authentik_providers__oauth2provider_id_c3adf184_fk_authentik FOREIGN KEY (oauth2provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_proxy_proxyprovider authentik_providers__oauth2provider_ptr_i_eb747e01_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_proxy_proxyprovider
+    ADD CONSTRAINT authentik_providers__oauth2provider_ptr_i_eb747e01_fk_authentik FOREIGN KEY (oauth2provider_ptr_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 authentik_providers__oauthsource_id_41457c33_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48
+    ADD CONSTRAINT authentik_providers__oauthsource_id_41457c33_fk_authentik FOREIGN KEY (oauthsource_id) REFERENCES public.authentik_sources_oauth_oauthsource(source_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2dynamicclientregistration authentik_providers__override_authorizati_a001810a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2dynamicclientregistration
+    ADD CONSTRAINT authentik_providers__override_authorizati_a001810a_fk_authentik FOREIGN KEY (override_authorization_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2dynamicclientregistration authentik_providers__override_invalidatio_fa0396ab_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2dynamicclientregistration
+    ADD CONSTRAINT authentik_providers__override_invalidatio_fa0396ab_fk_authentik FOREIGN KEY (override_invalidation_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_rac_endpoint authentik_providers__policybindingmodel_p_a3f91291_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_endpoint
+    ADD CONSTRAINT authentik_providers__policybindingmodel_p_a3f91291_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2dynamicclientregistration authentik_providers__policybindingmodel_p_e235b986_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2dynamicclientregistration
+    ADD CONSTRAINT authentik_providers__policybindingmodel_p_e235b986_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_dynamicclientregistrationpropert3221 authentik_providers__property_mapping_id_99b43a14_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_dynamicclientregistrationpropert3221
+    ADD CONSTRAINT authentik_providers__property_mapping_id_99b43a14_fk_authentik FOREIGN KEY (property_mapping_id) REFERENCES public.authentik_providers_oauth2_scopemapping(propertymapping_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide63d9 authentik_providers__propertymapping_id_0e9cd107_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide63d9
+    ADD CONSTRAINT authentik_providers__propertymapping_id_0e9cd107_fk_authentik FOREIGN KEY (propertymapping_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovider_9f0b authentik_providers__propertymapping_id_626bd75c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovider_9f0b
+    ADD CONSTRAINT authentik_providers__propertymapping_id_626bd75c_fk_authentik FOREIGN KEY (propertymapping_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_property_mappings_group authentik_providers__propertymapping_id_7ea3950a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider_property_mappings_group
+    ADD CONSTRAINT authentik_providers__propertymapping_id_7ea3950a_fk_authentik FOREIGN KEY (propertymapping_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_rac_endpoint_property_mappings authentik_providers__propertymapping_id_9612cd91_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_endpoint_property_mappings
+    ADD CONSTRAINT authentik_providers__propertymapping_id_9612cd91_fk_authentik FOREIGN KEY (propertymapping_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide8e50 authentik_providers__propertymapping_ptr__334f68ae_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide8e50
+    ADD CONSTRAINT authentik_providers__propertymapping_ptr__334f68ae_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_scopemapping authentik_providers__propertymapping_ptr__37f1d926_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_scopemapping
+    ADD CONSTRAINT authentik_providers__propertymapping_ptr__37f1d926_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlpropertymapping authentik_providers__propertymapping_ptr__812e8cfb_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlpropertymapping
+    ADD CONSTRAINT authentik_providers__propertymapping_ptr__812e8cfb_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimmapping authentik_providers__propertymapping_ptr__bd79ae32_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimmapping
+    ADD CONSTRAINT authentik_providers__propertymapping_ptr__bd79ae32_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraproviderm5d26 authentik_providers__propertymapping_ptr__d887106b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraproviderm5d26
+    ADD CONSTRAINT authentik_providers__propertymapping_ptr__d887106b_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_rac_racpropertymapping authentik_providers__propertymapping_ptr__deb6517b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_racpropertymapping
+    ADD CONSTRAINT authentik_providers__propertymapping_ptr__deb6517b_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_radius_radiusproviderpropertymapping authentik_providers__propertymapping_ptr__ff560743_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_radius_radiusproviderpropertymapping
+    ADD CONSTRAINT authentik_providers__propertymapping_ptr__ff560743_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovideruser authentik_providers__provider_id_08127ac7_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovideruser
+    ADD CONSTRAINT authentik_providers__provider_id_08127ac7_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_scim_scimprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide423f authentik_providers__provider_id_19d0c29e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide423f
+    ADD CONSTRAINT authentik_providers__provider_id_19d0c29e_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_google_workspace_googleworkspaceprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovidergroup authentik_providers__provider_id_29f58417_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovidergroup
+    ADD CONSTRAINT authentik_providers__provider_id_29f58417_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_scim_scimprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_rac_endpoint authentik_providers__provider_id_2cee1085_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_endpoint
+    ADD CONSTRAINT authentik_providers__provider_id_2cee1085_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_rac_racprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken authentik_providers__provider_id_40ef5d24_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_accesstoken
+    ADD CONSTRAINT authentik_providers__provider_id_40ef5d24_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlsession authentik_providers__provider_id_4af2b52e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlsession
+    ADD CONSTRAINT authentik_providers__provider_id_4af2b52e_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_saml_samlprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovidergroup authentik_providers__provider_id_5815d3d4_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovidergroup
+    ADD CONSTRAINT authentik_providers__provider_id_5815d3d4_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_microsoft_entra_microsoftentraprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode authentik_providers__provider_id_731a3e62_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_authorizationcode
+    ADD CONSTRAINT authentik_providers__provider_id_731a3e62_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_rac_connectiontoken authentik_providers__provider_id_80702818_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_connectiontoken
+    ADD CONSTRAINT authentik_providers__provider_id_80702818_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_rac_racprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken authentik_providers__provider_id_8bf99dba_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_refreshtoken
+    ADD CONSTRAINT authentik_providers__provider_id_8bf99dba_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken authentik_providers__provider_id_bd1ef28a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_devicetoken
+    ADD CONSTRAINT authentik_providers__provider_id_bd1ef28a_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovidee2fc authentik_providers__provider_id_c0f1df13_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovidee2fc
+    ADD CONSTRAINT authentik_providers__provider_id_c0f1df13_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_google_workspace_googleworkspaceprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ssf_stream authentik_providers__provider_id_c97d58b7_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_stream
+    ADD CONSTRAINT authentik_providers__provider_id_c97d58b7_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_ssf_ssfprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovideruser authentik_providers__provider_id_d18a6155_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovideruser
+    ADD CONSTRAINT authentik_providers__provider_id_d18a6155_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_microsoft_entra_microsoftentraprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2dynamicclientregistration authentik_providers__provider_id_eb0ef2d8_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2dynamicclientregistration
+    ADD CONSTRAINT authentik_providers__provider_id_eb0ef2d8_fk_authentik FOREIGN KEY (provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovider authentik_providers__provider_ptr_id_03709eb5_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovider
+    ADD CONSTRAINT authentik_providers__provider_ptr_id_03709eb5_fk_authentik FOREIGN KEY (provider_ptr_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlprovider authentik_providers__provider_ptr_id_677ac81a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlprovider
+    ADD CONSTRAINT authentik_providers__provider_ptr_id_677ac81a_fk_authentik FOREIGN KEY (provider_ptr_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider authentik_providers__provider_ptr_id_76903270_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider
+    ADD CONSTRAINT authentik_providers__provider_ptr_id_76903270_fk_authentik FOREIGN KEY (provider_ptr_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovider authentik_providers__provider_ptr_id_77bcf9bd_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider
+    ADD CONSTRAINT authentik_providers__provider_ptr_id_77bcf9bd_fk_authentik FOREIGN KEY (provider_ptr_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_radius_radiusprovider authentik_providers__provider_ptr_id_908e5d8a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_radius_radiusprovider
+    ADD CONSTRAINT authentik_providers__provider_ptr_id_908e5d8a_fk_authentik FOREIGN KEY (provider_ptr_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_rac_racprovider authentik_providers__provider_ptr_id_92ef42d6_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_racprovider
+    ADD CONSTRAINT authentik_providers__provider_ptr_id_92ef42d6_fk_authentik FOREIGN KEY (provider_ptr_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovider authentik_providers__provider_ptr_id_bbd1792f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovider
+    ADD CONSTRAINT authentik_providers__provider_ptr_id_bbd1792f_fk_authentik FOREIGN KEY (provider_ptr_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ldap_ldapprovider authentik_providers__provider_ptr_id_deae38fd_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ldap_ldapprovider
+    ADD CONSTRAINT authentik_providers__provider_ptr_id_deae38fd_fk_authentik FOREIGN KEY (provider_ptr_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider authentik_providers__provider_ptr_id_e3010395_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_ssfprovider
+    ADD CONSTRAINT authentik_providers__provider_ptr_id_e3010395_fk_authentik FOREIGN KEY (provider_ptr_id) REFERENCES public.authentik_core_provider(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ws_federation_wsfederationprovider authentik_providers__samlprovider_ptr_id_fe79a38d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ws_federation_wsfederationprovider
+    ADD CONSTRAINT authentik_providers__samlprovider_ptr_id_fe79a38d_fk_authentik FOREIGN KEY (samlprovider_ptr_id) REFERENCES public.authentik_providers_saml_samlprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_group_filters authentik_providers__scimprovider_id_1055ca26_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider_group_filters
+    ADD CONSTRAINT authentik_providers__scimprovider_id_1055ca26_fk_authentik FOREIGN KEY (scimprovider_id) REFERENCES public.authentik_providers_scim_scimprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovider_property_mappings_group authentik_providers__scimprovider_id_c3c41ae0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovider_property_mappings_group
+    ADD CONSTRAINT authentik_providers__scimprovider_id_c3c41ae0_fk_authentik FOREIGN KEY (scimprovider_id) REFERENCES public.authentik_providers_scim_scimprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode authentik_providers__session_id_1e6dcbdb_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_authorizationcode
+    ADD CONSTRAINT authentik_providers__session_id_1e6dcbdb_fk_authentik FOREIGN KEY (session_id) REFERENCES public.authentik_core_authenticatedsession(session_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken authentik_providers__session_id_8fe0c4a4_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_refreshtoken
+    ADD CONSTRAINT authentik_providers__session_id_8fe0c4a4_fk_authentik FOREIGN KEY (session_id) REFERENCES public.authentik_core_authenticatedsession(session_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_rac_connectiontoken authentik_providers__session_id_b0bb6e97_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_rac_connectiontoken
+    ADD CONSTRAINT authentik_providers__session_id_b0bb6e97_fk_authentik FOREIGN KEY (session_id) REFERENCES public.authentik_core_authenticatedsession(session_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlsession authentik_providers__session_id_b3062c87_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlsession
+    ADD CONSTRAINT authentik_providers__session_id_b3062c87_fk_authentik FOREIGN KEY (session_id) REFERENCES public.authentik_core_authenticatedsession(session_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken authentik_providers__session_id_c83e6eb0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_devicetoken
+    ADD CONSTRAINT authentik_providers__session_id_c83e6eb0_fk_authentik FOREIGN KEY (session_id) REFERENCES public.authentik_core_authenticatedsession(session_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken authentik_providers__session_id_e677fbba_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_accesstoken
+    ADD CONSTRAINT authentik_providers__session_id_e677fbba_fk_authentik FOREIGN KEY (session_id) REFERENCES public.authentik_core_authenticatedsession(session_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider authentik_providers__signing_key_id_4189c2f3_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider
+    ADD CONSTRAINT authentik_providers__signing_key_id_4189c2f3_fk_authentik FOREIGN KEY (signing_key_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider authentik_providers__signing_key_id_afd45b72_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_ssfprovider
+    ADD CONSTRAINT authentik_providers__signing_key_id_afd45b72_fk_authentik FOREIGN KEY (signing_key_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlprovider authentik_providers__signing_kp_id_f1bce700_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlprovider
+    ADD CONSTRAINT authentik_providers__signing_kp_id_f1bce700_fk_authentik FOREIGN KEY (signing_kp_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider_oidc_auth_providers authentik_providers__ssfprovider_id_004ecc14_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_ssfprovider_oidc_auth_providers
+    ADD CONSTRAINT authentik_providers__ssfprovider_id_004ecc14_fk_authentik FOREIGN KEY (ssfprovider_id) REFERENCES public.authentik_providers_ssf_ssfprovider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ssf_streamevent authentik_providers__stream_id_7bf74e5b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_streamevent
+    ADD CONSTRAINT authentik_providers__stream_id_7bf74e5b_fk_authentik FOREIGN KEY (stream_id) REFERENCES public.authentik_providers_ssf_stream(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002 authentik_providers__to_oauth2provider_id_bc978130_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002
+    ADD CONSTRAINT authentik_providers__to_oauth2provider_id_bc978130_fk_authentik FOREIGN KEY (to_oauth2provider_id) REFERENCES public.authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_ssf_ssfprovider authentik_providers__token_id_0ad6da12_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_ssf_ssfprovider
+    ADD CONSTRAINT authentik_providers__token_id_0ad6da12_fk_authentik FOREIGN KEY (token_id) REFERENCES public.authentik_core_token(token_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_devicetoken authentik_providers__user_id_17317b6d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_devicetoken
+    ADD CONSTRAINT authentik_providers__user_id_17317b6d_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_microsoft_entra_microsoftentraprovideruser authentik_providers__user_id_2c83dfcb_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_microsoft_entra_microsoftentraprovideruser
+    ADD CONSTRAINT authentik_providers__user_id_2c83dfcb_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlsession authentik_providers__user_id_487a792d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlsession
+    ADD CONSTRAINT authentik_providers__user_id_487a792d_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_scim_scimprovideruser authentik_providers__user_id_63e0ca83_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_scim_scimprovideruser
+    ADD CONSTRAINT authentik_providers__user_id_63e0ca83_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_google_workspace_googleworkspaceprovide423f authentik_providers__user_id_70f46bd3_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_google_workspace_googleworkspaceprovide423f
+    ADD CONSTRAINT authentik_providers__user_id_70f46bd3_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_accesstoken authentik_providers__user_id_7261588f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_accesstoken
+    ADD CONSTRAINT authentik_providers__user_id_7261588f_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_authorizationcode authentik_providers__user_id_c9a35141_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_authorizationcode
+    ADD CONSTRAINT authentik_providers__user_id_c9a35141_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_oauth2_refreshtoken authentik_providers__user_id_ebdc1143_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_oauth2_refreshtoken
+    ADD CONSTRAINT authentik_providers__user_id_ebdc1143_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_providers_saml_samlprovider authentik_providers__verification_kp_id_7b0fbd80_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_providers_saml_samlprovider
+    ADD CONSTRAINT authentik_providers__verification_kp_id_7b0fbd80_fk_authentik FOREIGN KEY (verification_kp_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_rbac_initialpermissions_permissions authentik_rbac_initi_initialpermissions_i_791926a4_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_initialpermissions_permissions
+    ADD CONSTRAINT authentik_rbac_initi_initialpermissions_i_791926a4_fk_authentik FOREIGN KEY (initialpermissions_id) REFERENCES public.authentik_rbac_initialpermissions(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_rbac_initialpermissions_permissions authentik_rbac_initi_permission_id_41d32761_fk_auth_perm; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_initialpermissions_permissions
+    ADD CONSTRAINT authentik_rbac_initi_permission_id_41d32761_fk_auth_perm FOREIGN KEY (permission_id) REFERENCES public.auth_permission(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_rbac_initialpermissions authentik_rbac_initi_role_id_a4a06afc_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_rbac_initialpermissions
+    ADD CONSTRAINT authentik_rbac_initi_role_id_a4a06afc_fk_authentik FOREIGN KEY (role_id) REFERENCES public.authentik_rbac_role(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_reports_dataexport authentik_reports_da_content_type_id_028f8e74_fk_django_co; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_reports_dataexport
+    ADD CONSTRAINT authentik_reports_da_content_type_id_028f8e74_fk_django_co FOREIGN KEY (content_type_id) REFERENCES public.django_content_type(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_reports_dataexport authentik_reports_da_requested_by_id_20b84ac8_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_reports_dataexport
+    ADD CONSTRAINT authentik_reports_da_requested_by_id_20b84ac8_fk_authentik FOREIGN KEY (requested_by_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_grantrequest authentik_requests_g_agent_owner_id_8d70d324_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequest
+    ADD CONSTRAINT authentik_requests_g_agent_owner_id_8d70d324_fk_authentik FOREIGN KEY (agent_owner_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_grantrequesttarget authentik_requests_g_binding_id_1fadba70_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequesttarget
+    ADD CONSTRAINT authentik_requests_g_binding_id_1fadba70_fk_authentik FOREIGN KEY (binding_id) REFERENCES public.authentik_policies_policybinding(policy_binding_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_grantrequest authentik_requests_g_created_by_id_bcc06b49_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequest
+    ADD CONSTRAINT authentik_requests_g_created_by_id_bcc06b49_fk_authentik FOREIGN KEY (created_by_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_grantrequest authentik_requests_g_fulfilled_by_id_b4c96ba2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequest
+    ADD CONSTRAINT authentik_requests_g_fulfilled_by_id_b4c96ba2_fk_authentik FOREIGN KEY (fulfilled_by_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_grantrequestapproval authentik_requests_g_request_id_3ce93ed5_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequestapproval
+    ADD CONSTRAINT authentik_requests_g_request_id_3ce93ed5_fk_authentik FOREIGN KEY (request_id) REFERENCES public.authentik_requests_grantrequest(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_grantrequesttarget authentik_requests_g_request_id_c7456832_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequesttarget
+    ADD CONSTRAINT authentik_requests_g_request_id_c7456832_fk_authentik FOREIGN KEY (request_id) REFERENCES public.authentik_requests_grantrequest(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_grantrequestapproval authentik_requests_g_reviewer_id_259197df_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequestapproval
+    ADD CONSTRAINT authentik_requests_g_reviewer_id_259197df_fk_authentik FOREIGN KEY (reviewer_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_grantrequest authentik_requests_g_revoked_by_id_a2805a00_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequest
+    ADD CONSTRAINT authentik_requests_g_revoked_by_id_a2805a00_fk_authentik FOREIGN KEY (revoked_by_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_grantrequesttarget authentik_requests_g_target_id_272c04c0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_grantrequesttarget
+    ADD CONSTRAINT authentik_requests_g_target_id_272c04c0_fk_authentik FOREIGN KEY (target_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_requestrulechildbinding authentik_requests_r_binding_id_e0de9733_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulechildbinding
+    ADD CONSTRAINT authentik_requests_r_binding_id_e0de9733_fk_authentik FOREIGN KEY (binding_id) REFERENCES public.authentik_requests_requestrulebinding(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_requestrulenotificationtransport authentik_requests_r_notification_transpo_9b7689e4_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulenotificationtransport
+    ADD CONSTRAINT authentik_requests_r_notification_transpo_9b7689e4_fk_authentik FOREIGN KEY (notification_transport_id) REFERENCES public.authentik_events_notificationtransport(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_requestrule authentik_requests_r_policybindingmodel_p_5295493d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrule
+    ADD CONSTRAINT authentik_requests_r_policybindingmodel_p_5295493d_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_requestrulebinding authentik_requests_r_policybindingmodel_p_c9c12e9c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulebinding
+    ADD CONSTRAINT authentik_requests_r_policybindingmodel_p_c9c12e9c_fk_authentik FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_requestrule authentik_requests_r_request_flow_id_4b4ac199_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrule
+    ADD CONSTRAINT authentik_requests_r_request_flow_id_4b4ac199_fk_authentik FOREIGN KEY (request_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_requestrulebinding authentik_requests_r_rule_id_8013a0f9_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulebinding
+    ADD CONSTRAINT authentik_requests_r_rule_id_8013a0f9_fk_authentik FOREIGN KEY (rule_id) REFERENCES public.authentik_requests_requestrule(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_requestrulenotificationtransport authentik_requests_r_rule_id_de0d1a07_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulenotificationtransport
+    ADD CONSTRAINT authentik_requests_r_rule_id_de0d1a07_fk_authentik FOREIGN KEY (rule_id) REFERENCES public.authentik_requests_requestrule(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_requestrulechildbinding authentik_requests_r_target_id_0e7d4419_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulechildbinding
+    ADD CONSTRAINT authentik_requests_r_target_id_0e7d4419_fk_authentik FOREIGN KEY (target_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_requests_requestrulebinding authentik_requests_r_target_id_5e666159_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_requests_requestrulebinding
+    ADD CONSTRAINT authentik_requests_r_target_id_5e666159_fk_authentik FOREIGN KEY (target_id) REFERENCES public.authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_kerberos_groupkerberossourceconnection authentik_sources_ke_groupsourceconnectio_dd247900_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_kerberos_groupkerberossourceconnection
+    ADD CONSTRAINT authentik_sources_ke_groupsourceconnectio_dd247900_fk_authentik FOREIGN KEY (groupsourceconnection_ptr_id) REFERENCES public.authentik_core_groupsourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_kerberos_kerberossourcepropertymapping authentik_sources_ke_propertymapping_ptr__6b093748_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_kerberos_kerberossourcepropertymapping
+    ADD CONSTRAINT authentik_sources_ke_propertymapping_ptr__6b093748_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_kerberos_kerberossource authentik_sources_ke_source_ptr_id_cb42c2a6_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_kerberos_kerberossource
+    ADD CONSTRAINT authentik_sources_ke_source_ptr_id_cb42c2a6_fk_authentik FOREIGN KEY (source_ptr_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_kerberos_userkerberossourceconnection authentik_sources_ke_usersourceconnection_7ef57d07_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_kerberos_userkerberossourceconnection
+    ADD CONSTRAINT authentik_sources_ke_usersourceconnection_7ef57d07_fk_authentik FOREIGN KEY (usersourceconnection_ptr_id) REFERENCES public.authentik_core_usersourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_ldap_ldapsource authentik_sources_ld_client_certificate_i_937bc1c9_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_ldapsource
+    ADD CONSTRAINT authentik_sources_ld_client_certificate_i_937bc1c9_fk_authentik FOREIGN KEY (client_certificate_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_ldap_groupldapsourceconnection authentik_sources_ld_groupsourceconnectio_af0f834a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_groupldapsourceconnection
+    ADD CONSTRAINT authentik_sources_ld_groupsourceconnectio_af0f834a_fk_authentik FOREIGN KEY (groupsourceconnection_ptr_id) REFERENCES public.authentik_core_groupsourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_ldap_ldapsource authentik_sources_ld_peer_certificate_id_50528d0a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_ldapsource
+    ADD CONSTRAINT authentik_sources_ld_peer_certificate_id_50528d0a_fk_authentik FOREIGN KEY (peer_certificate_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_ldap_ldapsourcepropertymapping authentik_sources_ld_propertymapping_ptr__559cd35b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_ldapsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_ld_propertymapping_ptr__559cd35b_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_ldap_ldapsource authentik_sources_ld_source_ptr_id_264402b5_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_ldapsource
+    ADD CONSTRAINT authentik_sources_ld_source_ptr_id_264402b5_fk_authentik FOREIGN KEY (source_ptr_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_ldap_ldapsource authentik_sources_ld_sync_parent_group_id_9c730e90_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_ldapsource
+    ADD CONSTRAINT authentik_sources_ld_sync_parent_group_id_9c730e90_fk_authentik FOREIGN KEY (sync_parent_group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_ldap_userldapsourceconnection authentik_sources_ld_usersourceconnection_75a429e7_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_ldap_userldapsourceconnection
+    ADD CONSTRAINT authentik_sources_ld_usersourceconnection_75a429e7_fk_authentik FOREIGN KEY (usersourceconnection_ptr_id) REFERENCES public.authentik_core_usersourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_oauth_groupoauthsourceconnection authentik_sources_oa_groupsourceconnectio_27c32a79_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_oauth_groupoauthsourceconnection
+    ADD CONSTRAINT authentik_sources_oa_groupsourceconnectio_27c32a79_fk_authentik FOREIGN KEY (groupsourceconnection_ptr_id) REFERENCES public.authentik_core_groupsourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_oauth_oauthsourcepropertymapping authentik_sources_oa_propertymapping_ptr__e46d3f80_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_oauth_oauthsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_oa_propertymapping_ptr__e46d3f80_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_oauth_oauthsource authentik_sources_oa_source_ptr_id_eb45d674_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_oauth_oauthsource
+    ADD CONSTRAINT authentik_sources_oa_source_ptr_id_eb45d674_fk_authentik FOREIGN KEY (source_ptr_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_oauth_useroauthsourceconnection authentik_sources_oa_usersourceconnection_e9ae7a6b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_oauth_useroauthsourceconnection
+    ADD CONSTRAINT authentik_sources_oa_usersourceconnection_e9ae7a6b_fk_authentik FOREIGN KEY (usersourceconnection_ptr_id) REFERENCES public.authentik_core_usersourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_plex_groupplexsourceconnection authentik_sources_pl_groupsourceconnectio_b0f1d22f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_plex_groupplexsourceconnection
+    ADD CONSTRAINT authentik_sources_pl_groupsourceconnectio_b0f1d22f_fk_authentik FOREIGN KEY (groupsourceconnection_ptr_id) REFERENCES public.authentik_core_groupsourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_plex_plexsourcepropertymapping authentik_sources_pl_propertymapping_ptr__8be3b195_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_plex_plexsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_pl_propertymapping_ptr__8be3b195_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_plex_plexsource authentik_sources_pl_source_ptr_id_b52adfc2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_plex_plexsource
+    ADD CONSTRAINT authentik_sources_pl_source_ptr_id_b52adfc2_fk_authentik FOREIGN KEY (source_ptr_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_plex_userplexsourceconnection authentik_sources_pl_usersourceconnection_ff3dd805_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_plex_userplexsourceconnection
+    ADD CONSTRAINT authentik_sources_pl_usersourceconnection_ff3dd805_fk_authentik FOREIGN KEY (usersourceconnection_ptr_id) REFERENCES public.authentik_core_usersourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_saml_samlsource authentik_sources_sa_encryption_kp_id_8efc7a51_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_samlsource
+    ADD CONSTRAINT authentik_sources_sa_encryption_kp_id_8efc7a51_fk_authentik FOREIGN KEY (encryption_kp_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_saml_groupsamlsourceconnection authentik_sources_sa_groupsourceconnectio_ca3cfe1e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_groupsamlsourceconnection
+    ADD CONSTRAINT authentik_sources_sa_groupsourceconnectio_ca3cfe1e_fk_authentik FOREIGN KEY (groupsourceconnection_ptr_id) REFERENCES public.authentik_core_groupsourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_saml_samlsource authentik_sources_sa_pre_authentication_f_cec52f8b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_samlsource
+    ADD CONSTRAINT authentik_sources_sa_pre_authentication_f_cec52f8b_fk_authentik FOREIGN KEY (pre_authentication_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_saml_samlsourcepropertymapping authentik_sources_sa_propertymapping_ptr__ef38ce64_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_samlsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_sa_propertymapping_ptr__ef38ce64_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_saml_samlsource authentik_sources_sa_signing_kp_id_faae605c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_samlsource
+    ADD CONSTRAINT authentik_sources_sa_signing_kp_id_faae605c_fk_authentik FOREIGN KEY (signing_kp_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_saml_samlsource authentik_sources_sa_source_ptr_id_3381b214_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_samlsource
+    ADD CONSTRAINT authentik_sources_sa_source_ptr_id_3381b214_fk_authentik FOREIGN KEY (source_ptr_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_saml_usersamlsourceconnection authentik_sources_sa_usersourceconnection_b6d9dcfe_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_usersamlsourceconnection
+    ADD CONSTRAINT authentik_sources_sa_usersourceconnection_b6d9dcfe_fk_authentik FOREIGN KEY (usersourceconnection_ptr_id) REFERENCES public.authentik_core_usersourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_saml_samlsource authentik_sources_sa_verification_kp_id_f76620d9_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_saml_samlsource
+    ADD CONSTRAINT authentik_sources_sa_verification_kp_id_f76620d9_fk_authentik FOREIGN KEY (verification_kp_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_scim_scimsourcegroup authentik_sources_sc_group_id_c59bde52_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourcegroup
+    ADD CONSTRAINT authentik_sources_sc_group_id_c59bde52_fk_authentik FOREIGN KEY (group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_scim_scimsourcepropertymapping authentik_sources_sc_propertymapping_ptr__0ad3c57f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_sc_propertymapping_ptr__0ad3c57f_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_scim_scimsourcegroup authentik_sources_sc_source_id_000ff364_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourcegroup
+    ADD CONSTRAINT authentik_sources_sc_source_id_000ff364_fk_authentik FOREIGN KEY (source_id) REFERENCES public.authentik_sources_scim_scimsource(source_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_scim_scimsourceuser authentik_sources_sc_source_id_f2022fad_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourceuser
+    ADD CONSTRAINT authentik_sources_sc_source_id_f2022fad_fk_authentik FOREIGN KEY (source_id) REFERENCES public.authentik_sources_scim_scimsource(source_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_scim_scimsource authentik_sources_sc_source_ptr_id_67fa239b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsource
+    ADD CONSTRAINT authentik_sources_sc_source_ptr_id_67fa239b_fk_authentik FOREIGN KEY (source_ptr_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_scim_scimsource authentik_sources_sc_token_id_8cfd053b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsource
+    ADD CONSTRAINT authentik_sources_sc_token_id_8cfd053b_fk_authentik FOREIGN KEY (token_id) REFERENCES public.authentik_core_token(token_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_scim_scimsourceuser authentik_sources_sc_user_id_8cd43d1e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_scim_scimsourceuser
+    ADD CONSTRAINT authentik_sources_sc_user_id_8cd43d1e_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_telegram_grouptelegramsourceconnection authentik_sources_te_groupsourceconnectio_d1bd81ab_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_telegram_grouptelegramsourceconnection
+    ADD CONSTRAINT authentik_sources_te_groupsourceconnectio_d1bd81ab_fk_authentik FOREIGN KEY (groupsourceconnection_ptr_id) REFERENCES public.authentik_core_groupsourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_telegram_telegramsource authentik_sources_te_pre_authentication_f_2838f1db_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_telegram_telegramsource
+    ADD CONSTRAINT authentik_sources_te_pre_authentication_f_2838f1db_fk_authentik FOREIGN KEY (pre_authentication_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_telegram_telegramsourcepropertymapping authentik_sources_te_propertymapping_ptr__77db8d93_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_telegram_telegramsourcepropertymapping
+    ADD CONSTRAINT authentik_sources_te_propertymapping_ptr__77db8d93_fk_authentik FOREIGN KEY (propertymapping_ptr_id) REFERENCES public.authentik_core_propertymapping(pm_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_telegram_telegramsource authentik_sources_te_source_ptr_id_fa4f8e88_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_telegram_telegramsource
+    ADD CONSTRAINT authentik_sources_te_source_ptr_id_fa4f8e88_fk_authentik FOREIGN KEY (source_ptr_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_sources_telegram_usertelegramsourceconnection authentik_sources_te_usersourceconnection_7d59da99_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_sources_telegram_usertelegramsourceconnection
+    ADD CONSTRAINT authentik_sources_te_usersourceconnection_7d59da99_fk_authentik FOREIGN KEY (usersourceconnection_ptr_id) REFERENCES public.authentik_core_usersourceconnection(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_account_lockdown_accountlockdownstage authentik_stages_acc_self_service_complet_59dcb701_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_account_lockdown_accountlockdownstage
+    ADD CONSTRAINT authentik_stages_acc_self_service_complet_59dcb701_fk_authentik FOREIGN KEY (self_service_completion_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_account_lockdown_accountlockdownstage authentik_stages_acc_stage_ptr_id_769781f1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_account_lockdown_accountlockdownstage
+    ADD CONSTRAINT authentik_stages_acc_stage_ptr_id_769781f1_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida8318 authentik_stages_aut_authenticatorvalidat_5e4af44f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida8318
+    ADD CONSTRAINT authentik_stages_aut_authenticatorvalidat_5e4af44f_fk_authentik FOREIGN KEY (authenticatorvalidatestage_id) REFERENCES public.authentik_stages_authenticator_validate_authenticatorvalida499c(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida3e25 authentik_stages_aut_authenticatorvalidat_aff63c61_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida3e25
+    ADD CONSTRAINT authentik_stages_aut_authenticatorvalidat_aff63c61_fk_authentik FOREIGN KEY (authenticatorvalidatestage_id) REFERENCES public.authentik_stages_authenticator_validate_authenticatorvalida499c(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorwebaute3a7 authentik_stages_aut_authenticatorwebauth_ac9bce0f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_authenticatorwebaute3a7
+    ADD CONSTRAINT authentik_stages_aut_authenticatorwebauth_ac9bce0f_fk_authentik FOREIGN KEY (authenticatorwebauthnstage_id) REFERENCES public.authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_static_authenticatorstaticstage authentik_stages_aut_configure_flow_id_0e413e4d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_static_authenticatorstaticstage
+    ADD CONSTRAINT authentik_stages_aut_configure_flow_id_0e413e4d_fk_authentik FOREIGN KEY (configure_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_email_authenticatoremailstage authentik_stages_aut_configure_flow_id_1debc887_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_email_authenticatoremailstage
+    ADD CONSTRAINT authentik_stages_aut_configure_flow_id_1debc887_fk_authentik FOREIGN KEY (configure_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_duo_authenticatorduostage authentik_stages_aut_configure_flow_id_4c667db1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_duo_authenticatorduostage
+    ADD CONSTRAINT authentik_stages_aut_configure_flow_id_4c667db1_fk_authentik FOREIGN KEY (configure_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f authentik_stages_aut_configure_flow_id_4d9c4040_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f
+    ADD CONSTRAINT authentik_stages_aut_configure_flow_id_4d9c4040_fk_authentik FOREIGN KEY (configure_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_authenticatore2741 authentik_stages_aut_configure_flow_id_4f90c912_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_endpoint_gdtc_authenticatore2741
+    ADD CONSTRAINT authentik_stages_aut_configure_flow_id_4f90c912_fk_authentik FOREIGN KEY (configure_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_totp_authenticatortotpstage authentik_stages_aut_configure_flow_id_e6d859e3_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_totp_authenticatortotpstage
+    ADD CONSTRAINT authentik_stages_aut_configure_flow_id_e6d859e3_fk_authentik FOREIGN KEY (configure_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_sms_authenticatorsmsstage authentik_stages_aut_configure_flow_id_ff974e9e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_sms_authenticatorsmsstage
+    ADD CONSTRAINT authentik_stages_aut_configure_flow_id_ff974e9e_fk_authentik FOREIGN KEY (configure_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_static_statictoken authentik_stages_aut_device_id_d6704f09_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_static_statictoken
+    ADD CONSTRAINT authentik_stages_aut_device_id_d6704f09_fk_authentik FOREIGN KEY (device_id) REFERENCES public.authentik_stages_authenticator_static_staticdevice(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc authentik_stages_aut_device_id_fcd3bb01_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc
+    ADD CONSTRAINT authentik_stages_aut_device_id_fcd3bb01_fk_authentik FOREIGN KEY (device_id) REFERENCES public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_webauthndevice authentik_stages_aut_device_type_id_cce3aadb_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_webauthndevice
+    ADD CONSTRAINT authentik_stages_aut_device_type_id_cce3aadb_fk_authentik FOREIGN KEY (device_type_id) REFERENCES public.authentik_stages_authenticator_webauthn_webauthndevicetype(aaguid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_sms_authenticatorsmsstage authentik_stages_aut_mapping_id_72d070b3_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_sms_authenticatorsmsstage
+    ADD CONSTRAINT authentik_stages_aut_mapping_id_72d070b3_fk_authentik FOREIGN KEY (mapping_id) REFERENCES public.authentik_events_notificationwebhookmapping(propertymapping_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_sms_smsdevice authentik_stages_aut_stage_id_35c87fa6_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_sms_smsdevice
+    ADD CONSTRAINT authentik_stages_aut_stage_id_35c87fa6_fk_authentik FOREIGN KEY (stage_id) REFERENCES public.authentik_stages_authenticator_sms_authenticatorsmsstage(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida3e25 authentik_stages_aut_stage_id_3c37cac7_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida3e25
+    ADD CONSTRAINT authentik_stages_aut_stage_id_3c37cac7_fk_authentik FOREIGN KEY (stage_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_email_emaildevice authentik_stages_aut_stage_id_4c643407_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_email_emaildevice
+    ADD CONSTRAINT authentik_stages_aut_stage_id_4c643407_fk_authentik FOREIGN KEY (stage_id) REFERENCES public.authentik_stages_authenticator_email_authenticatoremailstage(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_duo_duodevice authentik_stages_aut_stage_id_926e33da_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_duo_duodevice
+    ADD CONSTRAINT authentik_stages_aut_stage_id_926e33da_fk_authentik FOREIGN KEY (stage_id) REFERENCES public.authentik_stages_authenticator_duo_authenticatorduostage(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc authentik_stages_aut_stage_id_db16e52d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice42dc
+    ADD CONSTRAINT authentik_stages_aut_stage_id_db16e52d_fk_authentik FOREIGN KEY (stage_id) REFERENCES public.authentik_stages_authenticator_endpoint_gdtc_authenticatore2741(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_sms_authenticatorsmsstage authentik_stages_aut_stage_ptr_id_4ebb9914_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_sms_authenticatorsmsstage
+    ADD CONSTRAINT authentik_stages_aut_stage_ptr_id_4ebb9914_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_duo_authenticatorduostage authentik_stages_aut_stage_ptr_id_7835ea46_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_duo_authenticatorduostage
+    ADD CONSTRAINT authentik_stages_aut_stage_ptr_id_7835ea46_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f authentik_stages_aut_stage_ptr_id_7acf2e1a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f
+    ADD CONSTRAINT authentik_stages_aut_stage_ptr_id_7acf2e1a_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_authenticatore2741 authentik_stages_aut_stage_ptr_id_995dbe5a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_endpoint_gdtc_authenticatore2741
+    ADD CONSTRAINT authentik_stages_aut_stage_ptr_id_995dbe5a_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_totp_authenticatortotpstage authentik_stages_aut_stage_ptr_id_9e1575b0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_totp_authenticatortotpstage
+    ADD CONSTRAINT authentik_stages_aut_stage_ptr_id_9e1575b0_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_static_authenticatorstaticstage authentik_stages_aut_stage_ptr_id_a719c9e1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_static_authenticatorstaticstage
+    ADD CONSTRAINT authentik_stages_aut_stage_ptr_id_a719c9e1_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_email_authenticatoremailstage authentik_stages_aut_stage_ptr_id_b41b8942_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_email_authenticatoremailstage
+    ADD CONSTRAINT authentik_stages_aut_stage_ptr_id_b41b8942_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida499c authentik_stages_aut_stage_ptr_id_d44614a3_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida499c
+    ADD CONSTRAINT authentik_stages_aut_stage_ptr_id_d44614a3_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_endpoint_gdtc_endpointdevice authentik_stages_aut_user_id_06fcc555_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_endpoint_gdtc_endpointdevice
+    ADD CONSTRAINT authentik_stages_aut_user_id_06fcc555_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_totp_totpdevice authentik_stages_aut_user_id_0cdf9e55_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_totp_totpdevice
+    ADD CONSTRAINT authentik_stages_aut_user_id_0cdf9e55_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_webauthndevice authentik_stages_aut_user_id_26c9196a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_webauthndevice
+    ADD CONSTRAINT authentik_stages_aut_user_id_26c9196a_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_sms_smsdevice authentik_stages_aut_user_id_454934c5_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_sms_smsdevice
+    ADD CONSTRAINT authentik_stages_aut_user_id_454934c5_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_static_staticdevice authentik_stages_aut_user_id_aa739a9d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_static_staticdevice
+    ADD CONSTRAINT authentik_stages_aut_user_id_aa739a9d_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_duo_duodevice authentik_stages_aut_user_id_bd340329_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_duo_duodevice
+    ADD CONSTRAINT authentik_stages_aut_user_id_bd340329_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_email_emaildevice authentik_stages_aut_user_id_ca447453_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_email_emaildevice
+    ADD CONSTRAINT authentik_stages_aut_user_id_ca447453_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_validate_authenticatorvalida8318 authentik_stages_aut_webauthndevicetype_i_3a629eb0_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_validate_authenticatorvalida8318
+    ADD CONSTRAINT authentik_stages_aut_webauthndevicetype_i_3a629eb0_fk_authentik FOREIGN KEY (webauthndevicetype_id) REFERENCES public.authentik_stages_authenticator_webauthn_webauthndevicetype(aaguid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_authenticator_webauthn_authenticatorwebaute3a7 authentik_stages_aut_webauthndevicetype_i_b6c9872b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_authenticator_webauthn_authenticatorwebaute3a7
+    ADD CONSTRAINT authentik_stages_aut_webauthndevicetype_i_b6c9872b_fk_authentik FOREIGN KEY (webauthndevicetype_id) REFERENCES public.authentik_stages_authenticator_webauthn_webauthndevicetype(aaguid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_captcha_captchastage authentik_stages_cap_stage_ptr_id_6328c33b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_captcha_captchastage
+    ADD CONSTRAINT authentik_stages_cap_stage_ptr_id_6328c33b_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_consent_userconsent authentik_stages_con_application_id_ad55f58e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_consent_userconsent
+    ADD CONSTRAINT authentik_stages_con_application_id_ad55f58e_fk_authentik FOREIGN KEY (application_id) REFERENCES public.authentik_core_application(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_consent_consentstage authentik_stages_con_stage_ptr_id_492add69_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_consent_consentstage
+    ADD CONSTRAINT authentik_stages_con_stage_ptr_id_492add69_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_consent_userconsent authentik_stages_con_user_id_554dc39f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_consent_userconsent
+    ADD CONSTRAINT authentik_stages_con_user_id_554dc39f_fk_authentik FOREIGN KEY (user_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_deny_denystage authentik_stages_den_stage_ptr_id_5290ec0e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_deny_denystage
+    ADD CONSTRAINT authentik_stages_den_stage_ptr_id_5290ec0e_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_dummy_dummystage authentik_stages_dum_stage_ptr_id_7d72bd43_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_dummy_dummystage
+    ADD CONSTRAINT authentik_stages_dum_stage_ptr_id_7d72bd43_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_email_emailstage authentik_stages_ema_stage_ptr_id_7355e8a2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_email_emailstage
+    ADD CONSTRAINT authentik_stages_ema_stage_ptr_id_7355e8a2_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_identification_identificationstage authentik_stages_ide_captcha_stage_id_ae5a4e7b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage
+    ADD CONSTRAINT authentik_stages_ide_captcha_stage_id_ae5a4e7b_fk_authentik FOREIGN KEY (captcha_stage_id) REFERENCES public.authentik_stages_captcha_captchastage(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_identification_identificationstage authentik_stages_ide_enrollment_flow_id_930e83ff_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage
+    ADD CONSTRAINT authentik_stages_ide_enrollment_flow_id_930e83ff_fk_authentik FOREIGN KEY (enrollment_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_identification_identificationstage_sources authentik_stages_ide_identificationstage__c119703c_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage_sources
+    ADD CONSTRAINT authentik_stages_ide_identificationstage__c119703c_fk_authentik FOREIGN KEY (identificationstage_id) REFERENCES public.authentik_stages_identification_identificationstage(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_identification_identificationstage authentik_stages_ide_password_stage_id_8d68497a_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage
+    ADD CONSTRAINT authentik_stages_ide_password_stage_id_8d68497a_fk_authentik FOREIGN KEY (password_stage_id) REFERENCES public.authentik_stages_password_passwordstage(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_identification_identificationstage authentik_stages_ide_passwordless_flow_id_68cf3874_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage
+    ADD CONSTRAINT authentik_stages_ide_passwordless_flow_id_68cf3874_fk_authentik FOREIGN KEY (passwordless_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_identification_identificationstage authentik_stages_ide_recovery_flow_id_16f5f1c7_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage
+    ADD CONSTRAINT authentik_stages_ide_recovery_flow_id_16f5f1c7_fk_authentik FOREIGN KEY (recovery_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_identification_identificationstage_sources authentik_stages_ide_source_id_9579fda9_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage_sources
+    ADD CONSTRAINT authentik_stages_ide_source_id_9579fda9_fk_authentik FOREIGN KEY (source_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_identification_identificationstage authentik_stages_ide_stage_ptr_id_da7dad55_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage
+    ADD CONSTRAINT authentik_stages_ide_stage_ptr_id_da7dad55_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_identification_identificationstage authentik_stages_ide_webauthn_stage_id_b0d53d1e_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_identification_identificationstage
+    ADD CONSTRAINT authentik_stages_ide_webauthn_stage_id_b0d53d1e_fk_authentik FOREIGN KEY (webauthn_stage_id) REFERENCES public.authentik_stages_authenticator_validate_authenticatorvalida499c(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_invitation_invitation authentik_stages_inv_created_by_id_87fe9398_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_invitation_invitation
+    ADD CONSTRAINT authentik_stages_inv_created_by_id_87fe9398_fk_authentik FOREIGN KEY (created_by_id) REFERENCES public.authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_invitation_invitation authentik_stages_inv_flow_id_66945236_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_invitation_invitation
+    ADD CONSTRAINT authentik_stages_inv_flow_id_66945236_fk_authentik FOREIGN KEY (flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_invitation_invitationstage authentik_stages_inv_stage_ptr_id_fcaca395_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_invitation_invitationstage
+    ADD CONSTRAINT authentik_stages_inv_stage_ptr_id_fcaca395_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_mtls_mutualtlsstage_certificate_authorities authentik_stages_mtl_certificatekeypair_i_770ad288_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_mtls_mutualtlsstage_certificate_authorities
+    ADD CONSTRAINT authentik_stages_mtl_certificatekeypair_i_770ad288_fk_authentik FOREIGN KEY (certificatekeypair_id) REFERENCES public.authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_mtls_mutualtlsstage_certificate_authorities authentik_stages_mtl_mutualtlsstage_id_7e9e20fd_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_mtls_mutualtlsstage_certificate_authorities
+    ADD CONSTRAINT authentik_stages_mtl_mutualtlsstage_id_7e9e20fd_fk_authentik FOREIGN KEY (mutualtlsstage_id) REFERENCES public.authentik_stages_mtls_mutualtlsstage(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_mtls_mutualtlsstage authentik_stages_mtl_stage_ptr_id_e1029389_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_mtls_mutualtlsstage
+    ADD CONSTRAINT authentik_stages_mtl_stage_ptr_id_e1029389_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_password_passwordstage authentik_stages_pas_configure_flow_id_2a91be83_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_password_passwordstage
+    ADD CONSTRAINT authentik_stages_pas_configure_flow_id_2a91be83_fk_authentik FOREIGN KEY (configure_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_password_passwordstage authentik_stages_pas_stage_ptr_id_46eda438_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_password_passwordstage
+    ADD CONSTRAINT authentik_stages_pas_stage_ptr_id_46eda438_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_validation_policies authentik_stages_pro_policy_id_96db92ab_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage_validation_policies
+    ADD CONSTRAINT authentik_stages_pro_policy_id_96db92ab_fk_authentik FOREIGN KEY (policy_id) REFERENCES public.authentik_policies_policy(policy_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_fields authentik_stages_pro_prompt_id_8c79d4c1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage_fields
+    ADD CONSTRAINT authentik_stages_pro_prompt_id_8c79d4c1_fk_authentik FOREIGN KEY (prompt_id) REFERENCES public.authentik_stages_prompt_prompt(prompt_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_validation_policies authentik_stages_pro_promptstage_id_cb253bb1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage_validation_policies
+    ADD CONSTRAINT authentik_stages_pro_promptstage_id_cb253bb1_fk_authentik FOREIGN KEY (promptstage_id) REFERENCES public.authentik_stages_prompt_promptstage(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_prompt_promptstage_fields authentik_stages_pro_promptstage_id_d3bd61cc_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage_fields
+    ADD CONSTRAINT authentik_stages_pro_promptstage_id_d3bd61cc_fk_authentik FOREIGN KEY (promptstage_id) REFERENCES public.authentik_stages_prompt_promptstage(stage_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_prompt_promptstage authentik_stages_pro_stage_ptr_id_285415b5_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_prompt_promptstage
+    ADD CONSTRAINT authentik_stages_pro_stage_ptr_id_285415b5_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_redirect_redirectstage authentik_stages_red_stage_ptr_id_e20e97dd_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_redirect_redirectstage
+    ADD CONSTRAINT authentik_stages_red_stage_ptr_id_e20e97dd_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_redirect_redirectstage authentik_stages_red_target_flow_id_f3ccf60d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_redirect_redirectstage
+    ADD CONSTRAINT authentik_stages_red_target_flow_id_f3ccf60d_fk_authentik FOREIGN KEY (target_flow_id) REFERENCES public.authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_source_sourcestage authentik_stages_sou_source_id_9fd13f4f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_source_sourcestage
+    ADD CONSTRAINT authentik_stages_sou_source_id_9fd13f4f_fk_authentik FOREIGN KEY (source_id) REFERENCES public.authentik_core_source(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_source_sourcestage authentik_stages_sou_stage_ptr_id_013b387f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_source_sourcestage
+    ADD CONSTRAINT authentik_stages_sou_stage_ptr_id_013b387f_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_user_write_userwritestage authentik_stages_use_create_users_group_i_90b7794f_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_user_write_userwritestage
+    ADD CONSTRAINT authentik_stages_use_create_users_group_i_90b7794f_fk_authentik FOREIGN KEY (create_users_group_id) REFERENCES public.authentik_core_group(group_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_user_write_userwritestage authentik_stages_use_stage_ptr_id_2cc319e1_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_user_write_userwritestage
+    ADD CONSTRAINT authentik_stages_use_stage_ptr_id_2cc319e1_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_user_delete_userdeletestage authentik_stages_use_stage_ptr_id_61292077_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_user_delete_userdeletestage
+    ADD CONSTRAINT authentik_stages_use_stage_ptr_id_61292077_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_user_login_userloginstage authentik_stages_use_stage_ptr_id_b1bc035b_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_user_login_userloginstage
+    ADD CONSTRAINT authentik_stages_use_stage_ptr_id_b1bc035b_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_stages_user_logout_userlogoutstage authentik_stages_use_stage_ptr_id_c7d7012d_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_stages_user_logout_userlogoutstage
+    ADD CONSTRAINT authentik_stages_use_stage_ptr_id_c7d7012d_fk_authentik FOREIGN KEY (stage_ptr_id) REFERENCES public.authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_tasks_schedules_schedule authentik_tasks_sche_rel_obj_content_type_3e3dcef8_fk_django_co; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_schedules_schedule
+    ADD CONSTRAINT authentik_tasks_sche_rel_obj_content_type_3e3dcef8_fk_django_co FOREIGN KEY (rel_obj_content_type_id) REFERENCES public.django_content_type(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_tasks_taskdependency authentik_tasks_task_dependency_id_c7a40dcc_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_taskdependency
+    ADD CONSTRAINT authentik_tasks_task_dependency_id_c7a40dcc_fk_authentik FOREIGN KEY (dependency_id) REFERENCES public.authentik_tasks_task(message_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_tasks_task authentik_tasks_task_rel_obj_content_type_2a021136_fk_django_co; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_task
+    ADD CONSTRAINT authentik_tasks_task_rel_obj_content_type_2a021136_fk_django_co FOREIGN KEY (rel_obj_content_type_id) REFERENCES public.django_content_type(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_tasks_tasklog authentik_tasks_task_task_id_a82f0835_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_tasklog
+    ADD CONSTRAINT authentik_tasks_task_task_id_a82f0835_fk_authentik FOREIGN KEY (task_id) REFERENCES public.authentik_tasks_task(message_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_tasks_taskdependency authentik_tasks_task_task_id_f9b4d794_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_taskdependency
+    ADD CONSTRAINT authentik_tasks_task_task_id_f9b4d794_fk_authentik FOREIGN KEY (task_id) REFERENCES public.authentik_tasks_task(message_id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_tasks_task authentik_tasks_task_tenant_id_a04bb198_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tasks_task
+    ADD CONSTRAINT authentik_tasks_task_tenant_id_a04bb198_fk_authentik FOREIGN KEY (tenant_id) REFERENCES public.authentik_tenants_tenant(tenant_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: authentik_tenants_domain authentik_tenants_do_tenant_id_a9cbe133_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.authentik_tenants_domain
+    ADD CONSTRAINT authentik_tenants_do_tenant_id_a9cbe133_fk_authentik FOREIGN KEY (tenant_id) REFERENCES public.authentik_tenants_tenant(tenant_uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: guardian_rolemodelpermission guardian_rolemodelpe_content_type_id_2866c748_fk_django_co; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_rolemodelpermission
+    ADD CONSTRAINT guardian_rolemodelpe_content_type_id_2866c748_fk_django_co FOREIGN KEY (content_type_id) REFERENCES public.django_content_type(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: guardian_rolemodelpermission guardian_rolemodelpe_permission_id_c72479f9_fk_auth_perm; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_rolemodelpermission
+    ADD CONSTRAINT guardian_rolemodelpe_permission_id_c72479f9_fk_auth_perm FOREIGN KEY (permission_id) REFERENCES public.auth_permission(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: guardian_rolemodelpermission guardian_rolemodelpe_role_id_642b75b2_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_rolemodelpermission
+    ADD CONSTRAINT guardian_rolemodelpe_role_id_642b75b2_fk_authentik FOREIGN KEY (role_id) REFERENCES public.authentik_rbac_role(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: guardian_roleobjectpermission guardian_roleobjectp_content_type_id_655e6c1c_fk_django_co; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_roleobjectpermission
+    ADD CONSTRAINT guardian_roleobjectp_content_type_id_655e6c1c_fk_django_co FOREIGN KEY (content_type_id) REFERENCES public.django_content_type(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: guardian_roleobjectpermission guardian_roleobjectp_permission_id_2de63617_fk_auth_perm; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_roleobjectpermission
+    ADD CONSTRAINT guardian_roleobjectp_permission_id_2de63617_fk_auth_perm FOREIGN KEY (permission_id) REFERENCES public.auth_permission(id) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- Name: guardian_roleobjectpermission guardian_roleobjectp_role_id_76d93577_fk_authentik; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.guardian_roleobjectpermission
+    ADD CONSTRAINT guardian_roleobjectp_role_id_76d93577_fk_authentik FOREIGN KEY (role_id) REFERENCES public.authentik_rbac_role(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict oQdWcT79wEdZCEIpaQ8VSlGjz7mOpsrOgAswtWfPB7VLSbrQRSLQQVInTcQqjvd
+

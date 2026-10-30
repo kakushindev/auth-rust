@@ -1,0 +1,119 @@
+{
+ "source": "static scan of upstream cmd/ and internal/ at 4ec0d19b",
+ "components": [
+  {
+   "name": "cmd/ldap",
+   "kind": "Go outpost binary",
+   "files": 1,
+   "lines": 42
+  },
+  {
+   "name": "cmd/proxy",
+   "kind": "Go outpost binary",
+   "files": 1,
+   "lines": 45
+  },
+  {
+   "name": "cmd/rac",
+   "kind": "Go outpost binary",
+   "files": 1,
+   "lines": 42
+  },
+  {
+   "name": "cmd/radius",
+   "kind": "Go outpost binary",
+   "files": 1,
+   "lines": 42
+  },
+  {
+   "name": "cmd/server",
+   "kind": "Go binary",
+   "files": 2,
+   "lines": 121
+  },
+  {
+   "name": "internal/outpost/ak",
+   "kind": "Go outpost implementation",
+   "files": 12,
+   "lines": 1117
+  },
+  {
+   "name": "internal/outpost/flow",
+   "kind": "Go outpost implementation",
+   "files": 5,
+   "lines": 385
+  },
+  {
+   "name": "internal/outpost/ldap",
+   "kind": "Go outpost implementation",
+   "files": 32,
+   "lines": 2619
+  },
+  {
+   "name": "internal/outpost/proxyv2",
+   "kind": "Go outpost implementation",
+   "files": 30,
+   "lines": 3754
+  },
+  {
+   "name": "internal/outpost/rac",
+   "kind": "Go outpost implementation",
+   "files": 4,
+   "lines": 388
+  },
+  {
+   "name": "internal/outpost/radius",
+   "kind": "Go outpost implementation",
+   "files": 8,
+   "lines": 728
+  },
+  {
+   "name": "internal/common",
+   "kind": "Go shared package",
+   "files": 2,
+   "lines": 40
+  },
+  {
+   "name": "internal/config",
+   "kind": "Go shared package",
+   "files": 2,
+   "lines": 379
+  },
+  {
+   "name": "internal/constants",
+   "kind": "Go shared package",
+   "files": 1,
+   "lines": 41
+  },
+  {
+   "name": "internal/crypto",
+   "kind": "Go shared package",
+   "files": 4,
+   "lines": 90
+  },
+  {
+   "name": "internal/debug",
+   "kind": "Go shared package",
+   "files": 1,
+   "lines": 96
+  },
+  {
+   "name": "internal/gounicorn",
+   "kind": "Go shared package",
+   "files": 1,
+   "lines": 205
+  },
+  {
+   "name": "internal/utils",
+   "kind": "Go shared package",
+   "files": 16,
+   "lines": 647
+  },
+  {
+   "name": "internal/web",
+   "kind": "Go shared package",
+   "files": 6,
+   "lines": 939
+  }
+ ]
+}

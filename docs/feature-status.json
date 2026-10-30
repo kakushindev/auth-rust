@@ -1,0 +1,121 @@
+{
+  "_comment": "Status per feature id in docs/FEATURE_MATRIX.md. Anything at or above 'Verified equivalent' must cite evidence that a command actually ran. Regenerate the matrix with scripts/gen_feature_matrix.py.",
+  "extra_features": [
+    {
+      "id": "contract:password-hashers",
+      "component": "django.contrib.auth.hashers as configured by authentik (PASSWORD_HASHERS default list)",
+      "kind": "Security contract"
+    },
+    {
+      "id": "contract:configuration",
+      "component": "AUTHENTIK_* configuration loading (authentik/lib/default.yml, env, files)",
+      "kind": "Runtime contract"
+    },
+    {
+      "id": "contract:openapi",
+      "component": "REST API /api/v3 (1193 operations in schema.yml)",
+      "kind": "API contract"
+    },
+    {
+      "id": "web:frontend",
+      "component": "web/ Lit + PatternFly apps (admin, user, flow)",
+      "kind": "Frontend (retained as-is)",
+      "scope": "client"
+    }
+  ],
+  "features": {
+    "contract:password-hashers": {
+      "status": "Verified equivalent",
+      "rust": "`rust/crates/ak-passwords`",
+      "evidence": "Scope: hasher library only (encode/verify/must_update/make_password/is_password_usable), not the password stage or login flow. `tests/differential/passwords/run.sh` on 2026-10-30: 152/152 encodings byte-identical to Django 5.2.17, 65/65 verify_password outcomes (incl. raised exceptions) equal, 31/31 Rust-made hashes accepted by Django check_password, reference akadmin row verifies."
+    },
+    "contract:configuration": {
+      "status": "Not started",
+      "rust": "reuse upstream `packages/ak-common` config (already Rust upstream)"
+    },
+    "web:frontend": {
+      "status": "Not started",
+      "rust": "unchanged; served by the Rust server from web/dist"
+    },
+    "django:authentik.enterprise": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.agents": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.audit": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.endpoints.connectors.agent": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.endpoints.connectors.fleet": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.endpoints.connectors.google_chrome": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.lifecycle": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.policies.unique_password": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.providers.google_workspace": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.providers.microsoft_entra": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.providers.radius": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.providers.scim": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.providers.ssf": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.providers.ws_federation": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.reports": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.requests": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.stages.account_lockdown": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.stages.authenticator_endpoint_gdtc": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.stages.mtls": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    },
+    "django:authentik.enterprise.stages.source": {
+      "status": "Blocked with documented evidence",
+      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+    }
+  }
+}
