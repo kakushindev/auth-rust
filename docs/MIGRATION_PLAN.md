@@ -12,7 +12,7 @@ The upstream behavior to reproduce is about 91k lines of Python core, 12k of Go 
 | --- | --- | --- | --- | --- |
 | M0 | Baseline: pin, reference stack, schema/API/inventory baselines, audit docs | — | Reference boots; baselines committed; guard verifies reference | **Done** (2026-10-30) |
 | M1 | Password hashers | M0 | Byte-identical encodings; verify_password parity incl. errors; both-direction interop; real row | **Done** |
-| M2 | Vendor upstream `src/` server/worker into `rust/`, build our `authentik` binary, add compat router (empty list) | M0 | Candidate image passes upstream health checks; full API differential suite shows 0 diffs, since everything still falls back to Django; schema guard clean | In progress |
+| M2 | Rust front server replacing 2026.2.7's Go `cmd/server` (vendored from upstream 2026.8.5), compat router (empty list) | M0 | Candidate image passes the 2026.2.7 health checks; the HTTP differential against the **Go** server shows 0 different; schema guard clean | In progress: 6 systematic differences open |
 | M3 | Differential harness: replay engine, normalizers, DB state diff, CI job | M2 | Harness detects a seeded difference; runs the reference and candidate stacks in parallel from equal snapshots | Next |
 | M4 | Core read models (`ak-models`): User, Group, Application, Provider/Source MTI, Token, Brand, Tenant | M2 | Rust decodes every row of a populated reference DB; round-trip writes leave the rows byte-equal | |
 | M5 | Sessions + authentication middleware (session cookie, token auth, CSRF, tenant/brand resolution) | M1, M4 | Cookie/session differential incl. expiry, logout, concurrent login | |

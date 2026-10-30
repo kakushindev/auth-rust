@@ -1,6 +1,6 @@
 # Database contract
 
-The PostgreSQL schema produced by authentik 2026.8.5 migrations is **immutable**
+The PostgreSQL schema produced by authentik 2026.2.7 migrations (the version production runs) is **immutable**
 for the Rust implementation. Rust code reads and writes these tables as they
 are; it never creates, alters or drops schema objects.
 
@@ -8,9 +8,9 @@ are; it never creates, alters or drops schema objects.
 
 | File | Content | How it was produced |
 | --- | --- | --- |
-| `baseline/schema/reference-schema.sql` | `pg_dump --schema-only --no-owner --no-privileges` (13 553 lines) | `pg_dump` inside the reference `postgresql` container after `server` finished migrating |
-| `baseline/schema/django_migrations.tsv` | 777 `(app, name)` rows applied in `public` | `psql` against the reference |
-| `baseline/schema/reference-schema.json` | Canonical catalog snapshot, fingerprint `8afc1fc82567d9b2db45f8a7ff94318f272653c20206fa7ba3222ef1ad8a1e30` | `ak-schema-guard snapshot` |
+| `baseline/schema/reference-schema.sql` | `pg_dump --schema-only --no-owner --no-privileges` (12260 lines) | `pg_dump` inside the reference `postgresql` container after `server` finished migrating |
+| `baseline/schema/django_migrations.tsv` | 692 `(app, name)` rows applied in `public` | `psql` against the reference |
+| `baseline/schema/reference-schema.json` | Canonical catalog snapshot, fingerprint `a30d1060a0362e54edefa4d126f67df3562e648441aff9800085639887680e7f` | `ak-schema-guard snapshot` |
 
 ## What the fingerprint covers
 
@@ -19,21 +19,21 @@ are; it never creates, alters or drops schema objects.
 | Section | Objects | Attributes compared |
 | --- | ---: | --- |
 | schemas | 2 | `public`, `template` (django-tenants template schema) |
-| relations | 291 | kind (table/view/matview/sequence/foreign), persistence, access method |
-| columns | 1 387 | logical position (ignoring dropped columns), `format_type`, NOT NULL, default expression, identity, generated, collation |
-| constraints | 756 | type, `pg_get_constraintdef`, deferrable/deferred |
-| indexes | 827 | `pg_get_indexdef` |
-| sequences | 60 | type, start, increment, min, max, cache, cycle, owning column |
+| relations | 271 | kind (table/view/matview/sequence/foreign), persistence, access method |
+| columns | 1 234 | logical position (ignoring dropped columns), `format_type`, NOT NULL, default expression, identity, generated, collation |
+| constraints | 678 | type, `pg_get_constraintdef`, deferrable/deferred |
+| indexes | 745 | `pg_get_indexdef` |
+| sequences | 58 | type, start, increment, min, max, cache, cycle, owning column |
 | types | 0 | enums (labels in order), domains, standalone composites, ranges |
 | functions | 6 | identity arguments, kind, `pg_get_functiondef` |
 | triggers | 5 | `pg_get_triggerdef`, enabled state |
 | views | 1 | `pg_get_viewdef` |
 | extensions | 1 | `plpgsql 1.0` |
-| django_migrations | 777 | applied migration identifiers per schema |
+| django_migrations | 692 | applied migration identifiers per schema |
 
 The baseline file embeds per-section sha256 fingerprints; `verify` refuses a baseline whose fingerprints do not match its contents.
 
-Verified on 2026-10-30:
+Verified on 2026-10-30 (method validated against the 2026.8.5 baseline; the 2026.2.7 baseline was produced with the same tool):
 - A full `pg_dump` restored into a scratch database matches the baseline exactly (fingerprint equal).
 - After `ALTER COLUMN username TYPE varchar(200)` and an extra index, `verify` reports both changes (`~ public.authentik_core_user.username`, `+ public.ak_drift_idx`) and exits non-zero.
 
@@ -42,6 +42,10 @@ DATABASE_URL=postgres://… rust/target/debug/ak-schema-guard verify --baseline 
 ```
 
 Running `verify` before and after every candidate test run is mandatory (see `TEST_STRATEGY.md`).
+
+## Production database caveat
+
+The baseline comes from a fresh 2026.2.7 install. Production (`apps.mysoc.id`) is assumed to be at the same migration state, but it was set up from 2026.2.x with `AUTHENTIK_SKIP_MIGRATIONS=true` and has not been inspected. Before any candidate touches it, run `ak-schema-guard verify` against a **restored copy** of the production backup, never against the live database. Any drift found there becomes part of the contract.
 
 ## Database-side behavior Rust must not duplicate or bypass
 

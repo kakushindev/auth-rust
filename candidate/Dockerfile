@@ -2,7 +2,7 @@
 # the binary built from rust/. Everything else (Python, web UI, blueprints,
 # entrypoint) is byte-identical to the reference, so any behavioral
 # difference is attributable to the Rust changes.
-ARG REFERENCE_IMAGE=ghcr.io/goauthentik/server:2026.8.5
+ARG REFERENCE_IMAGE=ghcr.io/goauthentik/server:2026.2.7
 
 FROM ${REFERENCE_IMAGE} AS reference
 

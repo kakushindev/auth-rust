@@ -1,15 +1,15 @@
 {
-  "fingerprint": "8afc1fc82567d9b2db45f8a7ff94318f272653c20206fa7ba3222ef1ad8a1e30",
+  "fingerprint": "a30d1060a0362e54edefa4d126f67df3562e648441aff9800085639887680e7f",
   "section_fingerprints": {
-    "columns": "44d79e5652032905ac77e989b213319e5879d50d95dd2e4c7f5d94c685931b3e",
-    "constraints": "435409da6ca10ff1f2f9ae21e7807e23d75746b9bcbfcc114254bd973e58ef66",
-    "django_migrations": "77c0c488482c56e4e049d1146765d8101c2d8d5998baab72c43a69879a696301",
+    "columns": "512ea00b0920856ef2de9e315eb0271979d17502f1242f17f640cd2354ec4da0",
+    "constraints": "048e3c8111a4f7d42e549e615ac47ab99527a109951b512a5875873c7f9b65f8",
+    "django_migrations": "53161e41c5859b3151ac925d71b96c8a8e3ecf3f93176555db29a81097b42212",
     "extensions": "ca3d3d8b5d60ab603b5f4a41a2f072f5aab2d7da71b99d50c75dda1e78925f1f",
-    "functions": "4c3c1148afb20b2fc90351fc1376e028cff3620c6ced43c2964a775849d84a4d",
-    "indexes": "25d14f03622d1659091e8ec0916a93d6672f022ae39eebb6fa151a93db0ab83c",
-    "relations": "d39052ab1b6a221482ca0645dda0665279dea17a504586db246e9616235edc58",
+    "functions": "d63945bf06062d1fe6f849d8e0021c76881be570ad6e325ebd8713703bb8ed3b",
+    "indexes": "0fcd18dcb1bd37354a4ed3162de984cf7866056648ef04a508465b5e821c275c",
+    "relations": "37120a9cb917b1e5b3580ca7a71715cc24932e2e28ec4a2701c715a74afc0475",
     "schemas": "cbf08e1803d2c42fb79da251b571917a9a0373306570a5cb5a52bf8a3fd0755b",
-    "sequences": "50569307d64d10277939f9439ea578cc7a21222013f656e19cd50b05a43b0bae",
+    "sequences": "ee818b0e606590022ebee416a270efd0f43a4f173bcf3ea98747e185d429f9a6",
     "triggers": "7ba625b448c6b354319d653ce1a88daec8f72466b689edee86babb384aed8b6e",
     "types": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
     "views": "71e130c38496a2c0523ea1a2f6c7a5708654db190bdc48d741308ec92f0392a1"
@@ -96,15 +96,6 @@
         "not_null": "true",
         "position": "2",
         "type": "character varying(255)"
-      },
-      "public.authentik_agents_agent.actor_ptr_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "integer"
       },
       "public.authentik_blueprints_blueprintinstance.content": {
         "collation": "",
@@ -286,15 +277,6 @@
         "position": "5",
         "type": "text"
       },
-      "public.authentik_brands_brand.branding_map_tiles": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "21",
-        "type": "text"
-      },
       "public.authentik_brands_brand.branding_title": {
         "collation": "",
         "default": "",
@@ -358,15 +340,6 @@
         "position": "7",
         "type": "uuid"
       },
-      "public.authentik_brands_brand.flow_lockdown_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "18",
-        "type": "uuid"
-      },
       "public.authentik_brands_brand.flow_recovery_id": {
         "collation": "",
         "default": "",
@@ -374,15 +347,6 @@
         "identity": "",
         "not_null": "false",
         "position": "8",
-        "type": "uuid"
-      },
-      "public.authentik_brands_brand.flow_request_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "19",
         "type": "uuid"
       },
       "public.authentik_brands_brand.flow_unenrollment_id": {
@@ -401,15 +365,6 @@
         "identity": "",
         "not_null": "false",
         "position": "12",
-        "type": "uuid"
-      },
-      "public.authentik_brands_brand.flow_user_switch_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "20",
         "type": "uuid"
       },
       "public.authentik_brands_brand.web_certificate_id": {
@@ -448,51 +403,6 @@
         "position": "1",
         "type": "integer"
       },
-      "public.authentik_core_actor.expires": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "2",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_core_actor.expiring": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "boolean"
-      },
-      "public.authentik_core_actor.parent_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "5",
-        "type": "integer"
-      },
-      "public.authentik_core_actor.policy_behavior": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "text"
-      },
-      "public.authentik_core_actor.user_ptr_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "integer"
-      },
       "public.authentik_core_application.group": {
         "collation": "",
         "default": "",
@@ -510,15 +420,6 @@
         "not_null": "true",
         "position": "5",
         "type": "text"
-      },
-      "public.authentik_core_application.meta_hide": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "11",
-        "type": "boolean"
       },
       "public.authentik_core_application.meta_icon": {
         "collation": "",
@@ -645,15 +546,6 @@
         "not_null": "true",
         "position": "3",
         "type": "integer"
-      },
-      "public.authentik_core_authenticatedsession.user_switching_session_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "4",
-        "type": "character varying(64)"
       },
       "public.authentik_core_authenticatedsession.uuid": {
         "collation": "",
@@ -834,132 +726,6 @@
         "not_null": "true",
         "position": "6",
         "type": "uuid"
-      },
-      "public.authentik_core_objectattribute.attribute_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "uuid"
-      },
-      "public.authentik_core_objectattribute.created": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_core_objectattribute.enabled": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "5",
-        "type": "boolean"
-      },
-      "public.authentik_core_objectattribute.group": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "7",
-        "type": "text"
-      },
-      "public.authentik_core_objectattribute.is_array": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "13",
-        "type": "boolean"
-      },
-      "public.authentik_core_objectattribute.is_required": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "11",
-        "type": "boolean"
-      },
-      "public.authentik_core_objectattribute.is_unique": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "10",
-        "type": "boolean"
-      },
-      "public.authentik_core_objectattribute.key": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "8",
-        "type": "text"
-      },
-      "public.authentik_core_objectattribute.label": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "6",
-        "type": "text"
-      },
-      "public.authentik_core_objectattribute.last_updated": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_core_objectattribute.managed": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "3",
-        "type": "text"
-      },
-      "public.authentik_core_objectattribute.object_type_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "14",
-        "type": "integer"
-      },
-      "public.authentik_core_objectattribute.regex": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "12",
-        "type": "text"
-      },
-      "public.authentik_core_objectattribute.type": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "9",
-        "type": "text"
       },
       "public.authentik_core_propertymapping.expression": {
         "collation": "",
@@ -1645,24 +1411,6 @@
         "position": "5",
         "type": "integer"
       },
-      "public.authentik_core_userswitchingsession.current_session_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "2",
-        "type": "character varying(40)"
-      },
-      "public.authentik_core_userswitchingsession.token": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "character varying(64)"
-      },
       "public.authentik_crypto_certificatekeypair.cert_expiry": {
         "collation": "",
         "default": "",
@@ -2014,96 +1762,6 @@
         "position": "1",
         "type": "uuid"
       },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.apple_enclave_key_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "8",
-        "type": "text"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.apple_secure_enclave_key": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "7",
-        "type": "text"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.confirmed": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "boolean"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.created": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.device_type": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "9",
-        "type": "text"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.last_updated": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.last_used": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "5",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.name": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "character varying(64)"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.user_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "10",
-        "type": "integer"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.uuid": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "6",
-        "type": "uuid"
-      },
       "public.authentik_endpoints_connectors_agent_applenonce.device_token_id": {
         "collation": "",
         "default": "",
@@ -2382,24 +2040,6 @@
         "not_null": "true",
         "position": "2",
         "type": "character varying(200)"
-      },
-      "public.authentik_endpoints_connectors_google_chrome_googlechromeco19cb.connector_ptr_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "uuid"
-      },
-      "public.authentik_endpoints_connectors_google_chrome_googlechromeco19cb.credentials": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "jsonb"
       },
       "public.authentik_endpoints_device.access_group_id": {
         "collation": "",
@@ -3049,15 +2689,6 @@
         "position": "1",
         "type": "uuid"
       },
-      "public.authentik_events_notificationtransport.webhook_ca_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "10",
-        "type": "uuid"
-      },
       "public.authentik_events_notificationtransport.webhook_mapping_body_id": {
         "collation": "",
         "default": "",
@@ -3589,105 +3220,6 @@
         "position": "2",
         "type": "timestamp with time zone"
       },
-      "public.authentik_lifecycle_useroffboarding.action": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "text"
-      },
-      "public.authentik_lifecycle_useroffboarding.attempts": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "7",
-        "type": "smallint"
-      },
-      "public.authentik_lifecycle_useroffboarding.created_at": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "8",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_lifecycle_useroffboarding.created_by_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "10",
-        "type": "integer"
-      },
-      "public.authentik_lifecycle_useroffboarding.executed_at": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "9",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_lifecycle_useroffboarding.id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "uuid"
-      },
-      "public.authentik_lifecycle_useroffboarding.revoke_sessions": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "boolean"
-      },
-      "public.authentik_lifecycle_useroffboarding.revoke_tokens": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "5",
-        "type": "boolean"
-      },
-      "public.authentik_lifecycle_useroffboarding.scheduled_at": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_lifecycle_useroffboarding.status": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "6",
-        "type": "text"
-      },
-      "public.authentik_lifecycle_useroffboarding.user_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "11",
-        "type": "integer"
-      },
       "public.authentik_outposts_dockerserviceconnection.outpostserviceconnection_ptr_id": {
         "collation": "",
         "default": "",
@@ -3939,15 +3471,6 @@
         "not_null": "true",
         "position": "1",
         "type": "uuid"
-      },
-      "public.authentik_policies_event_matcher_eventmatcherpolicy.query": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "6",
-        "type": "text"
       },
       "public.authentik_policies_expiry_passwordexpirypolicy.days": {
         "collation": "",
@@ -4253,24 +3776,6 @@
         "identity": "",
         "not_null": "true",
         "position": "2",
-        "type": "boolean"
-      },
-      "public.authentik_policies_policybinding.expires": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "11",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_policies_policybinding.expiring": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "12",
         "type": "boolean"
       },
       "public.authentik_policies_policybinding.failure_result": {
@@ -4723,15 +4228,6 @@
         "position": "2",
         "type": "character varying(254)"
       },
-      "public.authentik_providers_google_workspace_googleworkspaceprovider.discovery_enabled": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "13",
-        "type": "boolean"
-      },
       "public.authentik_providers_google_workspace_googleworkspaceprovider.dry_run": {
         "collation": "",
         "default": "",
@@ -4911,15 +4407,6 @@
         "not_null": "true",
         "position": "3",
         "type": "text"
-      },
-      "public.authentik_providers_microsoft_entra_microsoftentraprovider.discovery_enabled": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "12",
-        "type": "boolean"
       },
       "public.authentik_providers_microsoft_entra_microsoftentraprovider.dry_run": {
         "collation": "",
@@ -5146,15 +4633,6 @@
         "position": "5",
         "type": "text"
       },
-      "public.authentik_providers_oauth2_accesstoken.actor_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "12",
-        "type": "integer"
-      },
       "public.authentik_providers_oauth2_accesstoken.auth_time": {
         "collation": "",
         "default": "",
@@ -5245,15 +4723,6 @@
         "position": "4",
         "type": "text"
       },
-      "public.authentik_providers_oauth2_authorizationcode.actor_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "15",
-        "type": "integer"
-      },
       "public.authentik_providers_oauth2_authorizationcode.auth_time": {
         "collation": "",
         "default": "",
@@ -5288,15 +4757,6 @@
         "identity": "",
         "not_null": "false",
         "position": "8",
-        "type": "character varying(255)"
-      },
-      "public.authentik_providers_oauth2_authorizationcode.dpop_jkt": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "14",
         "type": "character varying(255)"
       },
       "public.authentik_providers_oauth2_authorizationcode.expires": {
@@ -5389,15 +4849,6 @@
         "position": "4",
         "type": "text"
       },
-      "public.authentik_providers_oauth2_devicetoken.dpop_jkt": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "10",
-        "type": "character varying(255)"
-      },
       "public.authentik_providers_oauth2_devicetoken.expires": {
         "collation": "",
         "default": "",
@@ -5461,105 +4912,6 @@
         "position": "8",
         "type": "integer"
       },
-      "public.authentik_providers_oauth2_dynamicclientregistrationpropert3221.dynamic_client_registration_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "uuid"
-      },
-      "public.authentik_providers_oauth2_dynamicclientregistrationpropert3221.id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "d",
-        "not_null": "true",
-        "position": "1",
-        "type": "integer"
-      },
-      "public.authentik_providers_oauth2_dynamicclientregistrationpropert3221.property_mapping_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "uuid"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.access_token_validity": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "text"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.allowed_grant_types": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "5",
-        "type": "text[]"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.default_application_group": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "text"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.override_authorization_flow_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "6",
-        "type": "uuid"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.override_invalidation_flow_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "7",
-        "type": "uuid"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.policybindingmodel_ptr_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "uuid"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.provider_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "8",
-        "type": "integer"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.refresh_token_validity": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "text"
-      },
       "public.authentik_providers_oauth2_oauth2provider._redirect_uris": {
         "collation": "",
         "default": "",
@@ -5622,15 +4974,6 @@
         "not_null": "false",
         "position": "12",
         "type": "uuid"
-      },
-      "public.authentik_providers_oauth2_oauth2provider.grant_types": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "17",
-        "type": "text[]"
       },
       "public.authentik_providers_oauth2_oauth2provider.include_claims_in_id_token": {
         "collation": "",
@@ -5785,15 +5128,6 @@
         "position": "4",
         "type": "text"
       },
-      "public.authentik_providers_oauth2_refreshtoken.actor_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "13",
-        "type": "integer"
-      },
       "public.authentik_providers_oauth2_refreshtoken.auth_time": {
         "collation": "",
         "default": "",
@@ -5802,15 +5136,6 @@
         "not_null": "true",
         "position": "10",
         "type": "timestamp with time zone"
-      },
-      "public.authentik_providers_oauth2_refreshtoken.dpop_jkt": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "12",
-        "type": "character varying(255)"
       },
       "public.authentik_providers_oauth2_refreshtoken.expires": {
         "collation": "",
@@ -6478,7 +5803,7 @@
         "position": "15",
         "type": "uuid"
       },
-      "public.authentik_providers_saml_samlprovider.issuer_override": {
+      "public.authentik_providers_saml_samlprovider.issuer": {
         "collation": "",
         "default": "",
         "generated": "",
@@ -6539,15 +5864,6 @@
         "identity": "",
         "not_null": "true",
         "position": "21",
-        "type": "boolean"
-      },
-      "public.authentik_providers_saml_samlprovider.sign_logout_response": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "24",
         "type": "boolean"
       },
       "public.authentik_providers_saml_samlprovider.sign_response": {
@@ -6639,15 +5955,6 @@
         "not_null": "true",
         "position": "2",
         "type": "boolean"
-      },
-      "public.authentik_providers_saml_samlsession.issuer": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "11",
-        "type": "text"
       },
       "public.authentik_providers_saml_samlsession.name_id": {
         "collation": "",
@@ -6765,15 +6072,6 @@
         "not_null": "true",
         "position": "7",
         "type": "character varying(30)"
-      },
-      "public.authentik_providers_scim_scimprovider.discovery_enabled": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "15",
-        "type": "boolean"
       },
       "public.authentik_providers_scim_scimprovider.dry_run": {
         "collation": "",
@@ -7018,15 +6316,6 @@
         "position": "1",
         "type": "integer"
       },
-      "public.authentik_providers_ssf_ssfprovider.push_verify_certificates": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "5",
-        "type": "boolean"
-      },
       "public.authentik_providers_ssf_ssfprovider.signing_key_id": {
         "collation": "",
         "default": "",
@@ -7081,15 +6370,6 @@
         "position": "6",
         "type": "text[]"
       },
-      "public.authentik_providers_ssf_stream.authorization_header": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "9",
-        "type": "text"
-      },
       "public.authentik_providers_ssf_stream.delivery_method": {
         "collation": "",
         "default": "",
@@ -7143,15 +6423,6 @@
         "not_null": "true",
         "position": "8",
         "type": "integer"
-      },
-      "public.authentik_providers_ssf_stream.status": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "10",
-        "type": "text"
       },
       "public.authentik_providers_ssf_stream.uuid": {
         "collation": "",
@@ -7242,15 +6513,6 @@
         "not_null": "true",
         "position": "5",
         "type": "uuid"
-      },
-      "public.authentik_providers_ws_federation_wsfederationprovider.saml_version": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "text"
       },
       "public.authentik_providers_ws_federation_wsfederationprovider.samlprovider_ptr_id": {
         "collation": "",
@@ -7404,411 +6666,6 @@
         "not_null": "true",
         "position": "2",
         "type": "timestamp with time zone"
-      },
-      "public.authentik_requests_grantrequest.agent_owner_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "13",
-        "type": "integer"
-      },
-      "public.authentik_requests_grantrequest.created": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_requests_grantrequest.created_by_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "10",
-        "type": "integer"
-      },
-      "public.authentik_requests_grantrequest.expires": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "3",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_requests_grantrequest.expiring": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "boolean"
-      },
-      "public.authentik_requests_grantrequest.fulfilled_by_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "11",
-        "type": "integer"
-      },
-      "public.authentik_requests_grantrequest.fulfiller_data": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "7",
-        "type": "jsonb"
-      },
-      "public.authentik_requests_grantrequest.last_updated": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_requests_grantrequest.requested_expiry": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "9",
-        "type": "text"
-      },
-      "public.authentik_requests_grantrequest.requester_data": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "6",
-        "type": "jsonb"
-      },
-      "public.authentik_requests_grantrequest.revoked_by_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "12",
-        "type": "integer"
-      },
-      "public.authentik_requests_grantrequest.status": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "8",
-        "type": "text"
-      },
-      "public.authentik_requests_grantrequest.uuid": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "5",
-        "type": "uuid"
-      },
-      "public.authentik_requests_grantrequestapproval.attributes": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "jsonb"
-      },
-      "public.authentik_requests_grantrequestapproval.created": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_requests_grantrequestapproval.last_updated": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_requests_grantrequestapproval.request_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "6",
-        "type": "uuid"
-      },
-      "public.authentik_requests_grantrequestapproval.reviewer_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "7",
-        "type": "integer"
-      },
-      "public.authentik_requests_grantrequestapproval.status": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "5",
-        "type": "text"
-      },
-      "public.authentik_requests_grantrequestapproval.uuid": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "uuid"
-      },
-      "public.authentik_requests_grantrequesttarget.binding_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "2",
-        "type": "uuid"
-      },
-      "public.authentik_requests_grantrequesttarget.request_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "uuid"
-      },
-      "public.authentik_requests_grantrequesttarget.target_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "uuid"
-      },
-      "public.authentik_requests_grantrequesttarget.uuid": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrule.created": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_requests_requestrule.last_updated": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "timestamp with time zone"
-      },
-      "public.authentik_requests_requestrule.min_reviewers": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "6",
-        "type": "smallint"
-      },
-      "public.authentik_requests_requestrule.min_reviewers_is_per_group": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "7",
-        "type": "boolean"
-      },
-      "public.authentik_requests_requestrule.name": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "5",
-        "type": "text"
-      },
-      "public.authentik_requests_requestrule.notification_mode": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "8",
-        "type": "text"
-      },
-      "public.authentik_requests_requestrule.policybindingmodel_ptr_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrule.request_flow_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "9",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrule.uuid": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrulebinding.expiry_granted_max": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "text"
-      },
-      "public.authentik_requests_requestrulebinding.expiry_pending": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "text"
-      },
-      "public.authentik_requests_requestrulebinding.policybindingmodel_ptr_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrulebinding.rule_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "5",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrulebinding.target_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "6",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrulebinding.uuid": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrulechildbinding.binding_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrulechildbinding.target_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrulechildbinding.uuid": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrulenotificationtransport.id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "d",
-        "not_null": "true",
-        "position": "1",
-        "type": "integer"
-      },
-      "public.authentik_requests_requestrulenotificationtransport.notification_transport_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "uuid"
-      },
-      "public.authentik_requests_requestrulenotificationtransport.rule_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "uuid"
       },
       "public.authentik_sources_kerberos_groupkerberossourceconnection.groupsourceconnection_ptr_id": {
         "collation": "",
@@ -8143,15 +7000,6 @@
         "position": "5",
         "type": "boolean"
       },
-      "public.authentik_sources_ldap_ldapsource.sync_group_hierarchy": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "25",
-        "type": "boolean"
-      },
       "public.authentik_sources_ldap_ldapsource.sync_groups": {
         "collation": "",
         "default": "",
@@ -8258,7 +7106,7 @@
         "identity": "",
         "not_null": "false",
         "position": "5",
-        "type": "text"
+        "type": "character varying(255)"
       },
       "public.authentik_sources_oauth_oauthsource.additional_scopes": {
         "collation": "",
@@ -8285,7 +7133,7 @@
         "identity": "",
         "not_null": "false",
         "position": "4",
-        "type": "text"
+        "type": "character varying(255)"
       },
       "public.authentik_sources_oauth_oauthsource.consumer_key": {
         "collation": "",
@@ -8348,7 +7196,7 @@
         "identity": "",
         "not_null": "false",
         "position": "6",
-        "type": "text"
+        "type": "character varying(255)"
       },
       "public.authentik_sources_oauth_oauthsource.provider_type": {
         "collation": "",
@@ -8366,7 +7214,7 @@
         "identity": "",
         "not_null": "false",
         "position": "3",
-        "type": "text"
+        "type": "character varying(255)"
       },
       "public.authentik_sources_oauth_oauthsource.source_ptr_id": {
         "collation": "",
@@ -8521,15 +7369,6 @@
         "position": "9",
         "type": "boolean"
       },
-      "public.authentik_sources_saml_samlsource.audience_override": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "18",
-        "type": "text"
-      },
       "public.authentik_sources_saml_samlsource.binding_type": {
         "collation": "",
         "default": "",
@@ -8557,16 +7396,7 @@
         "position": "14",
         "type": "uuid"
       },
-      "public.authentik_sources_saml_samlsource.force_authn": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "17",
-        "type": "boolean"
-      },
-      "public.authentik_sources_saml_samlsource.issuer_override": {
+      "public.authentik_sources_saml_samlsource.issuer": {
         "collation": "",
         "default": "",
         "generated": "",
@@ -8898,60 +7728,6 @@
         "not_null": "true",
         "position": "1",
         "type": "integer"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage.deactivate_user": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "boolean"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage.delete_sessions": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "boolean"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage.revoke_tokens": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "5",
-        "type": "boolean"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage.self_service_completion_flow_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "6",
-        "type": "uuid"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage.set_unusable_password": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "3",
-        "type": "boolean"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage.stage_ptr_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "uuid"
       },
       "public.authentik_stages_authenticator_duo_authenticatorduostage.admin_integration_key": {
         "collation": "",
@@ -9322,24 +8098,6 @@
         "position": "10",
         "type": "uuid"
       },
-      "public.authentik_stages_authenticator_email_emaildevice.throttling_failure_count": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "12",
-        "type": "integer"
-      },
-      "public.authentik_stages_authenticator_email_emaildevice.throttling_failure_timestamp": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "13",
-        "type": "timestamp with time zone"
-      },
       "public.authentik_stages_authenticator_email_emaildevice.token": {
         "collation": "",
         "default": "",
@@ -9699,24 +8457,6 @@
         "not_null": "true",
         "position": "7",
         "type": "uuid"
-      },
-      "public.authentik_stages_authenticator_sms_smsdevice.throttling_failure_count": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "13",
-        "type": "integer"
-      },
-      "public.authentik_stages_authenticator_sms_smsdevice.throttling_failure_timestamp": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "14",
-        "type": "timestamp with time zone"
       },
       "public.authentik_stages_authenticator_sms_smsdevice.token": {
         "collation": "",
@@ -10114,15 +8854,6 @@
         "position": "3",
         "type": "text[]"
       },
-      "public.authentik_stages_authenticator_validate_authenticatorvalida499c.email_otp_throttling_factor": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "7",
-        "type": "double precision"
-      },
       "public.authentik_stages_authenticator_validate_authenticatorvalida499c.last_auth_threshold": {
         "collation": "",
         "default": "",
@@ -10141,15 +8872,6 @@
         "position": "2",
         "type": "text"
       },
-      "public.authentik_stages_authenticator_validate_authenticatorvalida499c.sms_otp_throttling_factor": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "8",
-        "type": "double precision"
-      },
       "public.authentik_stages_authenticator_validate_authenticatorvalida499c.stage_ptr_id": {
         "collation": "",
         "default": "",
@@ -10158,33 +8880,6 @@
         "not_null": "true",
         "position": "1",
         "type": "uuid"
-      },
-      "public.authentik_stages_authenticator_validate_authenticatorvalida499c.static_otp_throttling_factor": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "9",
-        "type": "double precision"
-      },
-      "public.authentik_stages_authenticator_validate_authenticatorvalida499c.totp_otp_throttling_factor": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "10",
-        "type": "double precision"
-      },
-      "public.authentik_stages_authenticator_validate_authenticatorvalida499c.webauthn_hints": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "6",
-        "type": "text[]"
       },
       "public.authentik_stages_authenticator_validate_authenticatorvalida499c.webauthn_user_verification": {
         "collation": "",
@@ -10248,15 +8943,6 @@
         "not_null": "true",
         "position": "6",
         "type": "text"
-      },
-      "public.authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f.hints": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "8",
-        "type": "text[]"
       },
       "public.authentik_stages_authenticator_webauthn_authenticatorwebaut8d0f.max_attempts": {
         "collation": "",
@@ -10328,24 +9014,6 @@
         "identity": "",
         "not_null": "true",
         "position": "12",
-        "type": "text"
-      },
-      "public.authentik_stages_authenticator_webauthn_webauthndevice.attestation_certificate_fingerprint": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "16",
-        "type": "text"
-      },
-      "public.authentik_stages_authenticator_webauthn_webauthndevice.attestation_certificate_pem": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "false",
-        "position": "17",
         "type": "text"
       },
       "public.authentik_stages_authenticator_webauthn_webauthndevice.confirmed": {
@@ -10553,15 +9221,6 @@
         "identity": "",
         "not_null": "true",
         "position": "2",
-        "type": "text"
-      },
-      "public.authentik_stages_captcha_captchastage.request_content_type": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "10",
         "type": "text"
       },
       "public.authentik_stages_captcha_captchastage.score_max_threshold": {
@@ -11410,15 +10069,6 @@
         "position": "4",
         "type": "character varying"
       },
-      "public.authentik_stages_source_sourcestage.resume_on_match_failures": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "4",
-        "type": "text[]"
-      },
       "public.authentik_stages_source_sourcestage.resume_timeout": {
         "collation": "",
         "default": "",
@@ -11842,24 +10492,6 @@
         "position": "15",
         "type": "uuid"
       },
-      "public.authentik_tasks_taskdependency.dependency_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "1",
-        "type": "uuid"
-      },
-      "public.authentik_tasks_taskdependency.task_id": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "2",
-        "type": "uuid"
-      },
       "public.authentik_tasks_tasklog.attributes": {
         "collation": "",
         "default": "",
@@ -12012,15 +10644,6 @@
         "not_null": "true",
         "position": "5",
         "type": "text"
-      },
-      "public.authentik_tenants_tenant.base_url": {
-        "collation": "",
-        "default": "",
-        "generated": "",
-        "identity": "",
-        "not_null": "true",
-        "position": "21",
-        "type": "character varying(200)"
       },
       "public.authentik_tenants_tenant.default_token_duration": {
         "collation": "",
@@ -12555,18 +11178,6 @@
         "definition": "PRIMARY KEY (id)",
         "type": "p"
       },
-      "public.authentik_agents_agent.authentik_agents_age_actor_ptr_id_0def782a_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (actor_ptr_id) REFERENCES authentik_core_actor(user_ptr_id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_agents_agent.authentik_agents_agent_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (actor_ptr_id)",
-        "type": "p"
-      },
       "public.authentik_blueprints_blueprintinstance.authentik_blueprints_blueprintinstance_managed_key": {
         "deferrable": "false",
         "deferred": "false",
@@ -12615,22 +11226,10 @@
         "definition": "FOREIGN KEY (flow_invalidation_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
         "type": "f"
       },
-      "public.authentik_brands_brand.authentik_brands_bra_flow_lockdown_id_a8caca6f_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (flow_lockdown_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
       "public.authentik_brands_brand.authentik_brands_bra_flow_recovery_id_e5d53987_fk_authentik": {
         "deferrable": "true",
         "deferred": "true",
         "definition": "FOREIGN KEY (flow_recovery_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_brands_brand.authentik_brands_bra_flow_request_id_c93e82e0_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (flow_request_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
         "type": "f"
       },
       "public.authentik_brands_brand.authentik_brands_bra_flow_unenrollment_id_93e48a3b_fk_authentik": {
@@ -12643,12 +11242,6 @@
         "deferrable": "true",
         "deferred": "true",
         "definition": "FOREIGN KEY (flow_user_settings_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_brands_brand.authentik_brands_bra_flow_user_switch_id_b481b73f_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (flow_user_switch_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
         "type": "f"
       },
       "public.authentik_brands_brand.authentik_brands_bra_web_certificate_id_10360e71_fk_authentik": {
@@ -12686,24 +11279,6 @@
         "deferred": "false",
         "definition": "PRIMARY KEY (id)",
         "type": "p"
-      },
-      "public.authentik_core_actor.authentik_core_actor_parent_id_16d7ff83_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (parent_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_core_actor.authentik_core_actor_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (user_ptr_id)",
-        "type": "p"
-      },
-      "public.authentik_core_actor.authentik_core_actor_user_ptr_id_f098cd7a_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (user_ptr_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
       },
       "public.authentik_core_application.authentik_core_appli_policybindingmodel_p_a04bee2b_fk_authentik": {
         "deferrable": "true",
@@ -12769,12 +11344,6 @@
         "deferrable": "true",
         "deferred": "true",
         "definition": "FOREIGN KEY (user_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_core_authenticatedsession.authentik_core_authe_user_switching_sessi_bb011b49_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (user_switching_session_id) REFERENCES authentik_core_userswitchingsession(token) DEFERRABLE INITIALLY DEFERRED",
         "type": "f"
       },
       "public.authentik_core_authenticatedsession.authentik_core_authenticatedsession_pkey1": {
@@ -12865,30 +11434,6 @@
         "deferrable": "false",
         "deferred": "false",
         "definition": "PRIMARY KEY (id)",
-        "type": "p"
-      },
-      "public.authentik_core_objectattribute.authentik_core_objec_object_type_id_6ae3079c_fk_django_co": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (object_type_id) REFERENCES django_content_type(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_core_objectattribute.authentik_core_objectatt_object_type_id_key_enabl_8dc462c5_uniq": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (object_type_id, key, enabled)",
-        "type": "u"
-      },
-      "public.authentik_core_objectattribute.authentik_core_objectattribute_managed_key": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (managed)",
-        "type": "u"
-      },
-      "public.authentik_core_objectattribute.authentik_core_objectattribute_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (attribute_id)",
         "type": "p"
       },
       "public.authentik_core_propertymapping.authentik_core_propertymapping_managed_key": {
@@ -13173,24 +11718,6 @@
         "definition": "PRIMARY KEY (id)",
         "type": "p"
       },
-      "public.authentik_core_userswitchingsession.authentik_core_users_current_session_id_4eeaf999_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (current_session_id) REFERENCES authentik_core_authenticatedsession(session_id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_core_userswitchingsession.authentik_core_userswitchingsession_current_session_id_key": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (current_session_id)",
-        "type": "u"
-      },
-      "public.authentik_core_userswitchingsession.authentik_core_userswitchingsession_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (token)",
-        "type": "p"
-      },
       "public.authentik_crypto_certificatekeypair.authentik_crypto_certificatekeypair_managed_key": {
         "deferrable": "false",
         "deferred": "false",
@@ -13299,18 +11826,6 @@
         "definition": "PRIMARY KEY (deviceuserbinding_ptr_id)",
         "type": "p"
       },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.authentik_endpoints__user_id_ffad2933_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (user_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47.authentik_endpoints_connectors_agent_appleindependentsecur_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (uuid)",
-        "type": "p"
-      },
       "public.authentik_endpoints_connectors_agent_applenonce.authentik_endpoints__device_token_id_23abacd6_fk_authentik": {
         "deferrable": "true",
         "deferred": "true",
@@ -13396,18 +11911,6 @@
         "type": "f"
       },
       "public.authentik_endpoints_connectors_fleet_fleetconnector.authentik_endpoints_connectors_fleet_fleetconnector_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (connector_ptr_id)",
-        "type": "p"
-      },
-      "public.authentik_endpoints_connectors_google_chrome_googlechromeco19cb.authentik_endpoints__connector_ptr_id_be497b7c_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (connector_ptr_id) REFERENCES authentik_endpoints_connector(connector_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_endpoints_connectors_google_chrome_googlechromeco19cb.authentik_endpoints_connectors_google_chrome_googlechromec_pkey": {
         "deferrable": "false",
         "deferred": "false",
         "definition": "PRIMARY KEY (connector_ptr_id)",
@@ -13617,12 +12120,6 @@
         "definition": "PRIMARY KEY (id)",
         "type": "p"
       },
-      "public.authentik_events_notificationtransport.authentik_events_not_webhook_ca_id_8e94c025_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (webhook_ca_id) REFERENCES authentik_crypto_certificatekeypair(kp_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
       "public.authentik_events_notificationtransport.authentik_events_not_webhook_mapping_body_39b98f60_fk_authentik": {
         "deferrable": "true",
         "deferred": "true",
@@ -13779,6 +12276,12 @@
         "definition": "FOREIGN KEY (content_type_id) REFERENCES django_content_type(id) DEFERRABLE INITIALLY DEFERRED",
         "type": "f"
       },
+      "public.authentik_lifecycle_lifecyclerule.authentik_lifecycle_life_content_type_id_object_i_9ea37e79_uniq": {
+        "deferrable": "false",
+        "deferred": "false",
+        "definition": "UNIQUE (content_type_id, object_id)",
+        "type": "u"
+      },
       "public.authentik_lifecycle_lifecyclerule.authentik_lifecycle_lifecyclerule_min_reviewers_check": {
         "deferrable": "false",
         "deferred": "false",
@@ -13888,30 +12391,6 @@
         "type": "u"
       },
       "public.authentik_lifecycle_review.authentik_lifecycle_review_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (id)",
-        "type": "p"
-      },
-      "public.authentik_lifecycle_useroffboarding.authentik_lifecycle__created_by_id_497f46d8_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (created_by_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_lifecycle_useroffboarding.authentik_lifecycle__user_id_cce47e3a_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (user_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_lifecycle_useroffboarding.authentik_lifecycle_useroffboarding_attempts_check": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "CHECK (attempts >= 0)",
-        "type": "c"
-      },
-      "public.authentik_lifecycle_useroffboarding.authentik_lifecycle_useroffboarding_pkey": {
         "deferrable": "false",
         "deferred": "false",
         "definition": "PRIMARY KEY (id)",
@@ -14499,12 +12978,6 @@
         "definition": "PRIMARY KEY (id)",
         "type": "p"
       },
-      "public.authentik_providers_oauth2_accesstoken.authentik_providers__actor_id_5ee952a2_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (actor_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
       "public.authentik_providers_oauth2_accesstoken.authentik_providers__provider_id_40ef5d24_fk_authentik": {
         "deferrable": "true",
         "deferred": "true",
@@ -14528,12 +13001,6 @@
         "deferred": "false",
         "definition": "PRIMARY KEY (id)",
         "type": "p"
-      },
-      "public.authentik_providers_oauth2_authorizationcode.authentik_providers__actor_id_342dfa2a_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (actor_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
       },
       "public.authentik_providers_oauth2_authorizationcode.authentik_providers__provider_id_731a3e62_fk_authentik": {
         "deferrable": "true",
@@ -14587,66 +13054,6 @@
         "deferrable": "false",
         "deferred": "false",
         "definition": "PRIMARY KEY (id)",
-        "type": "p"
-      },
-      "public.authentik_providers_oauth2_dynamicclientregistrationpropert3221.authentik_providers__dynamic_client_regis_f45495ce_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (dynamic_client_registration_id) REFERENCES authentik_providers_oauth2_oauth2dynamicclientregistration(policybindingmodel_ptr_id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_providers_oauth2_dynamicclientregistrationpropert3221.authentik_providers__property_mapping_id_99b43a14_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (property_mapping_id) REFERENCES authentik_providers_oauth2_scopemapping(propertymapping_ptr_id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_providers_oauth2_dynamicclientregistrationpropert3221.authentik_providers_oaut_property_mapping_id_dyna_fb626d65_uniq": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (property_mapping_id, dynamic_client_registration_id)",
-        "type": "u"
-      },
-      "public.authentik_providers_oauth2_dynamicclientregistrationpropert3221.authentik_providers_oauth2_dynamicclientregistrationproper_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (id)",
-        "type": "p"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.authentik_providers__override_authorizati_a001810a_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (override_authorization_flow_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.authentik_providers__override_invalidatio_fa0396ab_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (override_invalidation_flow_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.authentik_providers__policybindingmodel_p_e235b986_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.authentik_providers__provider_id_eb0ef2d8_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (provider_id) REFERENCES authentik_providers_oauth2_oauth2provider(provider_ptr_id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.authentik_providers_oauth2_oauth2dynamicclientr_provider_id_key": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (provider_id)",
-        "type": "u"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration.authentik_providers_oauth2_oauth2dynamicclientregistration_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (policybindingmodel_ptr_id)",
         "type": "p"
       },
       "public.authentik_providers_oauth2_oauth2provider.authentik_providers__encryption_key_id_b98bc751_fk_authentik": {
@@ -14726,12 +13133,6 @@
         "deferred": "false",
         "definition": "PRIMARY KEY (id)",
         "type": "p"
-      },
-      "public.authentik_providers_oauth2_refreshtoken.authentik_providers__actor_id_349e7533_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (actor_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
       },
       "public.authentik_providers_oauth2_refreshtoken.authentik_providers__provider_id_8bf99dba_fk_authentik": {
         "deferrable": "true",
@@ -15303,204 +13704,6 @@
         "definition": "PRIMARY KEY (id)",
         "type": "p"
       },
-      "public.authentik_requests_grantrequest.authentik_requests_g_agent_owner_id_8d70d324_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (agent_owner_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_grantrequest.authentik_requests_g_created_by_id_bcc06b49_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (created_by_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_grantrequest.authentik_requests_g_fulfilled_by_id_b4c96ba2_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (fulfilled_by_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_grantrequest.authentik_requests_g_revoked_by_id_a2805a00_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (revoked_by_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_grantrequest.authentik_requests_grantrequest_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (uuid)",
-        "type": "p"
-      },
-      "public.authentik_requests_grantrequestapproval.authentik_requests_g_request_id_3ce93ed5_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (request_id) REFERENCES authentik_requests_grantrequest(uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_grantrequestapproval.authentik_requests_g_reviewer_id_259197df_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (reviewer_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_grantrequestapproval.authentik_requests_grant_request_id_reviewer_id_28f17669_uniq": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (request_id, reviewer_id)",
-        "type": "u"
-      },
-      "public.authentik_requests_grantrequestapproval.authentik_requests_grantrequestapproval_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (uuid)",
-        "type": "p"
-      },
-      "public.authentik_requests_grantrequesttarget.authentik_requests_g_binding_id_1fadba70_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (binding_id) REFERENCES authentik_policies_policybinding(policy_binding_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_grantrequesttarget.authentik_requests_g_request_id_c7456832_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (request_id) REFERENCES authentik_requests_grantrequest(uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_grantrequesttarget.authentik_requests_g_target_id_272c04c0_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (target_id) REFERENCES authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_grantrequesttarget.authentik_requests_grant_request_id_target_id_ea793610_uniq": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (request_id, target_id)",
-        "type": "u"
-      },
-      "public.authentik_requests_grantrequesttarget.authentik_requests_grantrequesttarget_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (uuid)",
-        "type": "p"
-      },
-      "public.authentik_requests_requestrule.authentik_requests_r_policybindingmodel_p_5295493d_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_requestrule.authentik_requests_r_request_flow_id_4b4ac199_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (request_flow_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_requestrule.authentik_requests_requestrule_min_reviewers_check": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "CHECK (min_reviewers >= 0)",
-        "type": "c"
-      },
-      "public.authentik_requests_requestrule.authentik_requests_requestrule_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (uuid)",
-        "type": "p"
-      },
-      "public.authentik_requests_requestrule.authentik_requests_requestrule_policybindingmodel_ptr_id_key": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (policybindingmodel_ptr_id)",
-        "type": "u"
-      },
-      "public.authentik_requests_requestrulebinding.authentik_requests_r_policybindingmodel_p_c9c12e9c_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (policybindingmodel_ptr_id) REFERENCES authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_requestrulebinding.authentik_requests_r_rule_id_8013a0f9_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (rule_id) REFERENCES authentik_requests_requestrule(uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_requestrulebinding.authentik_requests_r_target_id_5e666159_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (target_id) REFERENCES authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_requestrulebinding.authentik_requests_reque_rule_id_target_id_77e5a496_uniq": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (rule_id, target_id)",
-        "type": "u"
-      },
-      "public.authentik_requests_requestrulebinding.authentik_requests_requestrulebin_policybindingmodel_ptr_id_key": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (policybindingmodel_ptr_id)",
-        "type": "u"
-      },
-      "public.authentik_requests_requestrulebinding.authentik_requests_requestrulebinding_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (uuid)",
-        "type": "p"
-      },
-      "public.authentik_requests_requestrulechildbinding.authentik_requests_r_binding_id_e0de9733_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (binding_id) REFERENCES authentik_requests_requestrulebinding(uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_requestrulechildbinding.authentik_requests_r_target_id_0e7d4419_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (target_id) REFERENCES authentik_policies_policybindingmodel(pbm_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_requestrulechildbinding.authentik_requests_reque_binding_id_target_id_ded19764_uniq": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (binding_id, target_id)",
-        "type": "u"
-      },
-      "public.authentik_requests_requestrulechildbinding.authentik_requests_requestrulechildbinding_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (uuid)",
-        "type": "p"
-      },
-      "public.authentik_requests_requestrulenotificationtransport.authentik_requests_r_notification_transpo_9b7689e4_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (notification_transport_id) REFERENCES authentik_events_notificationtransport(uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_requestrulenotificationtransport.authentik_requests_r_rule_id_de0d1a07_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (rule_id) REFERENCES authentik_requests_requestrule(uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_requests_requestrulenotificationtransport.authentik_requests_reque_rule_id_notification_tra_fb869f1c_uniq": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "UNIQUE (rule_id, notification_transport_id)",
-        "type": "u"
-      },
-      "public.authentik_requests_requestrulenotificationtransport.authentik_requests_requestrulenotificationtransport_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (id)",
-        "type": "p"
-      },
       "public.authentik_sources_kerberos_groupkerberossourceconnection.authentik_sources_ke_groupsourceconnectio_dd247900_fk_authentik": {
         "deferrable": "true",
         "deferred": "true",
@@ -15921,24 +14124,6 @@
         "definition": "PRIMARY KEY (usersourceconnection_ptr_id)",
         "type": "p"
       },
-      "public.authentik_stages_account_lockdown_accountlockdownstage.authentik_stages_acc_self_service_complet_59dcb701_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (self_service_completion_flow_id) REFERENCES authentik_flows_flow(flow_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage.authentik_stages_acc_stage_ptr_id_769781f1_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (stage_ptr_id) REFERENCES authentik_flows_stage(stage_uuid) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage.authentik_stages_account_lockdown_accountlockdownstage_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (stage_ptr_id)",
-        "type": "p"
-      },
       "public.authentik_stages_authenticator_duo_authenticatorduostage.authentik_stages_aut_configure_flow_id_4c667db1_fk_authentik": {
         "deferrable": "true",
         "deferred": "true",
@@ -16010,12 +14195,6 @@
         "deferred": "false",
         "definition": "UNIQUE (user_id, email)",
         "type": "u"
-      },
-      "public.authentik_stages_authenticator_email_emaildevice.authentik_stages_authenticator_e_throttling_failure_count_check": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "CHECK (throttling_failure_count >= 0)",
-        "type": "c"
       },
       "public.authentik_stages_authenticator_email_emaildevice.authentik_stages_authenticator_email_emaildevice_pkey": {
         "deferrable": "false",
@@ -16119,12 +14298,6 @@
         "definition": "UNIQUE (stage_id, phone_number)",
         "type": "u"
       },
-      "public.authentik_stages_authenticator_sms_smsdevice.authentik_stages_authenticator_s_throttling_failure_count_check": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "CHECK (throttling_failure_count >= 0)",
-        "type": "c"
-      },
       "public.authentik_stages_authenticator_sms_smsdevice.authentik_stages_authenticator_sms_smsdevice_pkey": {
         "deferrable": "false",
         "deferred": "false",
@@ -16167,7 +14340,7 @@
         "definition": "FOREIGN KEY (user_id) REFERENCES authentik_core_user(id) DEFERRABLE INITIALLY DEFERRED",
         "type": "f"
       },
-      "public.authentik_stages_authenticator_static_staticdevice.authentik_stages_authenticator__throttling_failure_count_check1": {
+      "public.authentik_stages_authenticator_static_staticdevice.authentik_stages_authenticator_s_throttling_failure_count_check": {
         "deferrable": "false",
         "deferred": "false",
         "definition": "CHECK (throttling_failure_count >= 0)",
@@ -16839,24 +15012,6 @@
         "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED",
         "type": "t"
       },
-      "public.authentik_tasks_taskdependency.authentik_tasks_task_dependency_id_c7a40dcc_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (dependency_id) REFERENCES authentik_tasks_task(message_id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_tasks_taskdependency.authentik_tasks_task_task_id_f9b4d794_fk_authentik": {
-        "deferrable": "true",
-        "deferred": "true",
-        "definition": "FOREIGN KEY (task_id) REFERENCES authentik_tasks_task(message_id) DEFERRABLE INITIALLY DEFERRED",
-        "type": "f"
-      },
-      "public.authentik_tasks_taskdependency.authentik_tasks_taskdependency_pkey": {
-        "deferrable": "false",
-        "deferred": "false",
-        "definition": "PRIMARY KEY (task_id, dependency_id)",
-        "type": "p"
-      },
       "public.authentik_tasks_tasklog.authentik_tasks_task_task_id_a82f0835_fk_authentik": {
         "deferrable": "true",
         "deferred": "true",
@@ -17051,7 +15206,6 @@
       "public.auth.0010_alter_group_name_max_length": {},
       "public.auth.0011_update_proxy_permissions": {},
       "public.auth.0012_alter_user_first_name_max_length": {},
-      "public.authentik_agents.0001_initial": {},
       "public.authentik_blueprints.0001_initial": {},
       "public.authentik_blueprints.0002_blueprintinstance_content": {},
       "public.authentik_blueprints.0003_alter_blueprintinstance_name": {},
@@ -17071,11 +15225,6 @@
       "public.authentik_brands.0009_brand_branding_default_flow_background": {},
       "public.authentik_brands.0010_brand_client_certificates_and_more": {},
       "public.authentik_brands.0011_alter_brand_branding_default_flow_background_and_more": {},
-      "public.authentik_brands.0012_brand_flow_lockdown": {},
-      "public.authentik_brands.0013_brandclientcertificate_and_more": {},
-      "public.authentik_brands.0014_brand_flow_request": {},
-      "public.authentik_brands.0015_brand_flow_user_switch": {},
-      "public.authentik_brands.0016_brand_branding_map_tiles": {},
       "public.authentik_core.0001_initial": {},
       "public.authentik_core.0002_auto_20200523_1133": {},
       "public.authentik_core.0002_auto_20200523_1133_squashed_0011_provider_name_temp": {},
@@ -17146,14 +15295,6 @@
       "public.authentik_core.0055_groupancestor_groupparentagenode_group_parents": {},
       "public.authentik_core.0056_user_roles": {},
       "public.authentik_core.0057_remove_user_groups_remove_user_user_permissions_and_more": {},
-      "public.authentik_core.0058_setup": {},
-      "public.authentik_core.0059_add_application_meta_hide": {},
-      "public.authentik_core.0060_sourcegrouppropertymapping_and_more": {},
-      "public.authentik_core.0061_objectattribute": {},
-      "public.authentik_core.0062_userswitchingsession_and_more": {},
-      "public.authentik_core.0063_actor": {},
-      "public.authentik_core.0064_user_authentik_c_usernam_2f0e4b_idx": {},
-      "public.authentik_core.0065_merge_20260916_1253": {},
       "public.authentik_crypto.0001_initial": {},
       "public.authentik_crypto.0002_create_self_signed_kp": {},
       "public.authentik_crypto.0003_certificatekeypair_managed": {},
@@ -17164,16 +15305,11 @@
       "public.authentik_endpoints.0002_rename_devicegroup_deviceaccessgroup_and_more": {},
       "public.authentik_endpoints.0003_alter_endpointstage_options_endpointstage_mode": {},
       "public.authentik_endpoints.0004_deviceaccessgroup_attributes": {},
-      "public.authentik_endpoints.0005_alter_deviceuserbinding_managers": {},
       "public.authentik_endpoints_connectors_agent.0001_initial": {},
       "public.authentik_endpoints_connectors_agent.0002_deviceauthenticationtoken_alter_devicetoken_options_and_more": {},
       "public.authentik_endpoints_connectors_agent.0003_agentconnector_auth_session_duration_and_more": {},
       "public.authentik_endpoints_connectors_agent.0004_agentconnector_challenge_idle_timeout_and_more": {},
-      "public.authentik_endpoints_connectors_agent.0005_appleindependentsecureenclave": {},
-      "public.authentik_endpoints_connectors_agent.0006_alter_agentdeviceuserbinding_options_and_more": {},
-      "public.authentik_endpoints_connectors_agent.0007_agentconnectorjwtfederationprovider_and_more": {},
       "public.authentik_endpoints_connectors_fleet.0001_initial": {},
-      "public.authentik_endpoints_connectors_google_chrome.0001_initial": {},
       "public.authentik_enterprise.0001_initial": {},
       "public.authentik_enterprise.0002_rename_users_license_internal_users_and_more": {},
       "public.authentik_enterprise.0003_remove_licenseusage_within_limits_and_more": {},
@@ -17212,12 +15348,8 @@
       "public.authentik_events.0016_add_tenant": {},
       "public.authentik_events.0016_alter_event_action": {},
       "public.authentik_events.0017_alter_event_action": {},
-      "public.authentik_events.0017_notificationtransport_webhook_ca": {},
       "public.authentik_events.0018_auto_20210911_2217": {},
-      "public.authentik_events.0018_event_authentik_e_user_pk__idx": {},
       "public.authentik_events.0019_alter_notificationtransport_webhook_url": {},
-      "public.authentik_events.0019_notificationrulenotificationtransport_and_more": {},
-      "public.authentik_events.0020_alter_event_action": {},
       "public.authentik_flows.0001_initial": {},
       "public.authentik_flows.0001_squashed_0007_auto_20200703_2059": {},
       "public.authentik_flows.0003_auto_20200523_1133": {},
@@ -17256,9 +15388,6 @@
       "public.authentik_flows.0031_alter_flow_layout": {},
       "public.authentik_lifecycle.0001_initial": {},
       "public.authentik_lifecycle.0002_alter_lifecycleiteration_opened_on": {},
-      "public.authentik_lifecycle.0003_remove_lifecyclerule_uniq_lifecycle_rule_ct_null_object_and_more": {},
-      "public.authentik_lifecycle.0004_lifecyclerulenotificationtransport_and_more": {},
-      "public.authentik_lifecycle.0005_useroffboarding": {},
       "public.authentik_outposts.0001_initial": {},
       "public.authentik_outposts.0001_squashed_0017_outpost_managed": {},
       "public.authentik_outposts.0002_auto_20200826_1306": {},
@@ -17281,7 +15410,6 @@
       "public.authentik_outposts.0019_alter_outpost_name_and_more": {},
       "public.authentik_outposts.0020_alter_outpost_type": {},
       "public.authentik_outposts.0021_alter_outpost_type": {},
-      "public.authentik_outposts.0022_outpostprovider_alter_outpost_providers": {},
       "public.authentik_policies.0001_initial": {},
       "public.authentik_policies.0002_auto_20200528_1647": {},
       "public.authentik_policies.0003_auto_20200908_1542": {},
@@ -17293,7 +15421,6 @@
       "public.authentik_policies.0009_alter_policy_name": {},
       "public.authentik_policies.0010_alter_policy_name": {},
       "public.authentik_policies.0011_policybinding_failure_result_and_more": {},
-      "public.authentik_policies.0012_alter_policybinding_managers_policybinding_expires_and_more": {},
       "public.authentik_policies_dummy.0001_initial": {},
       "public.authentik_policies_dummy.0002_dummypolicy_authentik_p_policy__648f9b_idx": {},
       "public.authentik_policies_event_matcher.0001_initial": {},
@@ -17316,7 +15443,6 @@
       "public.authentik_policies_event_matcher.0017_alter_eventmatcherpolicy_action": {},
       "public.authentik_policies_event_matcher.0018_alter_eventmatcherpolicy_action": {},
       "public.authentik_policies_event_matcher.0019_alter_eventmatcherpolicy_app": {},
-      "public.authentik_policies_event_matcher.0019_alter_eventmatcherpolicy_app_squashed_0028_alter_eventmatcherpolicy_action": {},
       "public.authentik_policies_event_matcher.0020_eventmatcherpolicy_authentik_p_policy__e605cf_idx": {},
       "public.authentik_policies_event_matcher.0021_alter_eventmatcherpolicy_app": {},
       "public.authentik_policies_event_matcher.0022_eventmatcherpolicy_model": {},
@@ -17324,8 +15450,6 @@
       "public.authentik_policies_event_matcher.0024_alter_eventmatcherpolicy_action": {},
       "public.authentik_policies_event_matcher.0025_alter_eventmatcherpolicy_action": {},
       "public.authentik_policies_event_matcher.0026_alter_eventmatcherpolicy_action": {},
-      "public.authentik_policies_event_matcher.0027_eventmatcherpolicy_query": {},
-      "public.authentik_policies_event_matcher.0028_alter_eventmatcherpolicy_action": {},
       "public.authentik_policies_expiry.0001_initial": {},
       "public.authentik_policies_expiry.0002_passwordexpirypolicy_authentik_p_policy__cf73a7_idx": {},
       "public.authentik_policies_expression.0001_initial": {},
@@ -17349,7 +15473,6 @@
       "public.authentik_policies_reputation.0008_reputation_authentik_p_expires_da493f_idx_and_more": {},
       "public.authentik_policies_reputation.0009_alter_reputation_updated": {},
       "public.authentik_policies_reputation.0010_alter_reputation_managers": {},
-      "public.authentik_policies_reputation.0011_alter_reputation_managers": {},
       "public.authentik_policies_unique_password.0001_initial": {},
       "public.authentik_providers_google_workspace.0001_initial": {},
       "public.authentik_providers_google_workspace.0001_squashed_0002_alter_googleworkspaceprovidergroup_options_and_more": {},
@@ -17357,8 +15480,6 @@
       "public.authentik_providers_google_workspace.0003_googleworkspaceprovidergroup_attributes_and_more": {},
       "public.authentik_providers_google_workspace.0004_googleworkspaceprovider_dry_run": {},
       "public.authentik_providers_google_workspace.0005_googleworkspaceprovider_sync_page_size_and_more": {},
-      "public.authentik_providers_google_workspace.0006_googleworkspaceproviderpropertymappingsgroup_and_more": {},
-      "public.authentik_providers_google_workspace.0007_googleworkspaceprovider_discovery_enabled": {},
       "public.authentik_providers_ldap.0001_initial": {},
       "public.authentik_providers_ldap.0001_squashed_0005_ldapprovider_search_mode": {},
       "public.authentik_providers_ldap.0002_ldapprovider_bind_mode": {},
@@ -17372,8 +15493,6 @@
       "public.authentik_providers_microsoft_entra.0002_microsoftentraprovidergroup_attributes_and_more": {},
       "public.authentik_providers_microsoft_entra.0003_microsoftentraprovider_dry_run": {},
       "public.authentik_providers_microsoft_entra.0004_microsoftentraprovider_sync_page_size_and_more": {},
-      "public.authentik_providers_microsoft_entra.0005_microsoftentraproviderpropertymappingsgroup_and_more": {},
-      "public.authentik_providers_microsoft_entra.0006_microsoftentraprovider_discovery_enabled": {},
       "public.authentik_providers_oauth2.0001_initial": {},
       "public.authentik_providers_oauth2.0002_oauth2provider_sub_mode": {},
       "public.authentik_providers_oauth2.0003_auto_20200916_2129": {},
@@ -17416,12 +15535,6 @@
       "public.authentik_providers_oauth2.0029_oauth2provider__backchannel_logout_uris": {},
       "public.authentik_providers_oauth2.0030_oauth2provider_refresh_token_threshold": {},
       "public.authentik_providers_oauth2.0031_remove_oauth2provider_backchannel_logout_uri_and_more": {},
-      "public.authentik_providers_oauth2.0032_oauth2provider_grant_types": {},
-      "public.authentik_providers_oauth2.0033_alter_oauth2provider_grant_types": {},
-      "public.authentik_providers_oauth2.0034_authorizationcode_dpop_jkt_devicetoken_dpop_jkt_and_more": {},
-      "public.authentik_providers_oauth2.0035_oauth2providerjwtfederationprovider_and_more": {},
-      "public.authentik_providers_oauth2.0036_dynamicclientregistrationpropertymapping_and_more": {},
-      "public.authentik_providers_oauth2.0037_accesstoken_actor_authorizationcode_actor_and_more": {},
       "public.authentik_providers_proxy.0001_initial": {},
       "public.authentik_providers_proxy.0001_squashed_0014_proxy_v2": {},
       "public.authentik_providers_proxy.0002_proxyprovider_cookie_secret": {},
@@ -17447,7 +15560,6 @@
       "public.authentik_providers_rac.0005_alter_racpropertymapping_options": {},
       "public.authentik_providers_rac.0006_connectiontoken_authentik_p_expires_91f148_idx_and_more": {},
       "public.authentik_providers_rac.0007_migrate_session": {},
-      "public.authentik_providers_rac.0008_endpointpropertymapping_and_more": {},
       "public.authentik_providers_radius.0001_initial": {},
       "public.authentik_providers_radius.0002_radiusprovider_mfa_support": {},
       "public.authentik_providers_radius.0003_radiusproviderpropertymapping": {},
@@ -17474,8 +15586,6 @@
       "public.authentik_providers_saml.0018_alter_samlprovider_acs_url": {},
       "public.authentik_providers_saml.0019_samlprovider_default_name_id_policy": {},
       "public.authentik_providers_saml.0020_samlprovider_logout_method_and_more": {},
-      "public.authentik_providers_saml.0021_samlprovider_sign_logout_response": {},
-      "public.authentik_providers_saml.0022_remove_samlprovider_issuer_and_more": {},
       "public.authentik_providers_scim.0001_initial": {},
       "public.authentik_providers_scim.0001_squashed_0006_rename_parent_group_scimprovider_filter_group": {},
       "public.authentik_providers_scim.0002_scimuser": {},
@@ -17496,13 +15606,8 @@
       "public.authentik_providers_scim.0017_alter_scimprovider_auth_oauth_user": {},
       "public.authentik_providers_scim.0018_scimprovider_service_provider_config_cache_timeout": {},
       "public.authentik_providers_scim.0019_scimprovider_group_filters_and_more": {},
-      "public.authentik_providers_scim.0020_scimprovidergroupfilter_and_more": {},
-      "public.authentik_providers_scim.0021_scimprovider_discovery_enabled": {},
       "public.authentik_providers_ssf.0001_initial": {},
-      "public.authentik_providers_ssf.0002_ssfprovider_push_verify_certificates_and_more": {},
-      "public.authentik_providers_ssf.0003_ssfprovideroidcauthprovider_and_more": {},
       "public.authentik_providers_ws_federation.0001_initial": {},
-      "public.authentik_providers_ws_federation.0002_wsfederationprovider_saml_version": {},
       "public.authentik_rbac.0001_initial": {},
       "public.authentik_rbac.0002_systempermission": {},
       "public.authentik_rbac.0003_alter_systempermission_options": {},
@@ -17513,10 +15618,7 @@
       "public.authentik_rbac.0008_alter_role_group": {},
       "public.authentik_rbac.0009_remove_initialpermissions_mode": {},
       "public.authentik_rbac.0010_remove_role_group_alter_role_name": {},
-      "public.authentik_rbac.0011_initialpermissionspermission": {},
       "public.authentik_reports.0001_initial": {},
-      "public.authentik_requests.0001_initial": {},
-      "public.authentik_requests.0002_grantrequest_agent_owner": {},
       "public.authentik_sources_kerberos.0001_initial": {},
       "public.authentik_sources_kerberos.0002_kerberossource_kadmin_type": {},
       "public.authentik_sources_kerberos.0003_migrate_userkerberossourceconnection_identifier": {},
@@ -17545,7 +15647,6 @@
       "public.authentik_sources_ldap.0011_ldapsource_property_mappings_group": {},
       "public.authentik_sources_ldap.0011_ldapsource_sync_outgoing_trigger_mode": {},
       "public.authentik_sources_ldap.0012_auto_20210812_1703": {},
-      "public.authentik_sources_ldap.0012_ldapsource_sync_group_parents": {},
       "public.authentik_sources_oauth.0001_initial": {},
       "public.authentik_sources_oauth.0002_auto_20200520_1108": {},
       "public.authentik_sources_oauth.0003_auto_20210416_0726": {},
@@ -17559,8 +15660,6 @@
       "public.authentik_sources_oauth.0011_useroauthsourceconnection_expires": {},
       "public.authentik_sources_oauth.0012_oauthsource_pkce": {},
       "public.authentik_sources_oauth.0013_useroauthsourceconnection_refresh_token": {},
-      "public.authentik_sources_oauth.0014_migrate_azuread_to_entraid": {},
-      "public.authentik_sources_oauth.0015_oauthsource_url_textfields": {},
       "public.authentik_sources_plex.0001_initial": {},
       "public.authentik_sources_plex.0002_auto_20210505_1717": {},
       "public.authentik_sources_plex.0003_alter_plexsource_plex_token": {},
@@ -17589,15 +15688,10 @@
       "public.authentik_sources_saml.0019_migrate_usersamlsourceconnection_identifier": {},
       "public.authentik_sources_saml.0020_alter_samlsource_name_id_policy": {},
       "public.authentik_sources_saml.0021_samlsource_signed_assertion_and_more": {},
-      "public.authentik_sources_saml.0022_samlsource_force_authn": {},
-      "public.authentik_sources_saml.0023_rename_issuer_samlsource_issuer_override": {},
-      "public.authentik_sources_saml.0024_alter_samlsource_issuer_override": {},
-      "public.authentik_sources_saml.0025_samlsource_audience_override": {},
       "public.authentik_sources_scim.0001_initial": {},
       "public.authentik_sources_scim.0002_scimsourcepropertymapping": {},
       "public.authentik_sources_scim.0003_alter_scimsourcegroup_unique_together_and_more": {},
       "public.authentik_sources_telegram.0001_initial": {},
-      "public.authentik_stages_account_lockdown.0001_initial": {},
       "public.authentik_stages_authenticator_duo.0001_initial": {},
       "public.authentik_stages_authenticator_duo.0002_default_setup_flow": {},
       "public.authentik_stages_authenticator_duo.0003_duodevice_last_t": {},
@@ -17605,11 +15699,8 @@
       "public.authentik_stages_authenticator_duo.0005_authenticatorduostage_friendly_name": {},
       "public.authentik_stages_authenticator_duo.0006_duodevice_created_duodevice_last_updated_and_more": {},
       "public.authentik_stages_authenticator_duo.0007_alter_authenticatorduostage_friendly_name": {},
-      "public.authentik_stages_authenticator_duo.0008_alter_duodevice_stage": {},
       "public.authentik_stages_authenticator_email.0001_initial": {},
       "public.authentik_stages_authenticator_email.0002_alter_authenticatoremailstage_friendly_name": {},
-      "public.authentik_stages_authenticator_email.0003_emaildevice_throttling_failure_count_and_more": {},
-      "public.authentik_stages_authenticator_email.0004_alter_emaildevice_stage": {},
       "public.authentik_stages_authenticator_endpoint_gdtc.0001_initial": {},
       "public.authentik_stages_authenticator_endpoint_gdtc.0002_alter_authenticatorendpointgdtcstage_friendly_name": {},
       "public.authentik_stages_authenticator_sms.0001_initial": {},
@@ -17624,8 +15715,6 @@
       "public.authentik_stages_authenticator_sms.0006_authenticatorsmsstage_friendly_name": {},
       "public.authentik_stages_authenticator_sms.0007_smsdevice_created_smsdevice_last_updated_and_more": {},
       "public.authentik_stages_authenticator_sms.0008_alter_authenticatorsmsstage_friendly_name": {},
-      "public.authentik_stages_authenticator_sms.0009_smsdevice_throttling_failure_count_and_more": {},
-      "public.authentik_stages_authenticator_sms.0010_alter_smsdevice_stage": {},
       "public.authentik_stages_authenticator_static.0001_initial": {},
       "public.authentik_stages_authenticator_static.0002_otpstaticstage_configure_flow": {},
       "public.authentik_stages_authenticator_static.0003_default_setup_flow": {},
@@ -17664,9 +15753,6 @@
       "public.authentik_stages_authenticator_validate.0012_authenticatorvalidatestage_webauthn_user_verification": {},
       "public.authentik_stages_authenticator_validate.0013_authenticatorvalidatestage_webauthn_allowed_device_types": {},
       "public.authentik_stages_authenticator_validate.0014_alter_authenticatorvalidatestage_device_classes": {},
-      "public.authentik_stages_authenticator_validate.0015_authenticatorvalidatestage_webauthn_hints": {},
-      "public.authentik_stages_authenticator_validate.0016_authenticatorvalidatestage_email_otp_throttling_factor_and_more": {},
-      "public.authentik_stages_authenticator_validate.0017_authenticatorvalidatestageconfigurationstage_and_more": {},
       "public.authentik_stages_authenticator_webauthn.0001_initial": {},
       "public.authentik_stages_authenticator_webauthn.0001_squashed_0011_webauthndevice_aaguid": {},
       "public.authentik_stages_authenticator_webauthn.0002_default_setup_flow": {},
@@ -17680,18 +15766,12 @@
       "public.authentik_stages_authenticator_webauthn.0010_webauthndevicetype_authenticatorwebauthnstage_and_more": {},
       "public.authentik_stages_authenticator_webauthn.0011_webauthndevice_aaguid": {},
       "public.authentik_stages_authenticator_webauthn.0012_webauthndevice_created_webauthndevice_last_updated_and_more": {},
-      "public.authentik_stages_authenticator_webauthn.0012_webauthndevice_created_webauthndevice_last_updated_and_more_squashed_0016_authenticatorwebauthnstage_prevent_duplicate_devices_and_more": {},
       "public.authentik_stages_authenticator_webauthn.0013_authenticatorwebauthnstage_max_attempts": {},
       "public.authentik_stages_authenticator_webauthn.0014_alter_authenticatorwebauthnstage_friendly_name": {},
-      "public.authentik_stages_authenticator_webauthn.0015_authenticatorwebauthnstage_hints": {},
-      "public.authentik_stages_authenticator_webauthn.0016_authenticatorwebauthnstage_prevent_duplicate_devices_and_more": {},
-      "public.authentik_stages_authenticator_webauthn.0017_authenticatorwebauthnstagedevicetyperestriction_and_more": {},
-      "public.authentik_stages_authenticator_webauthn.0018_remove_authenticatorwebauthnstage_prevent_duplicate_devices": {},
       "public.authentik_stages_captcha.0001_initial": {},
       "public.authentik_stages_captcha.0002_captchastage_api_url_captchastage_js_url_and_more": {},
       "public.authentik_stages_captcha.0003_captchastage_error_on_invalid_score_and_more": {},
       "public.authentik_stages_captcha.0004_captchastage_interactive": {},
-      "public.authentik_stages_captcha.0005_captchastage_request_content_type": {},
       "public.authentik_stages_consent.0001_initial": {},
       "public.authentik_stages_consent.0002_auto_20200720_0941": {},
       "public.authentik_stages_consent.0003_auto_20200924_1403": {},
@@ -17727,7 +15807,6 @@
       "public.authentik_stages_identification.0015_identificationstage_captcha_stage": {},
       "public.authentik_stages_identification.0016_identificationstage_enable_remember_me": {},
       "public.authentik_stages_identification.0017_identificationstage_webauthn_stage": {},
-      "public.authentik_stages_identification.0018_identificationstagesource_and_more": {},
       "public.authentik_stages_invitation.0001_initial": {},
       "public.authentik_stages_invitation.0001_squashed_0006_invitation_name": {},
       "public.authentik_stages_invitation.0002_auto_20201225_2143": {},
@@ -17740,7 +15819,6 @@
       "public.authentik_stages_invitation.0009_invitation_authentik_s_expires_96f4b8_idx_and_more": {},
       "public.authentik_stages_invitation.0010_alter_invitation_name": {},
       "public.authentik_stages_mtls.0001_initial": {},
-      "public.authentik_stages_mtls.0002_mutualtlsstagecertificateauthority_and_more": {},
       "public.authentik_stages_password.0001_initial": {},
       "public.authentik_stages_password.0002_passwordstage_change_flow": {},
       "public.authentik_stages_password.0003_passwordstage_failed_attempts_before_cancel": {},
@@ -17762,11 +15840,8 @@
       "public.authentik_stages_prompt.0009_prompt_name": {},
       "public.authentik_stages_prompt.0010_alter_prompt_placeholder_alter_prompt_type": {},
       "public.authentik_stages_prompt.0011_prompt_initial_value_prompt_initial_value_expression_and_more": {},
-      "public.authentik_stages_prompt.0012_alter_prompt_type": {},
-      "public.authentik_stages_prompt.0013_promptstageprompt_alter_promptstage_fields_and_more": {},
       "public.authentik_stages_redirect.0001_initial": {},
       "public.authentik_stages_source.0001_initial": {},
-      "public.authentik_stages_source.0002_sourcestage_resume_on_match_failures": {},
       "public.authentik_stages_user_delete.0001_initial": {},
       "public.authentik_stages_user_login.0001_initial": {},
       "public.authentik_stages_user_login.0002_userloginstage_session_duration": {},
@@ -17789,9 +15864,6 @@
       "public.authentik_tasks.0003_task_eta_task_retries": {},
       "public.authentik_tasks.0004_remove_task_notify_enqueueing_and_more": {},
       "public.authentik_tasks.0005_tasklog": {},
-      "public.authentik_tasks.0006_task_authentik_t_queue_n_099d0d_idx": {},
-      "public.authentik_tasks.0007_alter_task_aggregated_status_alter_task_state_and_more": {},
-      "public.authentik_tasks.0008_remove_task_update_aggregated_status_and_more": {},
       "public.authentik_tasks_schedules.0001_initial": {},
       "public.authentik_tasks_schedules.0002_alter_schedule_identifier_and_more": {},
       "public.authentik_tasks_schedules.0003_alter_schedule_managers": {},
@@ -17802,8 +15874,6 @@
       "public.authentik_tenants.0005_tenant_reputation_lower_limit_and_more": {},
       "public.authentik_tenants.0006_tenant_flags": {},
       "public.authentik_tenants.0007_tenant_pagination_default_page_size_and_more": {},
-      "public.authentik_tenants.0008_tenant_base_url": {},
-      "public.authentik_tenants.0009_alter_tenant_base_url": {},
       "public.contenttypes.0001_initial": {},
       "public.contenttypes.0002_remove_content_type_name": {},
       "public.django_channels_postgres.0001_initial": {},
@@ -17845,7 +15915,7 @@
         "kind": "f"
       },
       "public.pgtrigger_update_aggregated_status_f18c4.": {
-        "definition": "CREATE OR REPLACE FUNCTION public.pgtrigger_update_aggregated_status_f18c4()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\n                \n                BEGIN\n                    IF (\"public\"._pgtrigger_should_ignore(TG_NAME) IS TRUE) THEN\n                        IF (TG_OP = 'DELETE') THEN\n                            RETURN OLD;\n                        ELSE\n                            RETURN NEW;\n                        END IF;\n                    END IF;\n                    \n                    IF NEW.state != 'done' THEN\n                        NEW.aggregated_status := NEW.state;\n                    ELSE\n                        SELECT CASE\n                            WHEN bool_or(log_level = 'error') THEN 'error'\n                            WHEN bool_or(log_level = 'warning') THEN 'warning'\n                            WHEN bool_or(log_level = 'info') THEN 'info'\n                            ELSE 'done'\n                        END\n                        INTO NEW.aggregated_status\n                        FROM authentik_tasks_tasklog\n                        WHERE task_id = NEW.message_id AND NOT previous;\n                    END IF;\n\n                    RETURN NEW;\n                \n                END;\n            $function$\n",
+        "definition": "CREATE OR REPLACE FUNCTION public.pgtrigger_update_aggregated_status_f18c4()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\n                \n                BEGIN\n                    IF (\"public\"._pgtrigger_should_ignore(TG_NAME) IS TRUE) THEN\n                        IF (TG_OP = 'DELETE') THEN\n                            RETURN OLD;\n                        ELSE\n                            RETURN NEW;\n                        END IF;\n                    END IF;\n                    \n                    NEW.aggregated_status := CASE\n                        WHEN NEW.state != 'done' THEN NEW.state\n                        ELSE COALESCE((\n                            SELECT CASE\n                                WHEN bool_or(msg->>'log_level' = 'error') THEN 'error'\n                                WHEN bool_or(msg->>'log_level' = 'warning') THEN 'warning'\n                                WHEN bool_or(msg->>'log_level' = 'info') THEN 'info'\n                                ELSE 'done'\n                            END\n                            FROM jsonb_array_elements(NEW._messages) AS msg\n                        ), 'done')\n                    END;\n\n                    RETURN NEW;\n                \n                END;\n            $function$\n",
         "kind": "f"
       }
     },
@@ -17879,9 +15949,6 @@
       },
       "public.auth_permission_pkey": {
         "definition": "CREATE UNIQUE INDEX auth_permission_pkey ON public.auth_permission USING btree (id)"
-      },
-      "public.authentik_agents_agent_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_agents_agent_pkey ON public.authentik_agents_agent USING btree (actor_ptr_id)"
       },
       "public.authentik_b_default_3ccf12_idx": {
         "definition": "CREATE INDEX authentik_b_default_3ccf12_idx ON public.authentik_brands_brand USING btree (\"default\")"
@@ -17931,23 +15998,14 @@
       "public.authentik_brands_brand_flow_invalidation_id_8224d0ed": {
         "definition": "CREATE INDEX authentik_brands_brand_flow_invalidation_id_8224d0ed ON public.authentik_brands_brand USING btree (flow_invalidation_id)"
       },
-      "public.authentik_brands_brand_flow_lockdown_id_a8caca6f": {
-        "definition": "CREATE INDEX authentik_brands_brand_flow_lockdown_id_a8caca6f ON public.authentik_brands_brand USING btree (flow_lockdown_id)"
-      },
       "public.authentik_brands_brand_flow_recovery_id_e5d53987": {
         "definition": "CREATE INDEX authentik_brands_brand_flow_recovery_id_e5d53987 ON public.authentik_brands_brand USING btree (flow_recovery_id)"
-      },
-      "public.authentik_brands_brand_flow_request_id_c93e82e0": {
-        "definition": "CREATE INDEX authentik_brands_brand_flow_request_id_c93e82e0 ON public.authentik_brands_brand USING btree (flow_request_id)"
       },
       "public.authentik_brands_brand_flow_unenrollment_id_93e48a3b": {
         "definition": "CREATE INDEX authentik_brands_brand_flow_unenrollment_id_93e48a3b ON public.authentik_brands_brand USING btree (flow_unenrollment_id)"
       },
       "public.authentik_brands_brand_flow_user_settings_id_64c7fb48": {
         "definition": "CREATE INDEX authentik_brands_brand_flow_user_settings_id_64c7fb48 ON public.authentik_brands_brand USING btree (flow_user_settings_id)"
-      },
-      "public.authentik_brands_brand_flow_user_switch_id_b481b73f": {
-        "definition": "CREATE INDEX authentik_brands_brand_flow_user_switch_id_b481b73f ON public.authentik_brands_brand USING btree (flow_user_switch_id)"
       },
       "public.authentik_brands_brand_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_brands_brand_pkey ON public.authentik_brands_brand USING btree (brand_uuid)"
@@ -17973,9 +16031,6 @@
       "public.authentik_c_expires_c49143_idx": {
         "definition": "CREATE INDEX authentik_c_expires_c49143_idx ON public.authentik_core_session USING btree (expires, session_key)"
       },
-      "public.authentik_c_expires_ce0be4_idx": {
-        "definition": "CREATE INDEX authentik_c_expires_ce0be4_idx ON public.authentik_core_actor USING btree (expires)"
-      },
       "public.authentik_c_expires_d2f607_idx": {
         "definition": "CREATE INDEX authentik_c_expires_d2f607_idx ON public.authentik_core_session USING btree (expires)"
       },
@@ -17988,14 +16043,8 @@
       "public.authentik_c_expirin_a1b838_idx": {
         "definition": "CREATE INDEX authentik_c_expirin_a1b838_idx ON public.authentik_core_token USING btree (expiring)"
       },
-      "public.authentik_c_expirin_b80614_idx": {
-        "definition": "CREATE INDEX authentik_c_expirin_b80614_idx ON public.authentik_core_actor USING btree (expiring, expires)"
-      },
       "public.authentik_c_expirin_ba04d9_idx": {
         "definition": "CREATE INDEX authentik_c_expirin_ba04d9_idx ON public.authentik_core_token USING btree (expiring, expires)"
-      },
-      "public.authentik_c_expirin_fbf26f_idx": {
-        "definition": "CREATE INDEX authentik_c_expirin_fbf26f_idx ON public.authentik_core_actor USING btree (expiring)"
       },
       "public.authentik_c_id_5d0bb4_idx": {
         "definition": "CREATE UNIQUE INDEX authentik_c_id_5d0bb4_idx ON public.authentik_core_groupancestry USING btree (id)"
@@ -18039,17 +16088,8 @@
       "public.authentik_c_type_ecf60d_idx": {
         "definition": "CREATE INDEX authentik_c_type_ecf60d_idx ON public.authentik_core_user USING btree (type)"
       },
-      "public.authentik_c_usernam_2f0e4b_idx": {
-        "definition": "CREATE INDEX authentik_c_usernam_2f0e4b_idx ON public.authentik_core_user USING btree (username, is_active, type)"
-      },
       "public.authentik_c_uuid_3dae2f_idx": {
         "definition": "CREATE INDEX authentik_c_uuid_3dae2f_idx ON public.authentik_core_user USING btree (uuid)"
-      },
-      "public.authentik_core_actor_parent_id_16d7ff83": {
-        "definition": "CREATE INDEX authentik_core_actor_parent_id_16d7ff83 ON public.authentik_core_actor USING btree (parent_id)"
-      },
-      "public.authentik_core_actor_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_core_actor_pkey ON public.authentik_core_actor USING btree (user_ptr_id)"
       },
       "public.authentik_core_application_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_core_application_pkey ON public.authentik_core_application USING btree (policybindingmodel_ptr_id)"
@@ -18071,12 +16111,6 @@
       },
       "public.authentik_core_applicationentitlement_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_core_applicationentitlement_pkey ON public.authentik_core_applicationentitlement USING btree (policybindingmodel_ptr_id)"
-      },
-      "public.authentik_core_authentic_user_switching_session_i_bb011b49_like": {
-        "definition": "CREATE INDEX authentik_core_authentic_user_switching_session_i_bb011b49_like ON public.authentik_core_authenticatedsession USING btree (user_switching_session_id varchar_pattern_ops)"
-      },
-      "public.authentik_core_authenticat_user_switching_session_id_bb011b49": {
-        "definition": "CREATE INDEX authentik_core_authenticat_user_switching_session_id_bb011b49 ON public.authentik_core_authenticatedsession USING btree (user_switching_session_id)"
       },
       "public.authentik_core_authenticatedsession_pkey1": {
         "definition": "CREATE UNIQUE INDEX authentik_core_authenticatedsession_pkey1 ON public.authentik_core_authenticatedsession USING btree (session_id)"
@@ -18131,21 +16165,6 @@
       },
       "public.authentik_core_groupsourceconnection_source_id_12d2d371": {
         "definition": "CREATE INDEX authentik_core_groupsourceconnection_source_id_12d2d371 ON public.authentik_core_groupsourceconnection USING btree (source_id)"
-      },
-      "public.authentik_core_objectatt_object_type_id_key_enabl_8dc462c5_uniq": {
-        "definition": "CREATE UNIQUE INDEX authentik_core_objectatt_object_type_id_key_enabl_8dc462c5_uniq ON public.authentik_core_objectattribute USING btree (object_type_id, key, enabled)"
-      },
-      "public.authentik_core_objectattribute_managed_783e34f3_like": {
-        "definition": "CREATE INDEX authentik_core_objectattribute_managed_783e34f3_like ON public.authentik_core_objectattribute USING btree (managed text_pattern_ops)"
-      },
-      "public.authentik_core_objectattribute_managed_key": {
-        "definition": "CREATE UNIQUE INDEX authentik_core_objectattribute_managed_key ON public.authentik_core_objectattribute USING btree (managed)"
-      },
-      "public.authentik_core_objectattribute_object_type_id_6ae3079c": {
-        "definition": "CREATE INDEX authentik_core_objectattribute_object_type_id_6ae3079c ON public.authentik_core_objectattribute USING btree (object_type_id)"
-      },
-      "public.authentik_core_objectattribute_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_core_objectattribute_pkey ON public.authentik_core_objectattribute USING btree (attribute_id)"
       },
       "public.authentik_core_propertymapping_managed_e1718652_like": {
         "definition": "CREATE INDEX authentik_core_propertymapping_managed_e1718652_like ON public.authentik_core_propertymapping USING btree (managed text_pattern_ops)"
@@ -18312,18 +16331,6 @@
       "public.authentik_core_usersourceconnection_user_id_7f305d6f": {
         "definition": "CREATE INDEX authentik_core_usersourceconnection_user_id_7f305d6f ON public.authentik_core_usersourceconnection USING btree (user_id)"
       },
-      "public.authentik_core_userswitc_current_session_id_4eeaf999_like": {
-        "definition": "CREATE INDEX authentik_core_userswitc_current_session_id_4eeaf999_like ON public.authentik_core_userswitchingsession USING btree (current_session_id varchar_pattern_ops)"
-      },
-      "public.authentik_core_userswitchingsession_current_session_id_key": {
-        "definition": "CREATE UNIQUE INDEX authentik_core_userswitchingsession_current_session_id_key ON public.authentik_core_userswitchingsession USING btree (current_session_id)"
-      },
-      "public.authentik_core_userswitchingsession_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_core_userswitchingsession_pkey ON public.authentik_core_userswitchingsession USING btree (token)"
-      },
-      "public.authentik_core_userswitchingsession_token_74cd985b_like": {
-        "definition": "CREATE INDEX authentik_core_userswitchingsession_token_74cd985b_like ON public.authentik_core_userswitchingsession USING btree (token varchar_pattern_ops)"
-      },
       "public.authentik_crypto_certificatekeypair_managed_a997712a_like": {
         "definition": "CREATE INDEX authentik_crypto_certificatekeypair_managed_a997712a_like ON public.authentik_crypto_certificatekeypair USING btree (managed text_pattern_ops)"
       },
@@ -18438,9 +16445,6 @@
       "public.authentik_e_user_1be48d_idx": {
         "definition": "CREATE INDEX authentik_e_user_1be48d_idx ON public.authentik_events_event USING btree (\"user\")"
       },
-      "public.authentik_e_user_pk__idx": {
-        "definition": "CREATE INDEX authentik_e_user_pk__idx ON public.authentik_events_event USING btree (((\"user\" -> 'pk'::text)))"
-      },
       "public.authentik_endpoints_conn_agentconnector_id_oauth2_71d35df2_uniq": {
         "definition": "CREATE UNIQUE INDEX authentik_endpoints_conn_agentconnector_id_oauth2_71d35df2_uniq ON public.authentik_endpoints_connectors_agent_agentconnector_jwt_fed2bc6 USING btree (agentconnector_id, oauth2provider_id)"
       },
@@ -18483,9 +16487,6 @@
       "public.authentik_endpoints_connec_user_id_ef28d596": {
         "definition": "CREATE INDEX authentik_endpoints_connec_user_id_ef28d596 ON public.authentik_endpoints_connectors_agent_deviceauthenticationtoken USING btree (user_id)"
       },
-      "public.authentik_endpoints_connec_user_id_ffad2933": {
-        "definition": "CREATE INDEX authentik_endpoints_connec_user_id_ffad2933 ON public.authentik_endpoints_connectors_agent_appleindependentsecure0d47 USING btree (user_id)"
-      },
       "public.authentik_endpoints_connector_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_endpoints_connector_pkey ON public.authentik_endpoints_connector USING btree (connector_uuid)"
       },
@@ -18501,9 +16502,6 @@
       "public.authentik_endpoints_connectors_agent_agentdeviceuserbindin_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_endpoints_connectors_agent_agentdeviceuserbindin_pkey ON public.authentik_endpoints_connectors_agent_agentdeviceuserbinding USING btree (deviceuserbinding_ptr_id)"
       },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecur_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_endpoints_connectors_agent_appleindependentsecur_pkey ON public.authentik_endpoints_connectors_agent_appleindependentsecure0d47 USING btree (uuid)"
-      },
       "public.authentik_endpoints_connectors_agent_applenonce_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_endpoints_connectors_agent_applenonce_pkey ON public.authentik_endpoints_connectors_agent_applenonce USING btree (id)"
       },
@@ -18518,9 +16516,6 @@
       },
       "public.authentik_endpoints_connectors_fleet_fleetconnector_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_endpoints_connectors_fleet_fleetconnector_pkey ON public.authentik_endpoints_connectors_fleet_fleetconnector USING btree (connector_ptr_id)"
-      },
-      "public.authentik_endpoints_connectors_google_chrome_googlechromec_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_endpoints_connectors_google_chrome_googlechromec_pkey ON public.authentik_endpoints_connectors_google_chrome_googlechromeco19cb USING btree (connector_ptr_id)"
       },
       "public.authentik_endpoints_device_group_id_c61fa2b6": {
         "definition": "CREATE INDEX authentik_endpoints_device_group_id_c61fa2b6 ON public.authentik_endpoints_device USING btree (access_group_id)"
@@ -18636,9 +16631,6 @@
       "public.authentik_events_notificationtransport_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_events_notificationtransport_pkey ON public.authentik_events_notificationtransport USING btree (uuid)"
       },
-      "public.authentik_events_notificationtransport_webhook_ca_id_8e94c025": {
-        "definition": "CREATE INDEX authentik_events_notificationtransport_webhook_ca_id_8e94c025 ON public.authentik_events_notificationtransport USING btree (webhook_ca_id)"
-      },
       "public.authentik_events_notificationwebhookmapping_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_events_notificationwebhookmapping_pkey ON public.authentik_events_notificationwebhookmapping USING btree (propertymapping_ptr_id)"
       },
@@ -18689,6 +16681,9 @@
       },
       "public.authentik_l_content_4e3a6a_idx": {
         "definition": "CREATE INDEX authentik_l_content_4e3a6a_idx ON public.authentik_lifecycle_lifecyclerule USING btree (content_type_id)"
+      },
+      "public.authentik_lifecycle_life_content_type_id_object_i_9ea37e79_uniq": {
+        "definition": "CREATE UNIQUE INDEX authentik_lifecycle_life_content_type_id_object_i_9ea37e79_uniq ON public.authentik_lifecycle_lifecyclerule USING btree (content_type_id, object_id)"
       },
       "public.authentik_lifecycle_life_lifecyclerule_id_group_i_a61b0e2b_uniq": {
         "definition": "CREATE UNIQUE INDEX authentik_lifecycle_life_lifecyclerule_id_group_i_a61b0e2b_uniq ON public.authentik_lifecycle_lifecyclerule_reviewer_groups USING btree (lifecyclerule_id, group_id)"
@@ -18765,15 +16760,6 @@
       "public.authentik_lifecycle_review_reviewer_id_3c5b444e": {
         "definition": "CREATE INDEX authentik_lifecycle_review_reviewer_id_3c5b444e ON public.authentik_lifecycle_review USING btree (reviewer_id)"
       },
-      "public.authentik_lifecycle_useroffboarding_created_by_id_497f46d8": {
-        "definition": "CREATE INDEX authentik_lifecycle_useroffboarding_created_by_id_497f46d8 ON public.authentik_lifecycle_useroffboarding USING btree (created_by_id)"
-      },
-      "public.authentik_lifecycle_useroffboarding_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_lifecycle_useroffboarding_pkey ON public.authentik_lifecycle_useroffboarding USING btree (id)"
-      },
-      "public.authentik_lifecycle_useroffboarding_user_id_cce47e3a": {
-        "definition": "CREATE INDEX authentik_lifecycle_useroffboarding_user_id_cce47e3a ON public.authentik_lifecycle_useroffboarding USING btree (user_id)"
-      },
       "public.authentik_outposts_dockers_tls_authentication_id_942e2224": {
         "definition": "CREATE INDEX authentik_outposts_dockers_tls_authentication_id_942e2224 ON public.authentik_outposts_dockerserviceconnection USING btree (tls_authentication_id)"
       },
@@ -18834,9 +16820,6 @@
       "public.authentik_p_expires_9f24a5_idx": {
         "definition": "CREATE INDEX authentik_p_expires_9f24a5_idx ON public.authentik_providers_oauth2_accesstoken USING btree (expires)"
       },
-      "public.authentik_p_expires_a1009a_idx": {
-        "definition": "CREATE INDEX authentik_p_expires_a1009a_idx ON public.authentik_policies_policybinding USING btree (expires)"
-      },
       "public.authentik_p_expires_c479a7_idx": {
         "definition": "CREATE INDEX authentik_p_expires_c479a7_idx ON public.authentik_providers_oauth2_refreshtoken USING btree (expires)"
       },
@@ -18854,9 +16837,6 @@
       },
       "public.authentik_p_expirin_2d9205_idx": {
         "definition": "CREATE INDEX authentik_p_expirin_2d9205_idx ON public.authentik_providers_oauth2_accesstoken USING btree (expiring)"
-      },
-      "public.authentik_p_expirin_4adf3e_idx": {
-        "definition": "CREATE INDEX authentik_p_expirin_4adf3e_idx ON public.authentik_policies_policybinding USING btree (expiring, expires)"
       },
       "public.authentik_p_expirin_4fd278_idx": {
         "definition": "CREATE INDEX authentik_p_expirin_4fd278_idx ON public.authentik_providers_oauth2_devicetoken USING btree (expiring)"
@@ -18884,9 +16864,6 @@
       },
       "public.authentik_p_expirin_d4d17f_idx": {
         "definition": "CREATE INDEX authentik_p_expirin_d4d17f_idx ON public.authentik_providers_oauth2_refreshtoken USING btree (expiring)"
-      },
-      "public.authentik_p_expirin_df8da3_idx": {
-        "definition": "CREATE INDEX authentik_p_expirin_df8da3_idx ON public.authentik_policies_policybinding USING btree (expiring)"
       },
       "public.authentik_p_group_i_5d2d24_idx": {
         "definition": "CREATE INDEX authentik_p_group_i_5d2d24_idx ON public.authentik_policies_policybinding USING btree (group_id)"
@@ -19122,17 +17099,11 @@
       "public.authentik_providers_oaut_oauth2provider_id_oauths_5151c4b7_uniq": {
         "definition": "CREATE UNIQUE INDEX authentik_providers_oaut_oauth2provider_id_oauths_5151c4b7_uniq ON public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 USING btree (oauth2provider_id, oauthsource_id)"
       },
-      "public.authentik_providers_oaut_property_mapping_id_dyna_fb626d65_uniq": {
-        "definition": "CREATE UNIQUE INDEX authentik_providers_oaut_property_mapping_id_dyna_fb626d65_uniq ON public.authentik_providers_oauth2_dynamicclientregistrationpropert3221 USING btree (property_mapping_id, dynamic_client_registration_id)"
-      },
       "public.authentik_providers_oaut_session_id_1e6dcbdb_like": {
         "definition": "CREATE INDEX authentik_providers_oaut_session_id_1e6dcbdb_like ON public.authentik_providers_oauth2_authorizationcode USING btree (session_id varchar_pattern_ops)"
       },
       "public.authentik_providers_oaut_session_id_8fe0c4a4_like": {
         "definition": "CREATE INDEX authentik_providers_oaut_session_id_8fe0c4a4_like ON public.authentik_providers_oauth2_refreshtoken USING btree (session_id varchar_pattern_ops)"
-      },
-      "public.authentik_providers_oauth2_accesstoken_actor_id_5ee952a2": {
-        "definition": "CREATE INDEX authentik_providers_oauth2_accesstoken_actor_id_5ee952a2 ON public.authentik_providers_oauth2_accesstoken USING btree (actor_id)"
       },
       "public.authentik_providers_oauth2_accesstoken_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_providers_oauth2_accesstoken_pkey ON public.authentik_providers_oauth2_accesstoken USING btree (id)"
@@ -19148,9 +17119,6 @@
       },
       "public.authentik_providers_oauth2_accesstoken_user_id_7261588f": {
         "definition": "CREATE INDEX authentik_providers_oauth2_accesstoken_user_id_7261588f ON public.authentik_providers_oauth2_accesstoken USING btree (user_id)"
-      },
-      "public.authentik_providers_oauth2_authorizationcode_actor_id_342dfa2a": {
-        "definition": "CREATE INDEX authentik_providers_oauth2_authorizationcode_actor_id_342dfa2a ON public.authentik_providers_oauth2_authorizationcode USING btree (actor_id)"
       },
       "public.authentik_providers_oauth2_authorizationcode_code_0202addc_like": {
         "definition": "CREATE INDEX authentik_providers_oauth2_authorizationcode_code_0202addc_like ON public.authentik_providers_oauth2_authorizationcode USING btree (code varchar_pattern_ops)"
@@ -19179,23 +17147,11 @@
       "public.authentik_providers_oauth2_devicetoken_user_id_17317b6d": {
         "definition": "CREATE INDEX authentik_providers_oauth2_devicetoken_user_id_17317b6d ON public.authentik_providers_oauth2_devicetoken USING btree (user_id)"
       },
-      "public.authentik_providers_oauth2_dynamic_client_registratio_f45495ce": {
-        "definition": "CREATE INDEX authentik_providers_oauth2_dynamic_client_registratio_f45495ce ON public.authentik_providers_oauth2_dynamicclientregistrationpropert3221 USING btree (dynamic_client_registration_id)"
-      },
-      "public.authentik_providers_oauth2_dynamicclientregistrationproper_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_providers_oauth2_dynamicclientregistrationproper_pkey ON public.authentik_providers_oauth2_dynamicclientregistrationpropert3221 USING btree (id)"
-      },
       "public.authentik_providers_oauth2_encryption_key_id_b98bc751": {
         "definition": "CREATE INDEX authentik_providers_oauth2_encryption_key_id_b98bc751 ON public.authentik_providers_oauth2_oauth2provider USING btree (encryption_key_id)"
       },
       "public.authentik_providers_oauth2_from_oauth2provider_id_76c73438": {
         "definition": "CREATE INDEX authentik_providers_oauth2_from_oauth2provider_id_76c73438 ON public.authentik_providers_oauth2_oauth2provider_jwt_federation_pr9002 USING btree (from_oauth2provider_id)"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientr_provider_id_key": {
-        "definition": "CREATE UNIQUE INDEX authentik_providers_oauth2_oauth2dynamicclientr_provider_id_key ON public.authentik_providers_oauth2_oauth2dynamicclientregistration USING btree (provider_id)"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_providers_oauth2_oauth2dynamicclientregistration_pkey ON public.authentik_providers_oauth2_oauth2dynamicclientregistration USING btree (policybindingmodel_ptr_id)"
       },
       "public.authentik_providers_oauth2_oauth2provider_client_id_key": {
         "definition": "CREATE UNIQUE INDEX authentik_providers_oauth2_oauth2provider_client_id_key ON public.authentik_providers_oauth2_oauth2provider USING btree (client_id)"
@@ -19218,20 +17174,8 @@
       "public.authentik_providers_oauth2_oauthsource_id_41457c33": {
         "definition": "CREATE INDEX authentik_providers_oauth2_oauthsource_id_41457c33 ON public.authentik_providers_oauth2_oauth2provider_jwt_federation_so2b48 USING btree (oauthsource_id)"
       },
-      "public.authentik_providers_oauth2_override_authorization_flo_a001810a": {
-        "definition": "CREATE INDEX authentik_providers_oauth2_override_authorization_flo_a001810a ON public.authentik_providers_oauth2_oauth2dynamicclientregistration USING btree (override_authorization_flow_id)"
-      },
-      "public.authentik_providers_oauth2_override_invalidation_flow_fa0396ab": {
-        "definition": "CREATE INDEX authentik_providers_oauth2_override_invalidation_flow_fa0396ab ON public.authentik_providers_oauth2_oauth2dynamicclientregistration USING btree (override_invalidation_flow_id)"
-      },
-      "public.authentik_providers_oauth2_property_mapping_id_99b43a14": {
-        "definition": "CREATE INDEX authentik_providers_oauth2_property_mapping_id_99b43a14 ON public.authentik_providers_oauth2_dynamicclientregistrationpropert3221 USING btree (property_mapping_id)"
-      },
       "public.authentik_providers_oauth2_provider_id_731a3e62": {
         "definition": "CREATE INDEX authentik_providers_oauth2_provider_id_731a3e62 ON public.authentik_providers_oauth2_authorizationcode USING btree (provider_id)"
-      },
-      "public.authentik_providers_oauth2_refreshtoken_actor_id_349e7533": {
-        "definition": "CREATE INDEX authentik_providers_oauth2_refreshtoken_actor_id_349e7533 ON public.authentik_providers_oauth2_refreshtoken USING btree (actor_id)"
       },
       "public.authentik_providers_oauth2_refreshtoken_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_providers_oauth2_refreshtoken_pkey ON public.authentik_providers_oauth2_refreshtoken USING btree (id)"
@@ -19455,15 +17399,6 @@
       "public.authentik_providers_ws_federation_wsfederationprovider_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_providers_ws_federation_wsfederationprovider_pkey ON public.authentik_providers_ws_federation_wsfederationprovider USING btree (samlprovider_ptr_id)"
       },
-      "public.authentik_r_expires_7fdcf7_idx": {
-        "definition": "CREATE INDEX authentik_r_expires_7fdcf7_idx ON public.authentik_requests_grantrequest USING btree (expires)"
-      },
-      "public.authentik_r_expirin_1b428a_idx": {
-        "definition": "CREATE INDEX authentik_r_expirin_1b428a_idx ON public.authentik_requests_grantrequest USING btree (expiring)"
-      },
-      "public.authentik_r_expirin_b80d72_idx": {
-        "definition": "CREATE INDEX authentik_r_expirin_b80d72_idx ON public.authentik_requests_grantrequest USING btree (expiring, expires)"
-      },
       "public.authentik_rbac_initialpe_initialpermissions_id_pe_f5a0e7eb_uniq": {
         "definition": "CREATE UNIQUE INDEX authentik_rbac_initialpe_initialpermissions_id_pe_f5a0e7eb_uniq ON public.authentik_rbac_initialpermissions_permissions USING btree (initialpermissions_id, permission_id)"
       },
@@ -19511,96 +17446,6 @@
       },
       "public.authentik_reports_dataexport_requested_by_id_20b84ac8": {
         "definition": "CREATE INDEX authentik_reports_dataexport_requested_by_id_20b84ac8 ON public.authentik_reports_dataexport USING btree (requested_by_id)"
-      },
-      "public.authentik_requests_grant_request_id_reviewer_id_28f17669_uniq": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_grant_request_id_reviewer_id_28f17669_uniq ON public.authentik_requests_grantrequestapproval USING btree (request_id, reviewer_id)"
-      },
-      "public.authentik_requests_grant_request_id_target_id_ea793610_uniq": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_grant_request_id_target_id_ea793610_uniq ON public.authentik_requests_grantrequesttarget USING btree (request_id, target_id)"
-      },
-      "public.authentik_requests_grantrequest_agent_owner_id_8d70d324": {
-        "definition": "CREATE INDEX authentik_requests_grantrequest_agent_owner_id_8d70d324 ON public.authentik_requests_grantrequest USING btree (agent_owner_id)"
-      },
-      "public.authentik_requests_grantrequest_created_by_id_bcc06b49": {
-        "definition": "CREATE INDEX authentik_requests_grantrequest_created_by_id_bcc06b49 ON public.authentik_requests_grantrequest USING btree (created_by_id)"
-      },
-      "public.authentik_requests_grantrequest_fulfilled_by_id_b4c96ba2": {
-        "definition": "CREATE INDEX authentik_requests_grantrequest_fulfilled_by_id_b4c96ba2 ON public.authentik_requests_grantrequest USING btree (fulfilled_by_id)"
-      },
-      "public.authentik_requests_grantrequest_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_grantrequest_pkey ON public.authentik_requests_grantrequest USING btree (uuid)"
-      },
-      "public.authentik_requests_grantrequest_revoked_by_id_a2805a00": {
-        "definition": "CREATE INDEX authentik_requests_grantrequest_revoked_by_id_a2805a00 ON public.authentik_requests_grantrequest USING btree (revoked_by_id)"
-      },
-      "public.authentik_requests_grantrequestapproval_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_grantrequestapproval_pkey ON public.authentik_requests_grantrequestapproval USING btree (uuid)"
-      },
-      "public.authentik_requests_grantrequestapproval_request_id_3ce93ed5": {
-        "definition": "CREATE INDEX authentik_requests_grantrequestapproval_request_id_3ce93ed5 ON public.authentik_requests_grantrequestapproval USING btree (request_id)"
-      },
-      "public.authentik_requests_grantrequestapproval_reviewer_id_259197df": {
-        "definition": "CREATE INDEX authentik_requests_grantrequestapproval_reviewer_id_259197df ON public.authentik_requests_grantrequestapproval USING btree (reviewer_id)"
-      },
-      "public.authentik_requests_grantrequesttarget_binding_id_1fadba70": {
-        "definition": "CREATE INDEX authentik_requests_grantrequesttarget_binding_id_1fadba70 ON public.authentik_requests_grantrequesttarget USING btree (binding_id)"
-      },
-      "public.authentik_requests_grantrequesttarget_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_grantrequesttarget_pkey ON public.authentik_requests_grantrequesttarget USING btree (uuid)"
-      },
-      "public.authentik_requests_grantrequesttarget_request_id_c7456832": {
-        "definition": "CREATE INDEX authentik_requests_grantrequesttarget_request_id_c7456832 ON public.authentik_requests_grantrequesttarget USING btree (request_id)"
-      },
-      "public.authentik_requests_grantrequesttarget_target_id_272c04c0": {
-        "definition": "CREATE INDEX authentik_requests_grantrequesttarget_target_id_272c04c0 ON public.authentik_requests_grantrequesttarget USING btree (target_id)"
-      },
-      "public.authentik_requests_reque_binding_id_target_id_ded19764_uniq": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_reque_binding_id_target_id_ded19764_uniq ON public.authentik_requests_requestrulechildbinding USING btree (binding_id, target_id)"
-      },
-      "public.authentik_requests_reque_rule_id_notification_tra_fb869f1c_uniq": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_reque_rule_id_notification_tra_fb869f1c_uniq ON public.authentik_requests_requestrulenotificationtransport USING btree (rule_id, notification_transport_id)"
-      },
-      "public.authentik_requests_reque_rule_id_target_id_77e5a496_uniq": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_reque_rule_id_target_id_77e5a496_uniq ON public.authentik_requests_requestrulebinding USING btree (rule_id, target_id)"
-      },
-      "public.authentik_requests_request_notification_transport_id_9b7689e4": {
-        "definition": "CREATE INDEX authentik_requests_request_notification_transport_id_9b7689e4 ON public.authentik_requests_requestrulenotificationtransport USING btree (notification_transport_id)"
-      },
-      "public.authentik_requests_request_rule_id_de0d1a07": {
-        "definition": "CREATE INDEX authentik_requests_request_rule_id_de0d1a07 ON public.authentik_requests_requestrulenotificationtransport USING btree (rule_id)"
-      },
-      "public.authentik_requests_requestrule_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_requestrule_pkey ON public.authentik_requests_requestrule USING btree (uuid)"
-      },
-      "public.authentik_requests_requestrule_policybindingmodel_ptr_id_key": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_requestrule_policybindingmodel_ptr_id_key ON public.authentik_requests_requestrule USING btree (policybindingmodel_ptr_id)"
-      },
-      "public.authentik_requests_requestrule_request_flow_id_4b4ac199": {
-        "definition": "CREATE INDEX authentik_requests_requestrule_request_flow_id_4b4ac199 ON public.authentik_requests_requestrule USING btree (request_flow_id)"
-      },
-      "public.authentik_requests_requestrulebin_policybindingmodel_ptr_id_key": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_requestrulebin_policybindingmodel_ptr_id_key ON public.authentik_requests_requestrulebinding USING btree (policybindingmodel_ptr_id)"
-      },
-      "public.authentik_requests_requestrulebinding_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_requestrulebinding_pkey ON public.authentik_requests_requestrulebinding USING btree (uuid)"
-      },
-      "public.authentik_requests_requestrulebinding_rule_id_8013a0f9": {
-        "definition": "CREATE INDEX authentik_requests_requestrulebinding_rule_id_8013a0f9 ON public.authentik_requests_requestrulebinding USING btree (rule_id)"
-      },
-      "public.authentik_requests_requestrulebinding_target_id_5e666159": {
-        "definition": "CREATE INDEX authentik_requests_requestrulebinding_target_id_5e666159 ON public.authentik_requests_requestrulebinding USING btree (target_id)"
-      },
-      "public.authentik_requests_requestrulechildbinding_binding_id_e0de9733": {
-        "definition": "CREATE INDEX authentik_requests_requestrulechildbinding_binding_id_e0de9733 ON public.authentik_requests_requestrulechildbinding USING btree (binding_id)"
-      },
-      "public.authentik_requests_requestrulechildbinding_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_requestrulechildbinding_pkey ON public.authentik_requests_requestrulechildbinding USING btree (uuid)"
-      },
-      "public.authentik_requests_requestrulechildbinding_target_id_0e7d4419": {
-        "definition": "CREATE INDEX authentik_requests_requestrulechildbinding_target_id_0e7d4419 ON public.authentik_requests_requestrulechildbinding USING btree (target_id)"
-      },
-      "public.authentik_requests_requestrulenotificationtransport_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_requests_requestrulenotificationtransport_pkey ON public.authentik_requests_requestrulenotificationtransport USING btree (id)"
       },
       "public.authentik_s_expires_0e99e8_idx": {
         "definition": "CREATE INDEX authentik_s_expires_0e99e8_idx ON public.authentik_stages_consent_userconsent USING btree (expires)"
@@ -19778,12 +17623,6 @@
       },
       "public.authentik_sources_telegram_usertelegramsourceconnection_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_sources_telegram_usertelegramsourceconnection_pkey ON public.authentik_sources_telegram_usertelegramsourceconnection USING btree (usersourceconnection_ptr_id)"
-      },
-      "public.authentik_stages_account_l_self_service_completion_fl_59dcb701": {
-        "definition": "CREATE INDEX authentik_stages_account_l_self_service_completion_fl_59dcb701 ON public.authentik_stages_account_lockdown_accountlockdownstage USING btree (self_service_completion_flow_id)"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_stages_account_lockdown_accountlockdownstage_pkey ON public.authentik_stages_account_lockdown_accountlockdownstage USING btree (stage_ptr_id)"
       },
       "public.authentik_stages_authent_authenticatorvalidatesta_a20b7460_uniq": {
         "definition": "CREATE UNIQUE INDEX authentik_stages_authent_authenticatorvalidatesta_a20b7460_uniq ON public.authentik_stages_authenticator_validate_authenticatorvalida8318 USING btree (authenticatorvalidatestage_id, webauthndevicetype_id)"
@@ -20130,9 +17969,6 @@
       "public.authentik_t_message_affe69_idx": {
         "definition": "CREATE INDEX authentik_t_message_affe69_idx ON public.authentik_tasks_task USING btree (message_id, queue_name, state)"
       },
-      "public.authentik_t_queue_n_099d0d_idx": {
-        "definition": "CREATE INDEX authentik_t_queue_n_099d0d_idx ON public.authentik_tasks_task USING btree (queue_name, state, eta)"
-      },
       "public.authentik_t_queue_n_7b09fb_idx": {
         "definition": "CREATE INDEX authentik_t_queue_n_7b09fb_idx ON public.authentik_tasks_task USING btree (queue_name)"
       },
@@ -20168,15 +18004,6 @@
       },
       "public.authentik_tasks_task_tenant_id_a04bb198": {
         "definition": "CREATE INDEX authentik_tasks_task_tenant_id_a04bb198 ON public.authentik_tasks_task USING btree (tenant_id)"
-      },
-      "public.authentik_tasks_taskdependency_dependency_id_c7a40dcc": {
-        "definition": "CREATE INDEX authentik_tasks_taskdependency_dependency_id_c7a40dcc ON public.authentik_tasks_taskdependency USING btree (dependency_id)"
-      },
-      "public.authentik_tasks_taskdependency_pkey": {
-        "definition": "CREATE UNIQUE INDEX authentik_tasks_taskdependency_pkey ON public.authentik_tasks_taskdependency USING btree (task_id, dependency_id)"
-      },
-      "public.authentik_tasks_taskdependency_task_id_f9b4d794": {
-        "definition": "CREATE INDEX authentik_tasks_taskdependency_task_id_f9b4d794 ON public.authentik_tasks_taskdependency USING btree (task_id)"
       },
       "public.authentik_tasks_tasklog_pkey": {
         "definition": "CREATE UNIQUE INDEX authentik_tasks_tasklog_pkey ON public.authentik_tasks_tasklog USING btree (id)"
@@ -20325,11 +18152,8 @@
       "public.guardian_roleobjectpermission_role_id_76d93577": {
         "definition": "CREATE INDEX guardian_roleobjectpermission_role_id_76d93577 ON public.guardian_roleobjectpermission USING btree (role_id)"
       },
-      "public.pending_offboarding_idx": {
-        "definition": "CREATE INDEX pending_offboarding_idx ON public.authentik_lifecycle_useroffboarding USING btree (scheduled_at) WHERE (status = 'pending'::text)"
-      },
-      "public.unique_pending_offboarding_per_user": {
-        "definition": "CREATE UNIQUE INDEX unique_pending_offboarding_per_user ON public.authentik_lifecycle_useroffboarding USING btree (user_id) WHERE (status = 'pending'::text)"
+      "public.uniq_lifecycle_rule_ct_null_object": {
+        "definition": "CREATE UNIQUE INDEX uniq_lifecycle_rule_ct_null_object ON public.authentik_lifecycle_lifecyclerule USING btree (content_type_id) WHERE (object_id IS NULL)"
       }
     },
     "relations": {
@@ -20363,11 +18187,6 @@
         "kind": "S",
         "persistence": "p"
       },
-      "public.authentik_agents_agent": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
       "public.authentik_blueprints_blueprintinstance": {
         "access_method": "heap",
         "kind": "r",
@@ -20386,11 +18205,6 @@
       "public.authentik_brands_brand_client_certificates_id_seq": {
         "access_method": "",
         "kind": "S",
-        "persistence": "p"
-      },
-      "public.authentik_core_actor": {
-        "access_method": "heap",
-        "kind": "r",
         "persistence": "p"
       },
       "public.authentik_core_application": {
@@ -20441,11 +18255,6 @@
       "public.authentik_core_groupsourceconnection_id_seq": {
         "access_method": "",
         "kind": "S",
-        "persistence": "p"
-      },
-      "public.authentik_core_objectattribute": {
-        "access_method": "heap",
-        "kind": "r",
         "persistence": "p"
       },
       "public.authentik_core_propertymapping": {
@@ -20548,11 +18357,6 @@
         "kind": "S",
         "persistence": "p"
       },
-      "public.authentik_core_userswitchingsession": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
       "public.authentik_crypto_certificatekeypair": {
         "access_method": "heap",
         "kind": "r",
@@ -20588,11 +18392,6 @@
         "kind": "r",
         "persistence": "p"
       },
-      "public.authentik_endpoints_connectors_agent_appleindependentsecure0d47": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
       "public.authentik_endpoints_connectors_agent_applenonce": {
         "access_method": "heap",
         "kind": "r",
@@ -20619,11 +18418,6 @@
         "persistence": "p"
       },
       "public.authentik_endpoints_connectors_fleet_fleetconnector": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_endpoints_connectors_google_chrome_googlechromeco19cb": {
         "access_method": "heap",
         "kind": "r",
         "persistence": "p"
@@ -20769,11 +18563,6 @@
         "persistence": "p"
       },
       "public.authentik_lifecycle_review": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_lifecycle_useroffboarding": {
         "access_method": "heap",
         "kind": "r",
         "persistence": "p"
@@ -20971,21 +18760,6 @@
       "public.authentik_providers_oauth2_devicetoken_id_seq": {
         "access_method": "",
         "kind": "S",
-        "persistence": "p"
-      },
-      "public.authentik_providers_oauth2_dynamicclientregistrationprop_id_seq": {
-        "access_method": "",
-        "kind": "S",
-        "persistence": "p"
-      },
-      "public.authentik_providers_oauth2_dynamicclientregistrationpropert3221": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_providers_oauth2_oauth2dynamicclientregistration": {
-        "access_method": "heap",
-        "kind": "r",
         "persistence": "p"
       },
       "public.authentik_providers_oauth2_oauth2provider": {
@@ -21193,46 +18967,6 @@
         "kind": "r",
         "persistence": "p"
       },
-      "public.authentik_requests_grantrequest": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_requests_grantrequestapproval": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_requests_grantrequesttarget": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_requests_requestrule": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_requests_requestrulebinding": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_requests_requestrulechildbinding": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_requests_requestrulenotificationtransport": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_requests_requestrulenotificationtransport_id_seq": {
-        "access_method": "",
-        "kind": "S",
-        "persistence": "p"
-      },
       "public.authentik_sources_kerberos_groupkerberossourceconnection": {
         "access_method": "heap",
         "kind": "r",
@@ -21369,11 +19103,6 @@
         "persistence": "p"
       },
       "public.authentik_sources_telegram_usertelegramsourceconnection": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_stages_account_lockdown_accountlockdownstage": {
         "access_method": "heap",
         "kind": "r",
         "persistence": "p"
@@ -21684,11 +19413,6 @@
         "persistence": "p"
       },
       "public.authentik_tasks_task": {
-        "access_method": "heap",
-        "kind": "r",
-        "persistence": "p"
-      },
-      "public.authentik_tasks_taskdependency": {
         "access_method": "heap",
         "kind": "r",
         "persistence": "p"
@@ -22064,16 +19788,6 @@
         "start": "1",
         "type": "integer"
       },
-      "public.authentik_providers_oauth2_dynamicclientregistrationprop_id_seq": {
-        "cache": "1",
-        "cycle": "false",
-        "increment": "1",
-        "max": "2147483647",
-        "min": "1",
-        "owned_by": "authentik_providers_oauth2_dynamicclientregistrationpropert3221.id",
-        "start": "1",
-        "type": "integer"
-      },
       "public.authentik_providers_oauth2_oauth2provider_jwks_sources_id_seq": {
         "cache": "1",
         "cycle": "false",
@@ -22161,16 +19875,6 @@
         "max": "2147483647",
         "min": "1",
         "owned_by": "authentik_rbac_initialpermissions_permissions.id",
-        "start": "1",
-        "type": "integer"
-      },
-      "public.authentik_requests_requestrulenotificationtransport_id_seq": {
-        "cache": "1",
-        "cycle": "false",
-        "increment": "1",
-        "max": "2147483647",
-        "min": "1",
-        "owned_by": "authentik_requests_requestrulenotificationtransport.id",
         "start": "1",
         "type": "integer"
       },

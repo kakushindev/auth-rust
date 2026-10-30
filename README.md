@@ -1,8 +1,8 @@
 # authentik in Rust
 
-A compatibility-preserving reimplementation of [authentik](https://github.com/goauthentik/authentik) in Rust. The pinned upstream release (`UPSTREAM.lock`: `version/2026.8.5`) is the behavioral specification. The PostgreSQL schema, API, protocols and UI stay exactly as upstream.
+A compatibility-preserving reimplementation of [authentik](https://github.com/goauthentik/authentik) in Rust. The pinned upstream release (`UPSTREAM.lock`: `version/2026.2.7`, the version production apps.mysoc.id runs) is the behavioral specification. The PostgreSQL schema, API, protocols and UI stay exactly as upstream.
 
-**Status:** early. 1 of 105 inventoried features is verified equivalent. See [docs/COMPATIBILITY_REPORT.md](docs/COMPATIBILITY_REPORT.md) and [CHECKPOINT.md](CHECKPOINT.md).
+**Status:** early. 1 of 102 inventoried features is verified equivalent. See [docs/COMPATIBILITY_REPORT.md](docs/COMPATIBILITY_REPORT.md) and [CHECKPOINT.md](CHECKPOINT.md).
 
 | Path | Content |
 | --- | --- |

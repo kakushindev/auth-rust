@@ -2,6 +2,16 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 3 — 2026-10-30
+
+- **Re-pinned to authentik 2026.2.7** (`0936c5b0`), which production apps.mysoc.id runs. The reference stack was recreated, and every baseline re-extracted: schema fingerprint `a30d1060…`, 692 migrations, 1 113 API operations, 215 models, 66 actors.
+- Password hashers re-verified at 2026.2.7 (152/65/31 + stored row): pass.
+- 2026.2.7 has no upstream Rust; its front server is Go. Our Rust server (from 2026.8.5) now replaces the Go binary in the candidate image. Fixed: bare invocation means `server`; the version is reported as 2026.2.7.
+- HTTP differential vs the Go server: all 440 cases differ, through 6 systematic front-server differences listed in `docs/COMPATIBILITY_REPORT.md`. The schema guard is clean on all databases.
+
+### Exact next action
+Fix differences 1→6 in `docs/COMPATIBILITY_REPORT.md` in order (Server header, gzip + Vary, health routing, robots.txt, static 404, Content-Length), porting from `internal/web/*.go` at 2026.2.7. Rerun `tests/differential/http/run.sh` after each, then do config listen-address compatibility.
+
 ## Batch 2 — 2026-10-30
 
 - Decision R1: full Rust, no embedded CPython; expressions need a Rust Python-subset engine (M9b).

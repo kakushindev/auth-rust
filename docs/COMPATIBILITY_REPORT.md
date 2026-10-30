@@ -1,10 +1,10 @@
 # Compatibility report
 
-As of 2026-10-30, against authentik `version/2026.8.5` (`4ec0d19b`).
+As of 2026-10-30, against authentik `version/2026.2.7` (`0936c5b0`), the version production `apps.mysoc.id` runs. Re-pinned from 2026.8.5 on the owner's decision.
 
 ## Bottom line
 
-The rewrite is at the start. **1 of 105 inventoried features is Verified equivalent** (the password hasher contract). 20 are blocked by the Enterprise license, and 84 are not started. No HTTP endpoint, flow, protocol, worker task or outpost has been ported. The candidate application does not exist yet. 100 % equivalence is not claimed for anything beyond the components listed below.
+The rewrite is at the start. **1 of 102 inventoried features is Verified equivalent** (the password hasher contract, re-verified at 2026.2.7). 17 are blocked by the Enterprise license, and 84 are not started. No HTTP endpoint, flow, protocol, worker task or outpost has been ported. The candidate application does not exist yet. 100 % equivalence is not claimed for anything beyond the components listed below.
 
 ## Verified
 
@@ -12,7 +12,7 @@ The rewrite is at the start. **1 of 105 inventoried features is Verified equival
 | --- | --- | --- |
 | `ak-passwords` (Django `PASSWORD_HASHERS`) | `tests/differential/passwords/run.sh` | 152/152 encodings identical; 65/65 `verify_password` outcomes identical incl. exceptions; 31/31 Rust hashes accepted by Django; reference `akadmin` hash verifies. `cargo test -p ak-passwords`: 14 tests pass. |
 | `ak-schema-guard` (tooling) | `snapshot`/`verify` on reference; restored dump; injected drift | Restored copy matches fingerprint `8afc1fc8…`; injected column-type change and extra index both detected. 3 unit tests pass. |
-| Candidate server (M2): upstream Rust server vendored + empty compat router | `tests/differential/http/run.sh` (3 stacks from one DB snapshot: ref, ref2, cand) | 470 cases (every parameterless GET API operation anonymous + token, plus non-API surface): 461 equal, 9 nondeterministic (the same difference kinds appear between two upstream processes: cache `age`/`expires` on `/api/v3/schema/`, per-process ordering of `system_permissions` in `users/me`, runtime data in `admin/system`, event/task timing), **0 different**. Only normalization: `Date`, request-id headers, cookie values (names and attributes still compared), `request_id`, and the `sentry-trace` meta value. Schema guard matches the baseline on all three databases after the run. |
+| Candidate server vs 2026.8.5 (superseded) | `tests/differential/http/run.sh` against the 2026.8.5 reference | 461 equal, 9 nondeterministic, 0 different. Upstream 2026.8.5 already fronted Django with this same Rust server, so this only proved the vendoring. |
 | Shipped-binary provenance (REA `inspect_rust_binary`, evidence `ev_01f6978c…`) | `/bin/authentik` copied from the reference image | No cargo-auditable section. rustc commit `8bab26f4…` = toolchain 1.97.1; all 153 crate versions embedded in panic paths match the pinned `Cargo.lock`. Inference only, not a reproducible build. |
 
 Differences found by differential testing and fixed (they would otherwise have shipped):
@@ -21,6 +21,23 @@ Differences found by differential testing and fixed (they would otherwise have s
 3. argon2-cffi reports libargon2 decode failures as a mismatch (False) and only raises on an unknown type header.
 4. Django runs a dummy default hash for unusable or unknown hashes (timing equalization), and calls `identify_hasher` even when the password is `None`.
 
+
+## Open: Rust server vs the 2026.2.7 Go front server (M2)
+
+At 2026.2.7 upstream fronts Django with the **Go** `authentik` binary. Our Rust server replaces it in `candidate/Dockerfile`. Fixed so far: a bare `authentik` invocation now means `server` (the 2026.2.7 `lifecycle/ak` calls it without arguments, and the Rust binary used to exit); the reported version is now 2026.2.7.
+
+`tests/differential/http/run.sh` (440 cases, 3 stacks; the schema guard is clean on all 3) still reports every case as different. The differences, by kind:
+
+| # | Difference (reference = Go, candidate = Rust) | Cases | Upstream source to match |
+| --- | --- | ---: | --- |
+| 1 | `Server: uvicorn` from gunicorn reaches the client only through Rust | 432 | `internal/web/proxy.go` |
+| 2 | Go compresses proxied responses and always sends `Vary: Accept-Encoding`; Rust does not compress proxied responses | 432 | `internal/web/web.go` (compress handler) |
+| 3 | `/-/health/live/`, `/-/health/ready/`: Go answers `live` itself and forwards `ready` to Django (security headers, `content-type`, `x-authentik-id`); Rust answers both itself and adds `x-powered-by` | 8 | `internal/web/proxy.go` |
+| 4 | `/robots.txt`: `text/plain` vs `text/plain; charset=utf-8`; Go sends `ETag` | 2 | `internal/web/static.go` |
+| 5 | Static 404 (`/static/dist/poly.js`): Go returns a 19-byte `404 page not found` body; Rust returns an empty body plus `Cache-Control` | 2 | `internal/web/static.go` |
+| 6 | `impersonate_end`: Rust adds `Content-Length` | 1 | proxy response copying |
+
+Further known gaps, not yet covered by the harness: listen-address config format (2026.2.7 uses scalars like `0.0.0.0:9000` where the Rust loader expects lists, and Go binds IPv4 only); the `healthcheck worker` semantics; metrics on `:9300` (Rust reads them via pyo3); brand TLS SQL against the 2026.2.7 schema; and the embedded outpost (Go proxyv2 vs the Rust proxy).
 
 ## Not verified / open
 

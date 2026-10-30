@@ -4,7 +4,7 @@
 
 | Environment | What | Where |
 | --- | --- | --- |
-| Reference | `ghcr.io/goauthentik/server:2026.8.5` + PostgreSQL 16, bound to 127.0.0.1 only (HTTP 19000, HTTPS 19443, PG 15432) | `reference/compose.yml`, secrets in `reference/.env` (gitignored, generated locally) |
+| Reference | `ghcr.io/goauthentik/server:2026.2.7` + PostgreSQL 16, bound to 127.0.0.1 only (HTTP 19000, HTTPS 19443, PG 15432) | `reference/compose.yml`, secrets in `reference/.env` (gitignored, generated locally) |
 | Candidate | Rust build + same PostgreSQL major version, restored from the same snapshot | planned (M2) |
 | Scratch | throwaway databases inside the reference PG container (`ak_guard_scratch`, …), dropped after use | ad hoc |
 

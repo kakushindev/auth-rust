@@ -1,7 +1,9 @@
 repository=https://github.com/goauthentik/authentik.git
-tag=version/2026.8.5
-commit=4ec0d19b98da3c329781894cd550da95d3033954
-commit_date=2026-10-21T11:16:54Z
+tag=version/2026.2.7
+commit=0936c5b0ce31dc98f5f9eb4b06730a13f6da0333
+commit_date=2026-09-09T18:15:14Z
 django=5.2.17
 postgres_reference_image=docker.io/library/postgres:16-alpine
-authentik_reference_image=ghcr.io/goauthentik/server:2026.8.5
+authentik_reference_image=ghcr.io/goauthentik/server:2026.2.7
+reason=matches production apps.mysoc.id (infrastructure apps/mysoc/authentik/release.yaml, image tag 2026.2.7)
+rust_server_source=version/2026.8.5 (4ec0d19b98da3c329781894cd550da95d3033954) src/ and packages/ak-*; 2026.2.7 ships no Rust

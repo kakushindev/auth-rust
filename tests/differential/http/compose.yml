@@ -35,7 +35,7 @@ services:
     ports: ["127.0.0.1:25632:5432"]
   ref:
     <<: *server
-    image: ghcr.io/goauthentik/server:2026.8.5
+    image: ghcr.io/goauthentik/server:2026.2.7
     depends_on: { ref-db: { condition: service_healthy } }
     environment:
       AUTHENTIK_POSTGRESQL__HOST: ref-db
@@ -45,7 +45,7 @@ services:
     ports: ["127.0.0.1:29000:9000"]
   ref2:
     <<: *server
-    image: ghcr.io/goauthentik/server:2026.8.5
+    image: ghcr.io/goauthentik/server:2026.2.7
     depends_on: { ref2-db: { condition: service_healthy } }
     environment:
       AUTHENTIK_POSTGRESQL__HOST: ref2-db

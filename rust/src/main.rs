@@ -48,11 +48,27 @@ enum Command {
 )]
 pub(crate) struct AllInOne {}
 
+/// authentik-rs: the 2026.2.7 entrypoint (`lifecycle/ak`) runs `authentik`
+/// without arguments for `ak server`, and the Go binary's root command is the
+/// server, so a bare invocation must mean `server`.
+fn parse_cli() -> Cli {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        return argh::from_env();
+    }
+    let cmd = args.first().map_or("authentik", String::as_str);
+    #[expect(clippy::exit, reason = "mirrors argh::from_env on a parse failure")]
+    Cli::from_args(&[cmd], &["server"]).unwrap_or_else(|early_exit| {
+        eprintln!("{}", early_exit.output);
+        std::process::exit(1)
+    })
+}
+
 fn main() -> Result<()> {
     let tracing_crude = ak_tracing::install_crude();
     info!(version = authentik_full_version(), "authentik is starting");
 
-    let cli: Cli = argh::from_env();
+    let cli = parse_cli();
 
     match &cli.command {
         #[cfg(feature = "core")]

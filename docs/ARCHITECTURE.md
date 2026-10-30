@@ -2,7 +2,7 @@
 
 ## Principle: strangler fig on the existing Rust front server
 
-authentik 2026.8.5 already runs a Rust front server (`upstream/src/server`). It terminates HTTP/TLS, serves health and static files and the embedded proxy outpost, and forwards everything else to gunicorn/Django through a single `fallback(forward_request)` (`src/server/core.rs`). That fallback is the migration seam:
+The compatibility target is authentik 2026.2.7, whose front server is the Go `authentik` binary (`cmd/server`). It terminates HTTP/TLS, serves health checks, static files and metrics, embeds the Go proxy outpost, and reverse-proxies everything else to gunicorn/Django. Upstream later replaced it with a Rust server (`src/server` in 2026.8.x). We vendor that Rust server and make it behave exactly like the 2026.2.7 Go server (M2). Its single `fallback(forward_request)` to gunicorn is the migration seam:
 
 ```
 request ─► Rust server (vendored from upstream src/server)
