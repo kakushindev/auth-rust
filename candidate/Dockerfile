@@ -8,7 +8,7 @@ FROM ${REFERENCE_IMAGE} AS reference
 
 # Mirrors the upstream `rust-builder` stage: same Python base (pyo3 links the
 # image's libpython), same toolchain and aws-lc FIPS build dependencies.
-FROM reference AS rust-builder
+FROM reference AS rust-toolchain
 USER root
 RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential cmake clang golang curl ca-certificates && \
@@ -22,6 +22,10 @@ COPY rust-toolchain.toml /build/rust-toolchain.toml
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
     sh -s -- -y --profile minimal --default-toolchain "$(sed -n 's/^channel = "\(.*\)"/\1/p' /build/rust-toolchain.toml)"
 WORKDIR /build
+
+# Separate stage so `docker run` against rust-toolchain gives a fast
+# `cargo check` loop with the exact build environment.
+FROM rust-toolchain AS rust-builder
 COPY . /build
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/build/target \

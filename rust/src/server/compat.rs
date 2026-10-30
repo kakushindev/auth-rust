@@ -17,6 +17,10 @@ use crate::server::Server;
 
 /// Method + path pattern of every route served by Rust, mirrored in
 /// `docs/COMPATIBILITY_REPORT.md`.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "read by tests until the first route is ported")
+)]
 pub(super) const PORTED_ROUTES: &[(&str, &str)] = &[];
 
 pub(super) fn build_router(server: &Arc<Server>) -> Router {

@@ -6,25 +6,30 @@ use ak_axum::{
     extract::{client_ip::ClientIp, host::Host, scheme::Scheme, trusted_proxy::TrustedProxy},
     router::wrap_router,
 };
-use ak_common::{config, db};
+use ak_common::config;
 use axum::{
     Extension, Router,
     body::Body,
     extract::{OriginalUri, Request, State},
     http::{
         HeaderName, HeaderValue, Method, StatusCode, Uri,
-        header::{ACCEPT, CONTENT_TYPE, HOST, LOCATION, RETRY_AFTER},
+        header::{
+            ACCEPT, CONTENT_LENGTH, CONTENT_TYPE, HOST, LOCATION, RETRY_AFTER, TRANSFER_ENCODING,
+            X_CONTENT_TYPE_OPTIONS,
+        },
     },
+    middleware,
     response::{IntoResponse as _, Response},
     routing::any,
 };
 use http_body_util::BodyExt as _;
 use serde_json::json;
-use tracing::{instrument, warn};
+use tracing::warn;
 
 use crate::server::{
     GUNICORN_READY, Server,
     core::websockets::{handle_websocket_upgrade, is_websocket_upgrade},
+    go_compat,
 };
 
 static STARTUP_RESPONSE_JSON: LazyLock<Response<String>> = LazyLock::new(|| {
@@ -33,10 +38,13 @@ static STARTUP_RESPONSE_JSON: LazyLock<Response<String>> = LazyLock::new(|| {
         .header(RETRY_AFTER, "5")
         .header(CONTENT_TYPE, "application/json")
         .body(
-            json!({
-                "error": "authentik starting",
-            })
-            .to_string(),
+            // authentik-rs: json.Encoder appends a newline.
+            format!(
+                "{}\n",
+                json!({
+                    "error": "authentik starting",
+                })
+            ),
         )
         .expect("infallible")
 });
@@ -58,8 +66,6 @@ static STARTUP_RESPONSE_PLAIN: LazyLock<Response<String>> = LazyLock::new(|| {
 });
 
 const X_FORWARDED_CLIENT_CERT: HeaderName = HeaderName::from_static("x-forwarded-client-cert");
-const X_FORWARDED_FOR: HeaderName = HeaderName::from_static("x-forwarded-for");
-const X_FORWARDED_PROTO: HeaderName = HeaderName::from_static("x-forwarded-proto");
 
 fn is_django_http_method(method: &Method) -> bool {
     matches!(
@@ -68,20 +74,55 @@ fn is_django_http_method(method: &Method) -> bool {
     )
 }
 
-const FORWARD_ALWAYS_REMOVED_HEADERS: [HeaderName; 7] = [
-    HeaderName::from_static("forwarded"),
-    HeaderName::from_static("host"),
-    X_FORWARDED_FOR,
-    HeaderName::from_static("x-forwarded-host"),
-    X_FORWARDED_PROTO,
-    HeaderName::from_static("x-forwarded-scheme"),
-    HeaderName::from_static("x-real-ip"),
-];
-const FORWARD_REMOVED_HEADERS_IF_UNTRUSTED: [HeaderName; 3] = [
-    HeaderName::from_static("ssl-client-cert"), // nginx-ingress
-    HeaderName::from_static("x-forwarded-tls-client-cert"), // traefik
-    X_FORWARDED_CLIENT_CERT,                    // envoy
-];
+/// authentik-rs: net/http `isReplayable`.
+fn is_replayable(request: &Request) -> bool {
+    let headers = request.headers();
+    let empty_body = headers
+        .get(CONTENT_LENGTH)
+        .is_none_or(|v| v.as_bytes() == b"0")
+        && !headers.contains_key(TRANSFER_ENCODING);
+    let idempotent = matches!(
+        request.method().as_str(),
+        "GET" | "HEAD" | "OPTIONS" | "TRACE"
+    ) || headers.contains_key("idempotency-key")
+        || headers.contains_key("x-idempotency-key");
+    empty_body && idempotent
+}
+
+/// The connection died before a response arrived (closed idle connection).
+fn is_stale_connection(err: &hyper_util::client::legacy::Error) -> bool {
+    let mut source = std::error::Error::source(err);
+    while let Some(inner) = source {
+        if let Some(hyper_err) = inner.downcast_ref::<hyper::Error>() {
+            return hyper_err.is_incomplete_message()
+                || hyper_err.is_canceled()
+                || hyper_err.is_closed();
+        }
+        source = inner.source();
+    }
+    false
+}
+
+/// authentik-rs: `proxyErrorHandler` for a failed upstream request. The
+/// error text is Rust's, so it differs from Go's wording.
+fn proxy_error_response(accept_header: &str, err: &impl std::fmt::Display) -> Response {
+    let message = format!("failed to connect to authentik backend: {err}");
+    if accept_header.contains("application/json") {
+        (
+            StatusCode::BAD_GATEWAY,
+            [(CONTENT_TYPE, "application/json")],
+            format!("{}\n", json!({ "error": message })),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::BAD_GATEWAY,
+            [(CONTENT_TYPE, "text/plain")],
+            message,
+        )
+            .into_response()
+    }
+}
 
 fn startup_response(accept_header: &str) -> Response {
     let response = if accept_header.contains("application/json") {
@@ -120,38 +161,47 @@ async fn forward_request(
         return Ok(startup_response(&accept_header));
     }
     if !is_django_http_method(request.method()) {
-        return Ok((StatusCode::NOT_IMPLEMENTED, "Unsupported HTTP method.\n").into_response());
+        // authentik-rs: http.Error adds X-Content-Type-Options.
+        return Ok((
+            StatusCode::NOT_IMPLEMENTED,
+            [(X_CONTENT_TYPE_OPTIONS, "nosniff")],
+            "Unsupported HTTP method.\n",
+        )
+            .into_response());
     }
 
+    let peer = go_compat::peer_addr(&request);
     let uri = Uri::builder()
         .scheme("http")
         .authority("localhost:8000")
         .path_and_query(uri.path_and_query().map(|x| x.as_str()).unwrap_or_default())
         .build()?;
+    let request_host = request
+        .headers()
+        .get(HOST)
+        .cloned()
+        .or_else(|| HeaderValue::from_str(&host).ok());
     *request.uri_mut() = uri;
 
-    for header_name in FORWARD_ALWAYS_REMOVED_HEADERS {
-        request.headers_mut().remove(header_name);
-    }
-    if !trusted_proxy {
-        for header_name in FORWARD_REMOVED_HEADERS_IF_UNTRUSTED {
-            request.headers_mut().remove(header_name);
-        }
-    }
-
-    request.headers_mut().insert(
-        X_FORWARDED_FOR,
-        HeaderValue::from_str(&client_ip.to_string())?,
+    // authentik-rs: the headers Django receives from the 2026.2.7 Go server.
+    let method = request.method().clone();
+    let forward_host = go_compat::go_forward_headers(
+        request.headers_mut(),
+        &method,
+        peer,
+        trusted_proxy,
+        tls_state.is_some(),
+        request_host,
     );
-    request
-        .headers_mut()
-        .insert(HOST, HeaderValue::from_str(&host)?);
-    request
-        .headers_mut()
-        .insert(X_FORWARDED_PROTO, HeaderValue::from_str(scheme.as_ref())?);
+    if let Some(forward_host) = forward_host {
+        request.headers_mut().insert(HOST, forward_host);
+    }
+    let _ = (client_ip, scheme);
 
     if is_websocket_upgrade(request.headers()) {
-        return handle_websocket_upgrade(request, &server.socket_path).await;
+        let mut response = handle_websocket_upgrade(request, &server.socket_path).await?;
+        response.extensions_mut().insert(go_compat::Proxied);
+        return Ok(response);
     }
 
     if let Some(tls_state) = tls_state
@@ -172,120 +222,60 @@ async fn forward_request(
             .insert(X_FORWARDED_CLIENT_CERT, HeaderValue::from_str(&xfcc)?);
     }
 
-    match server.client.request(request).await {
+    // authentik-rs: Go's transport replays a request whose pooled connection
+    // was closed under it (gunicorn's 2s keep-alive vs. our idle pool) when
+    // the request is replayable: idempotent method or idempotency key, and
+    // no body (`isReplayable` in net/http).
+    let replay = is_replayable(&request).then(|| {
+        let mut retry = Request::builder()
+            .method(request.method().clone())
+            .uri(request.uri().clone())
+            .version(request.version());
+        if let Some(headers) = retry.headers_mut() {
+            headers.clone_from(request.headers());
+        }
+        retry
+    });
+    let mut result = server.client.request(request).await;
+    if let (Err(err), Some(retry)) = (&result, replay)
+        && is_stale_connection(err)
+        && let Ok(retry) = retry.body(Body::empty())
+    {
+        warn!(?err, "retrying request on a fresh backend connection");
+        result = server.client.request(retry).await;
+    }
+
+    match result {
         Ok(res) => {
-            let (parts, body) = res.into_parts();
+            let (mut parts, body) = res.into_parts();
+            // authentik-rs: ReverseProxy drops hop-by-hop headers and flushes
+            // immediately when the upstream length is unknown.
+            let flushed = !parts.headers.contains_key(CONTENT_LENGTH);
+            go_compat::remove_hop_by_hop(&mut parts.headers);
+            parts.extensions.insert(go_compat::Proxied);
+            if flushed {
+                parts.extensions.insert(go_compat::Flushed);
+            }
             Ok(Response::from_parts(
                 parts,
                 Body::from_stream(body.into_data_stream()),
             ))
         }
-        Err(_) => Ok(startup_response(&accept_header)),
-    }
-}
-
-#[instrument(skip_all)]
-async fn health_ready(State(server): State<Arc<Server>>) -> Result<StatusCode> {
-    if !server.is_alive().await {
-        warn!("server detected as not alive");
-        return Ok(StatusCode::SERVICE_UNAVAILABLE);
-    }
-
-    if let Err(err) = sqlx::query("SELECT 1").execute(db::get()).await {
-        warn!(?err, "failed to check db health");
-        return Ok(StatusCode::SERVICE_UNAVAILABLE);
-    }
-
-    match server.health_ready().await {
-        Ok(true) => {}
-        Ok(false) => {
-            warn!("server responded not ready");
-            return Ok(StatusCode::SERVICE_UNAVAILABLE);
-        }
+        // authentik-rs: proxyErrorHandler answers 502 once the backend runs.
         Err(err) => {
-            warn!(?err, "failed to check server health readiness");
-            return Ok(StatusCode::SERVICE_UNAVAILABLE);
+            warn!(?err, "failed to proxy to backend");
+            Ok(proxy_error_response(&accept_header, &err))
         }
     }
-
-    if let Some(workers) = server.workers.load_full() {
-        if !workers.are_alive().await {
-            warn!("workers detected as not alive");
-            return Ok(StatusCode::SERVICE_UNAVAILABLE);
-        }
-
-        match workers.health_ready().await {
-            Ok(true) => {}
-            Ok(false) => {
-                warn!("workers responded not ready");
-                return Ok(StatusCode::SERVICE_UNAVAILABLE);
-            }
-            Err(err) => {
-                warn!(?err, "failed to check workers health readiness");
-                return Ok(StatusCode::SERVICE_UNAVAILABLE);
-            }
-        }
-    }
-
-    Ok(StatusCode::OK)
-}
-
-#[instrument(skip_all)]
-async fn health_live(State(server): State<Arc<Server>>) -> Result<StatusCode> {
-    if !server.is_alive().await {
-        warn!("server detected as not alive");
-        return Ok(StatusCode::SERVICE_UNAVAILABLE);
-    }
-
-    if !server.health_live().await? {
-        return Ok(StatusCode::SERVICE_UNAVAILABLE);
-    }
-    match server.health_live().await {
-        Ok(true) => {}
-        Ok(false) => {
-            warn!("server responded not live");
-            return Ok(StatusCode::SERVICE_UNAVAILABLE);
-        }
-        Err(err) => {
-            warn!(?err, "failed to check server health liveness");
-            return Ok(StatusCode::SERVICE_UNAVAILABLE);
-        }
-    }
-
-    if let Some(workers) = server.workers.load_full() {
-        if !workers.are_alive().await {
-            warn!("workers detected as not alive");
-            return Ok(StatusCode::SERVICE_UNAVAILABLE);
-        }
-
-        match workers.health_live().await {
-            Ok(true) => {}
-            Ok(false) => {
-                warn!("workers responded not live");
-                return Ok(StatusCode::SERVICE_UNAVAILABLE);
-            }
-            Err(err) => {
-                warn!(?err, "failed to check workers health liveness");
-                return Ok(StatusCode::SERVICE_UNAVAILABLE);
-            }
-        }
-    }
-
-    Ok(StatusCode::OK)
 }
 
 pub(super) fn build_router(server: &Arc<Server>) -> eyre::Result<Router> {
-    // Router for monitoring endpoints, under /-/
-    let monitoring_router = wrap_router(
-        Router::new()
-            .route("/health/ready/", any(health_ready))
-            .route("/health/live/", any(health_live))
-            .fallback(any(StatusCode::NOT_FOUND))
-            .with_state(Arc::clone(server)),
-        true,
-    );
-    // Static files
-    let static_router = wrap_router(super::r#static::build_router(), true);
+    // authentik-rs: the 2026.2.7 Go handler chain (`internal/web`), see
+    // `go_compat`. Only `/-/health/live/` is answered locally; every other
+    // `/-/` path, including `/-/health/ready/`, goes to Django.
+    let health_router = Router::new()
+        .route("/-/health/live/", any(go_compat::health_live))
+        .with_state(Arc::clone(server));
     // Router for endpoints handled in Python
     let gunicorn_router = wrap_router(
         Router::new()
@@ -294,16 +284,15 @@ pub(super) fn build_router(server: &Arc<Server>) -> eyre::Result<Router> {
         // Enable tracing but only in debug.
         config::get().debug,
     );
-
     // authentik-rs: natively ported routes take precedence over the
     // gunicorn fallback.
     let compat_router = wrap_router(super::compat::build_router(server), config::get().debug);
 
     let router = Router::new()
-        .nest("/-/", monitoring_router.clone())
-        .merge(static_router)
+        .merge(health_router)
         .merge(compat_router)
-        .merge(gunicorn_router);
+        .merge(gunicorn_router)
+        .layer(middleware::from_fn(go_compat::static_dispatch));
 
     let web_path = &config::get().web.path;
     let router = if web_path == "/" {
@@ -315,11 +304,14 @@ pub(super) fn build_router(server: &Arc<Server>) -> eyre::Result<Router> {
         );
         let redirect_router = wrap_router(Router::new().route("/", any(redirect_response)), true);
 
-        Router::new()
-            .merge(redirect_router)
-            .nest(web_path, router)
-            .nest("/-/", monitoring_router)
+        Router::new().merge(redirect_router).nest(web_path, router)
     };
+
+    let router = router
+        .layer(middleware::from_fn(go_compat::modify_response))
+        .layer(middleware::from_fn(go_compat::gorilla_compress))
+        .layer(middleware::from_fn(go_compat::mux_clean_path))
+        .layer(middleware::from_fn(go_compat::net_http_framing));
 
     Ok(router)
 }

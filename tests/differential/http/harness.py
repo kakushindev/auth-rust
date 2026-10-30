@@ -20,17 +20,19 @@ Normalization is deliberately narrow and listed in NORMALIZED_HEADERS and
 """
 
 import argparse
+import gzip
 import json
 import pathlib
 import re
 import sys
 import urllib.error
 import urllib.request
+import zlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 # Headers whose values are per-request by design; their presence is still compared.
-NORMALIZED_HEADERS = {"date", "x-authentik-id", "x-request-id", "set-cookie", "content-length", "etag"}
+NORMALIZED_HEADERS = {"date", "x-authentik-id", "x-request-id", "set-cookie", "content-length"}
 # Hop-by-hop / transport headers that say nothing about application behavior.
 IGNORED_HEADERS = {"connection", "keep-alive", "transfer-encoding"}
 
@@ -55,16 +57,82 @@ NON_API_CASES = [
 ]
 
 
+GZ = {"Accept-Encoding": "gzip"}
+DEFLATE = {"Accept-Encoding": "deflate"}
+JS = "/static/dist/poly-2026.2.7.js"
+FUTURE = "Fri, 01 Jan 2100 00:00:00 GMT"
+PAST = "Sat, 01 Jan 2000 00:00:00 GMT"
+
+# Front-server behavior: static files, compression, framing, preconditions,
+# ranges, path cleaning, methods and forwarded headers.
+# (auth, method, path, extra request headers)
+FRONT_CASES = [
+    ("anon", "GET", JS, {}),
+    ("anon", "GET", JS, GZ),
+    ("anon", "GET", JS, DEFLATE),
+    ("anon", "HEAD", JS, {}),
+    ("anon", "HEAD", JS, GZ),
+    ("anon", "POST", JS, {}),
+    ("anon", "GET", JS + ".map", {}),
+    ("anon", "GET", JS + ".LEGAL.txt", {}),
+    ("anon", "GET", "/static/dist/styles/static-2026.2.7.css", GZ),
+    ("anon", "GET", "/static/dist/assets/fonts/RedHat/RedHatTextVFModified-52CCP6M7.woff2", {}),
+    ("anon", "GET", "/static/authentik/sources/github.svg", {}),
+    ("anon", "GET", "/static/authentik/sources/ldap.png", GZ),
+    ("anon", "GET", "/static/dist/admin", {}),
+    ("anon", "GET", "/static/dist/admin?x=1", {}),
+    ("anon", "GET", "/static/dist/admin/", {}),
+    ("anon", "GET", "/static/dist/", {}),
+    ("anon", "GET", "/static/dist/index.html", {}),
+    ("anon", "GET", "/static/dist/nope.js", GZ),
+    ("anon", "GET", "/static/dist/../../etc/passwd", {}),
+    ("anon", "GET", "/static/dist/%2e%2e/x", {}),
+    ("anon", "GET", "/api/v3//root/config/", {}),
+    ("anon", "GET", "/if/flow/default-authentication-flow/assets/nope.js", {}),
+    ("anon", "GET", "/if/admin/assets/nope.js", {}),
+    ("anon", "GET", "/files/media/nope.png", {}),
+    ("anon", "GET", "/files/media/", {}),
+    ("anon", "GET", JS, {"Range": "bytes=0-9"}),
+    ("anon", "GET", JS, {"Range": "bytes=-5"}),
+    ("anon", "GET", JS, {"Range": "bytes=999999999-"}),
+    ("anon", "GET", JS, {"Range": "bytes=x"}),
+    ("anon", "GET", JS, {"Range": "bytes=0-9", **GZ}),
+    ("anon", "GET", JS, {"If-Modified-Since": FUTURE}),
+    ("anon", "GET", JS, {"If-Modified-Since": PAST}),
+    ("anon", "GET", JS, {"If-Modified-Since": FUTURE, "Cache-Control": "no-cache"}),
+    ("anon", "GET", JS, {"If-None-Match": "*"}),
+    ("anon", "GET", JS, {"If-None-Match": '"nope"'}),
+    ("anon", "GET", JS, {"If-Match": '"nope"'}),
+    ("anon", "GET", JS, {"If-Unmodified-Since": PAST}),
+    ("anon", "GET", "/robots.txt", GZ),
+    ("anon", "HEAD", "/robots.txt", {}),
+    ("anon", "GET", "/.well-known/security.txt", {}),
+    ("anon", "GET", "/-/health/live/", GZ),
+    ("anon", "HEAD", "/-/health/live/", {}),
+    ("anon", "GET", "/-/health/ready/", GZ),
+    ("anon", "GET", "/api/v3/root/config/", GZ),
+    ("anon", "GET", "/api/v3/root/config/", DEFLATE),
+    ("anon", "HEAD", "/api/v3/root/config/", {}),
+    ("anon", "PROPFIND", "/", {}),
+    ("anon", "BREW", "/api/v3/root/config/", {}),
+    ("anon", "GET", "/if/admin/", GZ),
+    ("token", "GET", "/api/v3/core/users/impersonate_end/", GZ),
+    ("token", "GET", "/api/v3/admin/file/", {"X-Forwarded-Proto": "https"}),
+    ("token", "GET", "/api/v3/outposts/instances/default_settings/", {"X-Forwarded-Host": "other.test"}),
+    ("token", "GET", "/api/v3/core/applications/?page_size=100", GZ),
+]
+
+
 def cases():
     ops = json.loads((ROOT / "baseline/inventory/openapi_operations.json").read_text())["operations"]
     paths = sorted({o["path"] for o in ops if o["method"] == "GET" and "{" not in o["path"]})
-    out = [("anon", p) for p in NON_API_CASES]
-    out += [("token", p) for p in NON_API_CASES]
+    out = [("anon", "GET", p, {}) for p in NON_API_CASES]
+    out += [("token", "GET", p, {}) for p in NON_API_CASES]
     for p in paths:
         url = "/api/v3" + p
-        out.append(("anon", url))
-        out.append(("token", url))
-    return out
+        out.append(("anon", "GET", url, {}))
+        out.append(("token", "GET", url, {}))
+    return out + FRONT_CASES
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -79,10 +147,9 @@ OPENER = urllib.request.build_opener(NoRedirect)
 HOST = "authentik.test"
 
 
-def fetch(base, path, token):
-    req = urllib.request.Request(
-        base + path, headers={"Accept": "application/json, text/html;q=0.9", "Host": HOST}
-    )
+def fetch(base, path, token, method="GET", extra=None):
+    headers = {"Accept": "application/json, text/html;q=0.9", "Host": HOST, **(extra or {})}
+    req = urllib.request.Request(base + path, headers=headers, method=method)
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     try:
@@ -130,6 +197,20 @@ def kind(diff):
     return diff.split()[0] + ("-body" if "body" in diff else "")
 
 
+def decoded_body(headers, body):
+    """Compare content, not compressor output (Go's and Rust's deflate
+    implementations legitimately produce different bytes)."""
+    encoding = (headers.get("content-encoding") or [""])[0]
+    try:
+        if encoding == "gzip" and body:
+            return gzip.decompress(body)
+        if encoding == "deflate" and body:
+            return zlib.decompress(body, -15)
+    except (OSError, zlib.error, EOFError):
+        return b"<undecodable " + encoding.encode() + b" body>"
+    return body
+
+
 def compare(ref, cand):
     diffs = []
     (rs, rh, rb), (cs, ch, cb) = ref, cand
@@ -142,8 +223,17 @@ def compare(ref, cand):
         elif name == "set-cookie":
             if cookie_shape(rh[name]) != cookie_shape(ch[name]):
                 diffs.append(f"set-cookie shape {cookie_shape(rh[name])} != {cookie_shape(ch[name])}")
+        elif (
+            name == "content-length"
+            and "content-encoding" not in rh
+            and "content-encoding" not in ch
+            and rh[name] != ch[name]
+        ):
+            # Lengths only legitimately differ for compressed bodies.
+            diffs.append(f"header content-length: {rh[name]} != {ch[name]}")
         elif name not in NORMALIZED_HEADERS and rh[name] != ch[name]:
             diffs.append(f"header {name}: {rh[name]} != {ch[name]}")
+    rb, cb = decoded_body(rh, rb), decoded_body(ch, cb)
     ctype = (rh.get("content-type") or [""])[0]
     if "json" in ctype:
         try:
@@ -188,11 +278,11 @@ def main():
             sys.exit(f"harness self-test failed: seeded {name} difference not detected")
 
     results = []
-    for who, path in cases():
+    for who, method, path, extra in cases():
         tok = token if who == "token" else None
-        ref = fetch(args.reference, path, tok)
-        ref2 = fetch(args.reference2, path, tok)
-        cand = fetch(args.candidate, path, tok)
+        ref = fetch(args.reference, path, tok, method, extra)
+        ref2 = fetch(args.reference2, path, tok, method, extra)
+        cand = fetch(args.candidate, path, tok, method, extra)
         diffs = compare(ref, cand)
         noise = compare(ref, ref2)
         noise_kinds = {kind(d) for d in noise}
@@ -203,10 +293,19 @@ def main():
         else:
             bucket = "different"
         results.append(
-            {"auth": who, "path": path, "status": ref[0], "bucket": bucket, "diffs": diffs, "noise": noise}
+            {
+                "auth": who,
+                "method": method,
+                "path": path,
+                "headers": extra,
+                "status": ref[0],
+                "bucket": bucket,
+                "diffs": diffs,
+                "noise": noise,
+            }
         )
         if bucket == "different":
-            print(f"DIFF {who:5} {path}: " + "; ".join(diffs))
+            print(f"DIFF {who:5} {method} {path} {extra or ''}: " + "; ".join(diffs))
 
     buckets = {}
     statuses = {}
@@ -218,7 +317,11 @@ def main():
         "cases": len(results),
         "buckets": dict(sorted(buckets.items())),
         "reference_status_histogram": dict(sorted(statuses.items())),
-        "nondeterministic_cases": sorted(f"{r['auth']} {r['path']}" for r in results if r["bucket"] == "nondeterministic"),
+        "nondeterministic_cases": sorted(
+            f"{r['auth']} {r['method']} {r['path']} {r['headers'] or ''}".strip()
+            for r in results
+            if r["bucket"] == "nondeterministic"
+        ),
         "normalized_headers": sorted(NORMALIZED_HEADERS),
         "normalized_json_fields": ["request_id"],
         "normalized_html": ["meta sentry-trace content"],

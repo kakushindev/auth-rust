@@ -2,6 +2,12 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 4 — 2026-10-30
+
+- Go front-server parity layer (`rust/src/server/go_compat/`): HTTP differential 484 equal / 9 nondeterministic / **0 different**; clippy clean; 9 parity unit tests.
+- Fast loop: `scripts/rust-check.sh` (clippy/test in the exact build image). Format with `cargo +nightly fmt -p authentik -- --config-path rust/.cargo/rustfmt.toml`.
+- Next: the M2 open items in `docs/COMPATIBILITY_REPORT.md`, starting with config listen-address compatibility and the embedded outpost websocket.
+
 ## Batch 3 — 2026-10-30
 
 - **Re-pinned to authentik 2026.2.7** (`0936c5b0`), which production apps.mysoc.id runs. The reference stack was recreated, and every baseline re-extracted: schema fingerprint `a30d1060…`, 692 migrations, 1 113 API operations, 215 models, 66 actors.

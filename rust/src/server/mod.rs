@@ -23,7 +23,10 @@ use axum::{
     Router,
     body::Body,
     extract::{Request, State},
-    http::{StatusCode, header::HOST},
+    http::{
+        Method, StatusCode,
+        header::{CONTENT_LENGTH, HOST},
+    },
     middleware::from_fn,
     response::Response,
     routing::any,
@@ -54,6 +57,7 @@ use crate::{
 
 mod compat;
 mod core;
+mod go_compat;
 mod r#static;
 mod tls;
 
@@ -77,6 +81,10 @@ pub(crate) struct Server {
     gunicorn: Mutex<Child>,
     socket_path: PathBuf,
     pub(crate) client: Client<UnixSocketConnector<PathBuf>, Body>,
+    #[expect(
+        dead_code,
+        reason = "authentik-rs: 2026.2.7 health routing never consults the workers"
+    )]
     pub(crate) workers: ArcSwapOption<Workers>,
     proxy_outpost: Arc<ArcSwapOption<ProxyOutpost>>,
     brand_cert_resolver: ArcSwapOption<BrandCertResolver>,
@@ -166,6 +174,7 @@ impl Server {
     }
 
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "authentik-rs: replaced by go_compat::health_live")]
     pub(crate) async fn health_live(&self) -> Result<bool> {
         trace!("sending health live request to server");
         let req = Request::builder()
@@ -183,6 +192,10 @@ impl Server {
     }
 
     #[instrument(skip(self))]
+    #[expect(
+        dead_code,
+        reason = "authentik-rs: 2026.2.7 forwards /-/health/ready/ to Django"
+    )]
     pub(crate) async fn health_ready(&self) -> Result<bool> {
         trace!("sending health ready request to server");
         let req = Request::builder()
@@ -285,7 +298,14 @@ async fn route_core_and_outpost(
         None => (core_router, "core"),
     };
 
-    let response = router.oneshot(request).await.expect("infallible");
+    let is_head = request.method() == Method::HEAD;
+    let mut response = router.oneshot(request).await.expect("infallible");
+    // authentik-rs: the inner router already stripped a HEAD body to an
+    // exact-size empty body; this outer route would turn that into
+    // `Content-Length: 0`, which Go never sends for an empty HEAD response.
+    if is_head && !response.headers().contains_key(CONTENT_LENGTH) {
+        *response.body_mut() = go_compat::unsized_empty_body();
+    }
     metrics::histogram!("authentik_main_request_duration", "dest" => dest)
         .record(start.elapsed().as_secs_f64());
     response
@@ -308,7 +328,9 @@ fn build_router(server: &Arc<Server>) -> Result<Router> {
     };
 
     Ok(router
-        .fallback(any(route_core_and_outpost))
+        // authentik-rs: a plain handler fallback; `any(..)` would nest a second
+        // top-level route future that re-adds `Content-Length: 0` to HEAD.
+        .fallback(route_core_and_outpost)
         .with_state((core_router, proxy_router, Arc::clone(&server.proxy_outpost)))
         .layer(from_fn(host_middleware))
         .layer(from_fn(trusted_proxy_middleware))

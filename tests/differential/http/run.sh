@@ -7,6 +7,7 @@ cd "$(dirname "$0")/../../.."
 here=tests/differential/http
 export PG_PASS="$(sed -n 's/^PG_PASS=//p' reference/.env)"
 export SNAPSHOT_DIR="${SNAPSHOT_DIR:-$(mktemp -d)}"
+mkdir -p "$SNAPSHOT_DIR"
 dc() { docker compose -p ak-diff -f "$here/compose.yml" "$@"; }
 
 # The snapshot holds password hashes and tokens: it never leaves the temp dir.

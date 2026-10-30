@@ -22,22 +22,15 @@ Differences found by differential testing and fixed (they would otherwise have s
 4. Django runs a dummy default hash for unusable or unknown hashes (timing equalization), and calls `identify_hasher` even when the password is `None`.
 
 
-## Open: Rust server vs the 2026.2.7 Go front server (M2)
+## Rust server vs the 2026.2.7 Go front server (M2)
 
-At 2026.2.7 upstream fronts Django with the **Go** `authentik` binary. Our Rust server replaces it in `candidate/Dockerfile`. Fixed so far: a bare `authentik` invocation now means `server` (the 2026.2.7 `lifecycle/ak` calls it without arguments, and the Rust binary used to exit); the reported version is now 2026.2.7.
+`rust/src/server/go_compat/` ports the Go front-server HTTP behavior from the pinned sources: gorilla `CompressHandler` and `ProxyHeaders`, mux path cleaning, go-http-utils `etag`/`fresh`, and Go 1.25.5 `net/http` FileServer, sniffing, MIME table and response framing, plus the `ReverseProxy` header rules and its retry of replayable requests.
 
-`tests/differential/http/run.sh` (440 cases, 3 stacks; the schema guard is clean on all 3) still reports every case as different. The differences, by kind:
+`tests/differential/http/run.sh` (3 stacks from one snapshot, 493 cases: every parameterless GET API operation anonymous and with a token, plus 53 front-server cases covering static files, gzip/deflate, HEAD, ranges, preconditions, redirects, unclean paths, unknown methods and forwarded headers): **484 equal, 9 nondeterministic (also differing between two upstream processes), 0 different**. The schema guard is clean on all databases.
 
-| # | Difference (reference = Go, candidate = Rust) | Cases | Upstream source to match |
-| --- | --- | ---: | --- |
-| 1 | `Server: uvicorn` from gunicorn reaches the client only through Rust | 432 | `internal/web/proxy.go` |
-| 2 | Go compresses proxied responses and always sends `Vary: Accept-Encoding`; Rust does not compress proxied responses | 432 | `internal/web/web.go` (compress handler) |
-| 3 | `/-/health/live/`, `/-/health/ready/`: Go answers `live` itself and forwards `ready` to Django (security headers, `content-type`, `x-authentik-id`); Rust answers both itself and adds `x-powered-by` | 8 | `internal/web/proxy.go` |
-| 4 | `/robots.txt`: `text/plain` vs `text/plain; charset=utf-8`; Go sends `ETag` | 2 | `internal/web/static.go` |
-| 5 | Static 404 (`/static/dist/poly.js`): Go returns a 19-byte `404 page not found` body; Rust returns an empty body plus `Cache-Control` | 2 | `internal/web/static.go` |
-| 6 | `impersonate_end`: Rust adds `Content-Length` | 1 | proxy response copying |
+Reviewed deviation: storage tokens keep upstream Rust's stricter validation (HS256, required `exp`/`nbf`). Every token 2026.2.7 issues passes it.
 
-Further known gaps, not yet covered by the harness: listen-address config format (2026.2.7 uses scalars like `0.0.0.0:9000` where the Rust loader expects lists, and Go binds IPv4 only); the `healthcheck worker` semantics; metrics on `:9300` (Rust reads them via pyo3); brand TLS SQL against the 2026.2.7 schema; and the embedded outpost (Go proxyv2 vs the Rust proxy).
+Still open in M2: config format (scalar listen addresses, IPv4-only bind); `healthcheck worker` semantics; metrics on :9300; brand TLS SQL against the 2026.2.7 schema; the embedded outpost (the Rust proxy outpost's websocket fails against 2026.2.7 Django with `HTTP error: 200 OK`); non-default `web.path`; untrusted-proxy header paths (unit-tested only); Go's exact 502 error text.
 
 ## Not verified / open
 
