@@ -38,72 +38,72 @@
       "rust": "unchanged; served by the Rust server from web/dist"
     },
     "django:authentik.enterprise": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.audit": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.endpoints.connectors.agent": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.endpoints.connectors.fleet": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.lifecycle": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.policies.unique_password": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.providers.google_workspace": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.providers.microsoft_entra": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.providers.radius": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.providers.scim": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.providers.ssf": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.providers.ws_federation": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.reports": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.stages.authenticator_endpoint_gdtc": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.stages.mtls": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.stages.source": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     },
     "django:authentik.enterprise.search": {
-      "status": "Blocked with documented evidence",
-      "evidence": "authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc., usable only with a valid EE subscription, distribution forbidden (dev/testing use allowed). Needs an explicit decision from the project owner before any port."
+      "status": "Excluded (separate)",
+      "evidence": "Owner decision R2, 2026-10-31 (\"pisahin\"): Enterprise stays out of the MIT Rust codebase and is not ported (authentik/enterprise/LICENSE: modifications are owned by Authentik Security Inc. and need a valid EE subscription). See docs/MIGRATION_PLAN.md R2."
     }
   }
 }

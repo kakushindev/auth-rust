@@ -4,7 +4,7 @@ As of 2026-10-30, against authentik `version/2026.2.7` (`0936c5b0`), the version
 
 ## Bottom line
 
-The rewrite is at the start. **1 of 102 inventoried features is Verified equivalent** (the password hasher contract, re-verified at 2026.2.7). 17 are blocked by the Enterprise license, and 84 are not started. No HTTP endpoint, flow, protocol, worker task or outpost has been ported. The candidate application does not exist yet. 100 % equivalence is not claimed for anything beyond the components listed below.
+The rewrite is at the start. **1 of 102 inventoried features is Verified equivalent** (the password hasher contract, re-verified at 2026.2.7). 17 are excluded as Enterprise (owner decision R2: kept separate), and 84 are not started. No HTTP endpoint, flow, protocol, worker task or outpost has been ported. The candidate application does not exist yet. 100 % equivalence is not claimed for anything beyond the components listed below.
 
 ## Verified
 
@@ -101,7 +101,9 @@ With `web.path` other than `/`, gorilla mux in 2026.2.7 routes only `/` (an `htt
 
 Deviation (kept): with `debug: true` Go runs `./manage.py dev_server` and talks to it over TCP; the Rust server always runs gunicorn on the socket. Production never sets `debug`.
 
-Still open in M2: the embedded outpost's hello omits `golangVersion`, `opensslEnabled`, `opensslVersion` and `fipsEnabled`, which Django stores and shows in outpost health (needs an owner decision on what a Rust outpost reports); `%q` quoting of non-ASCII Unicode format characters in upgrade errors is approximate.
+- **Embedded outpost hello** (owner decision 2026-10-31: report the same as Go). `golangVersion` `go1.25.5` (the 2026.2.7 build's runtime), `opensslEnabled` false, `opensslVersion` from `/usr/bin/openssl version` as Go runs it, and `fipsEnabled` from `GOFIPS=1`. Django's stored `OutpostState` for the embedded outpost is identical between reference and candidate.
+
+Still open in M2: `%q` quoting of non-ASCII Unicode format characters in upgrade errors is approximate.
 
 ## Not verified / open
 
@@ -121,4 +123,4 @@ The product is therefore **not yet full Rust**. All three adapters must be remov
 ## Blockers needing a decision
 
 - **R1 — Python expressions**: decided as full Rust; a Rust Python-subset engine is required (M9b).
-- **R2 — Enterprise license**: 20 apps blocked pending subscription/agreement confirmation.
+- **R2 — Enterprise license**: decided 2026-10-31, kept separate. Enterprise is not ported; its 17 rows are "Excluded (separate)".

@@ -2,6 +2,15 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 9 — 2026-10-31
+
+- **Owner decisions recorded** (`docs/MIGRATION_PLAN.md` R2, R5, M18–M20; memory): the embedded outpost reports Go's hello values; Enterprise is kept separate (17 rows "Excluded (separate)", matrix regenerated); product name **Gapura** with logo, wordmark and favicon in `branding/`; source github.com/kakushindev/auth-rust, image `ghcr.io/kakushindev/auth-rust:main-<n>`.
+- **Outpost hello**: Django's stored `OutpostState` is identical to the reference. HTTP 504/0 different, forwarded 21/0, outpost requests identical.
+- M2 is now done with no open owner decisions; the only remaining open item is the approximate `%q` for non-ASCII format characters.
+
+### Exact next action
+M4: `ak-models` read models (User, Group, Application, Provider/Source multi-table inheritance, Token, Brand, Tenant). Every row of a populated reference DB must decode, and round-trip writes must leave rows byte-equal.
+
 ## Batch 8 — 2026-10-31
 
 - **Forwarded-header differential observed in Django's request log** (`forwarded.py`, run by `run.sh`): 21/21 identical with the harness host trusted and untrusted (`TRUSTED_CIDRS=127.0.0.1/32`); the full HTTP harness is also 0 different in untrusted mode.

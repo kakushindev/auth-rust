@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 512" role="img" aria-labelledby="t">
+  <title id="t">Gapura</title>
+  <defs>
+    <linearGradient id="brick" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#DE6B43"/>
+      <stop offset="1" stop-color="#A63F22"/>
+    </linearGradient>
+    <mask id="keyhole">
+      <rect width="512" height="512" fill="#fff"/>
+      <rect x="244" y="40" width="24" height="420" fill="#000"/>
+      <circle cx="256" cy="292" r="40" fill="#000"/>
+      <path d="M232 300 L280 300 L268 452 L244 452 Z" fill="#000"/>
+    </mask>
+  </defs>
+  <g mask="url(#keyhole)" fill="url(#brick)">
+    <path d="M64 452 V396 H88 V324 H112 V248 H136 V176 H160 V112 H184 V68 H212 V44 H256 V452 Z"/>
+    <path d="M448 452 V396 H424 V324 H400 V248 H376 V176 H352 V112 H328 V68 H300 V44 H256 V452 Z"/>
+  </g>
+  <rect x="48" y="460" width="416" height="20" rx="4" fill="#7A2E19"/>
+  <!-- Wordmark (for dark backgrounds); to be outlined into paths before release (M18). -->
+  <text fill="#F4EDE8" x="532" y="352" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="210" font-weight="700" letter-spacing="-3">gapura</text>
+</svg>

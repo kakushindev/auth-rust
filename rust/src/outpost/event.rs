@@ -80,15 +80,40 @@ fn build_ws_url(mut url: Url, outpost_pk: &str, instance_uuid: &str) -> Result<U
     Ok(url)
 }
 
+/// authentik-rs: `runtime.Version()` of 2026.2.7's server build.
+const GO_RUNTIME_VERSION: &str = "go1.25.5";
+
+/// authentik-rs: `cryptobackend.OpensslVersion()`: the output of
+/// `/usr/bin/openssl version`, or empty if it cannot run.
+fn openssl_version() -> String {
+    std::process::Command::new("/usr/bin/openssl")
+        .arg("version")
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+        .unwrap_or_default()
+}
+
 fn hello_args(instance_uuid: &str) -> serde_json::Value {
     let raw_hostname = gethostname().unwrap_or_default();
     let hostname = raw_hostname.to_string_lossy();
 
+    // authentik-rs: the fields 2026.2.7's Go outpost sends
+    // (`getEventPingArgs`), which Django stores and shows in outpost health.
+    // The owner decided they report the same values as the Go build:
+    // `runtime.Version()` of that build, `OpensslEnabled` (false without
+    // `systemcrypto`), `/usr/bin/openssl version`, and `fips140.Enabled()`,
+    // which `GOFIPS=1` turns on in the 2026.2.7 image.
     serde_json::json!({
         "version": VERSION,
         "buildHash": authentik_build_hash(None),
         "uuid": instance_uuid,
-        // TODO: rust version and AWS-LC versions
+        "golangVersion": GO_RUNTIME_VERSION,
+        "opensslEnabled": false,
+        "opensslVersion": openssl_version(),
+        "fipsEnabled": std::env::var("GOFIPS").is_ok_and(|v| v == "1"),
         "hostname": hostname,
     })
 }

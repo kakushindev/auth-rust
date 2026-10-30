@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Favicon: the mark with fewer steps so it stays legible at 16 px. -->
+  <defs>
+    <mask id="k">
+      <rect width="64" height="64" fill="#fff"/>
+      <rect x="30" y="2" width="4" height="58" fill="#000"/>
+      <circle cx="32" cy="37" r="7" fill="#000"/>
+      <path d="M28 38 H36 L34.5 58 H29.5 Z" fill="#000"/>
+    </mask>
+  </defs>
+  <g mask="url(#k)" fill="#C4542F">
+    <path d="M4 58 V44 H10 V28 H16 V14 H22 V4 H32 V58 Z"/>
+    <path d="M60 58 V44 H54 V28 H48 V14 H42 V4 H32 V58 Z"/>
+  </g>
+  <rect x="2" y="58" width="60" height="5" rx="1.5" fill="#7A2E19"/>
+</svg>

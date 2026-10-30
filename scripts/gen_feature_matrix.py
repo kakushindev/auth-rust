@@ -23,6 +23,7 @@ STATES = [
     "Implemented, unverified",
     "Verified equivalent",
     "Blocked with documented evidence",
+    "Excluded (separate)",
 ]
 
 
