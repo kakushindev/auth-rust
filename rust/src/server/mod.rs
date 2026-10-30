@@ -25,7 +25,7 @@ use axum::{
     extract::{Request, State},
     http::{
         Method, StatusCode,
-        header::{CONTENT_LENGTH, HOST},
+        header::{AUTHORIZATION, CONTENT_LENGTH, HOST, USER_AGENT},
     },
     middleware::from_fn,
     response::Response,
@@ -57,7 +57,7 @@ use crate::{
 
 mod compat;
 mod core;
-mod go_compat;
+pub(crate) mod go_compat;
 mod r#static;
 mod tls;
 
@@ -89,11 +89,59 @@ pub(crate) struct Server {
     proxy_outpost: Arc<ArcSwapOption<ProxyOutpost>>,
     brand_cert_resolver: ArcSwapOption<BrandCertResolver>,
     fallback_cert: Arc<CertifiedKey>,
+    /// authentik-rs: the key Django's `MetricsView` expects (`prepareKeys`).
+    metrics_key: Option<String>,
+}
+
+/// authentik-rs: `MetricsKeyFile` and `IPCKeyFile` in 2026.2.7's Go
+/// `internal/web`.
+const METRICS_KEY_FILE: &str = "authentik-core-metrics.key";
+const IPC_KEY_FILE: &str = "authentik-core-ipc.key";
+
+/// authentik-rs: `prepareKeys`: random keys that Django reads from the temp
+/// directory to authenticate the metrics scrape (`MetricsView`) and IPC
+/// requests (`token_ipc`, read at import, so before gunicorn starts). Like
+/// Go, stops at the first key it cannot write; returns the metrics key.
+fn prepare_keys() -> Option<String> {
+    fn write_key(name: &str) -> std::io::Result<String> {
+        use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _};
+
+        let mut raw = [0_u8; 64];
+        rand::fill(&mut raw);
+        let key = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(temp_dir().join(name))?
+            .write_all(key.as_bytes())?;
+        Ok(key)
+    }
+
+    let metrics_key = write_key(METRICS_KEY_FILE)
+        .inspect_err(|err| warn!(?err, "failed to save metrics key"))
+        .ok()?;
+    if let Err(err) = write_key(IPC_KEY_FILE) {
+        warn!(?err, "failed to save ipc key");
+    }
+    Some(metrics_key)
+}
+
+/// authentik-rs: `Shutdown` removes both key files after stopping gunicorn.
+fn remove_keys() {
+    if let Err(err) = std::fs::remove_file(temp_dir().join(METRICS_KEY_FILE)) {
+        warn!(?err, "failed to remove metrics key file");
+    }
+    if let Err(err) = std::fs::remove_file(temp_dir().join(IPC_KEY_FILE)) {
+        warn!(?err, "failed to remove ipc key file");
+    }
 }
 
 impl Server {
     fn new(socket_path: PathBuf) -> Result<Self> {
         info!("starting server");
+        let metrics_key = prepare_keys();
 
         let gunicorn = Command::new("gunicorn")
             .args([
@@ -122,6 +170,7 @@ impl Server {
             proxy_outpost: Arc::new(ArcSwapOption::empty()),
             brand_cert_resolver: ArcSwapOption::empty(),
             fallback_cert: Arc::new(self_signed::generate_certifiedkey()?),
+            metrics_key,
         })
     }
 
@@ -136,6 +185,7 @@ impl Server {
         }
         gunicorn.wait().await?;
         drop(gunicorn);
+        remove_keys();
         Ok(())
     }
 
@@ -226,6 +276,35 @@ impl Server {
             .inspect_err(|err| warn!(?err, "failed to send metrics request to server"))?;
         Ok(())
     }
+
+    /// authentik-rs: the Django half of 2026.2.7's `/metrics`: `GET
+    /// <web.path>-/metrics/` with the metrics key. Go appends whatever body
+    /// comes back, whatever its status; on an error it logs and appends
+    /// nothing.
+    pub(crate) async fn django_metrics(&self) -> Vec<u8> {
+        let fetch = async {
+            let req = Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "http://localhost:8000{}-/metrics/",
+                    config::get().web.path
+                ))
+                .header(HOST, "localhost:8000")
+                .header(USER_AGENT, "Go-http-client/1.1")
+                .header(
+                    AUTHORIZATION,
+                    format!("Bearer {}", self.metrics_key.as_deref().unwrap_or_default()),
+                )
+                .body(Body::empty())?;
+            let res = self.client.request(req).await?;
+            let body = http_body_util::BodyExt::collect(res.into_body()).await?;
+            Ok::<_, eyre::Report>(body.to_bytes().to_vec())
+        };
+        fetch
+            .await
+            .inspect_err(|err| warn!(?err, "failed to get upstream metrics"))
+            .unwrap_or_default()
+    }
 }
 
 async fn watch_server(arbiter: Arbiter, server: Arc<Server>) -> Result<()> {
@@ -306,8 +385,11 @@ async fn route_core_and_outpost(
     if is_head && !response.headers().contains_key(CONTENT_LENGTH) {
         *response.body_mut() = go_compat::unsized_empty_body();
     }
-    metrics::histogram!("authentik_main_request_duration", "dest" => dest)
-        .record(start.elapsed().as_secs_f64());
+    // authentik-rs: Go only observes outpost and proxied core requests.
+    if dest == "embedded_outpost" || response.extensions().get::<go_compat::Observed>().is_some() {
+        metrics::histogram!("authentik_main_request_duration", "dest" => dest)
+            .record(start.elapsed().as_secs_f64());
+    }
     response
 }
 

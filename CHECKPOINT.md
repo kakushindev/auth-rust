@@ -2,6 +2,16 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 6 — 2026-10-30
+
+- **Plan**: owner decisions recorded as R5 and milestones M18 (rebrand: name and logo), M19 (CI/CD) and M20 (auto-deploy to apps.mysoc.id via Flux image automation in omb-ipb-si/infrastructure), all after the 100 % Rust rewrite (M17). Still owed by the owner: the new name, logo files, and the registry org/image.
+- **Health checks**: ported Go's `healthcheck` (server: HEAD over TCP; worker: PID-file signal 0). Upstream Rust's worker check needed the server socket, which would have restart-looped every production worker pod. Exit codes match the reference in 4/4 container cases.
+- **Metrics :9300**: `/metrics` only, Go-rendered registry plus process/promhttp collectors, then Django's metrics fetched with Go's key file. Also writes the IPC key and fixes the request-duration observation scope and outpost gauge labels. Metrics differential `tests/differential/metrics/compare.py`: 0 differences over 47 families (`go_*` runtime families excluded).
+- HTTP differential 504 cases: 496 equal / 8 nondeterministic / 0 different; schema guard clean; clippy clean (core and core+proxy).
+
+### Exact next action
+M2 remainder in `docs/COMPATIBILITY_REPORT.md`: brand TLS (SQL against the 2026.2.7 schema), then non-default `web.path`. Then start M4 (`ak-models` read models).
+
 ## Batch 5 — 2026-10-30
 
 - **Listen addresses**: scalar (2026.2.7) or list config. Entries resolve like Go's `net.Listen` and bind like `favoriteAddrFamily` (a wildcard is `[::]` dual-stack). Accepted sockets get Go's `TCP_NODELAY`/keep-alive. Defaults are 2026.2.7's. Go differential `tests/differential/listen/run.sh`: 32/32 match.

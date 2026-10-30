@@ -115,7 +115,8 @@ async fn handle_event<O: Outpost>(
             )]
             controller
                 .m_last_update
-                .set(UtcDateTime::now().unix_timestamp() as f64);
+                // authentik-rs: `SetToCurrentTime` keeps the fraction.
+                .set(UtcDateTime::now().unix_timestamp_nanos() as f64 / 1e9_f64);
         }
         EventKind::SessionEnd => {
             let event: EventSessionEnd = serde_json::from_value(event.args)?;

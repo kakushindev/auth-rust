@@ -6,7 +6,47 @@ use axum::{body::Body, extract::State, http::StatusCode, response::Response};
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 
-use super::Metrics;
+use super::{Metrics, go_text};
+
+/// authentik-rs: 2026.2.7's Go `runMetricsServer` `/metrics`: its own
+/// registry through `promhttp` (re-rendered by [`go_text`]), followed by the
+/// body of Django's `/-/metrics/`.
+#[cfg(feature = "core")]
+#[instrument(skip_all)]
+pub(super) async fn go_metrics_handler(State(state): State<Arc<Metrics>>) -> Result<Response> {
+    let gathered = {
+        let _scrape = state.promhttp.scrape();
+        let mut text = state.prometheus.render();
+        text.push_str(&spawn_blocking(go_text::process_text).await?);
+        text.push_str(&state.promhttp.text());
+        go_text::render(&text)
+    };
+    let mut body = gathered.into_bytes();
+    if let Some(server) = state.server.load_full() {
+        body.extend(server.django_metrics().await);
+    }
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", go_text::CONTENT_TYPE)
+        .body(Body::from(body))?)
+}
+
+/// authentik-rs: `http.NotFound` from the metrics mux.
+#[cfg(feature = "core")]
+pub(super) async fn go_not_found() -> Response {
+    let mut response = Response::new(Body::from("404 page not found\n"));
+    *response.status_mut() = StatusCode::NOT_FOUND;
+    let headers = response.headers_mut();
+    headers.insert(
+        "content-type",
+        axum::http::HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    headers.insert(
+        "x-content-type-options",
+        axum::http::HeaderValue::from_static("nosniff"),
+    );
+    response
+}
 
 #[instrument(skip_all)]
 pub(super) async fn metrics_handler(State(state): State<Arc<Metrics>>) -> Result<Response> {

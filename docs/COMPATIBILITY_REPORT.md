@@ -45,7 +45,28 @@ Deviations (reviewed, kept): Go resolves a service-name port (`:http`) and Rust 
 
 Batch 4 regressed every websocket. `remove_hop_by_hop` stripped `Connection`/`Upgrade` before the upgrade check, so Django received the handshake as a plain GET and answered 200 (the embedded outpost's `HTTP error: 200 OK`; `/ws/client/` was affected too). The HTTP harness had no upgrade cases. `forward_request` now ports `ReverseProxy`'s upgrade handling. It records `upgradeType` before stripping and re-adds `Connection: Upgrade` + `Upgrade` afterwards. A non-printable protocol is refused with the Go error text. On a 101 it checks that the backend switched to the requested protocol, returns the backend's 101 headers as-is (apart from `ModifyResponse`), and splices both connections byte for byte with half-close propagation. Upstream Rust's websocket proxy, which re-framed messages and stripped `Sec-WebSocket-Extensions`, is no longer used. The harness gained 11 raw-socket upgrade cases. On a 101, each one sends a websocket Close and compares the echoed frame. Against the batch-4 candidate, 9 of them differ; after the fix, all 11 are equal. The embedded outpost now connects (`connected to websocket`), and `/api/v3/outposts/instances/<embedded>/health/` lists the instance at version 2026.2.7, as on the reference.
 
-Still open in M2: `healthcheck worker` semantics; metrics on :9300; brand TLS SQL against the 2026.2.7 schema; the embedded outpost's hello omits `golangVersion`, `opensslEnabled`, `opensslVersion` and `fipsEnabled`, which Django stores and shows in outpost health (needs an owner decision on what a Rust outpost reports); the Go embedded outpost connects over TCP to `listen.http`, while Rust uses the server's unix socket; non-default `web.path`; untrusted-proxy header paths (unit-tested only); Go's exact 502 error text; `%q` quoting of non-ASCII Unicode format characters in upgrade errors is approximate.
+### Health checks (batch 6)
+
+`ak healthcheck` runs `authentik healthcheck <mode>`, with the mode read from `$TMPDIR/authentik-mode`. In 2026.2.7 the worker is Python (`python -m manage worker --pid-file …`) in its own pod, and the Helm chart's worker liveness probe is this command. Upstream Rust checked every mode over the server's unix socket, which a worker pod doesn't have, so every worker probe would have failed and the pods would have restarted in a loop. `healthcheck` now ports Go's `cmd/server/healthcheck.go`:
+- `server`: `HEAD http://<listen.http><web.path>-/health/live/` over TCP, following redirects with no timeout; status < 400 is healthy.
+- `worker`: `$TMPDIR/authentik-worker.pid` must name a process that accepts signal 0 (`Atoi` parsing; PIDs 0 and -1 are refused as `os.Process` refuses them).
+- Any other mode exits 1.
+
+Evidence: in containers of both images on the same database, `ak healthcheck` exits identically in all four cases (server alive: 0; worker alive: 0; worker with a stale PID: 1; worker with no PID file: 1). The mode file now has 2026.2.7's trailing newline.
+
+### Metrics on :9300 (batch 6)
+
+2026.2.7's Go server serves only `/metrics` (anything else gets Go's `404 page not found`, and unclean paths get mux's 301). The body is its own registry through `promhttp` (text 0.0.4, `escaping=underscores`), followed by Django's `/-/metrics/`, fetched with a bearer key from `$TMPDIR/authentik-core-metrics.key`. Upstream Rust answered on every path, never wrote that key file, so Django's `MetricsView` failed, and the IPC key Django reads at import was missing too. Now:
+- `prepareKeys`: both key files are written (64 random bytes, base64, 0600) before gunicorn starts and removed on shutdown.
+- `/metrics` re-renders the Rust registry as `client_golang` does. Families are sorted, metrics sorted by label values, labels by name (`le` last), values formatted with `FormatFloat('g', -1)` (checked against Go 1.25.5), and histograms use `DefBuckets`. It adds the `process_*` collector (procfs semantics, `userHZ` = 100) and `promhttp_metric_handler_*`, then appends Django's body.
+- `authentik_main_request_duration_seconds` is observed only for proxied core requests and the embedded outpost, as Go does: not for static files, `/-/health/live/`, startup 503s or unsupported-method 501s.
+- `authentik_outpost_connection` drops the `version`/`build` labels, and `authentik_outpost_last_update` keeps sub-second precision (`SetToCurrentTime`).
+
+Evidence: `tests/differential/metrics/compare.py` checks status, headers and 404 bodies for 5 paths, plus HELP/TYPE/label names for every family and the order of the front server's families. Reference vs candidate after the HTTP differential's traffic: 0 differences over 47 families (15 front-server). Reference vs a second reference: also 0, after treating Django's family order as a set; that order differs between two Go processes.
+
+Deviation (unavoidable): Go's 29 `go_*` runtime families have no Rust equivalent and are not emitted. A Prometheus `Accept` asking for protobuf gets text here.
+
+Still open in M2: brand TLS SQL against the 2026.2.7 schema; the embedded outpost's hello omits `golangVersion`, `opensslEnabled`, `opensslVersion` and `fipsEnabled`, which Django stores and shows in outpost health (needs an owner decision on what a Rust outpost reports); the Go embedded outpost connects over TCP to `listen.http`, while Rust uses the server's unix socket; non-default `web.path`; untrusted-proxy header paths (unit-tested only); Go's exact 502 error text; `%q` quoting of non-ASCII Unicode format characters in upgrade errors is approximate.
 
 ## Not verified / open
 

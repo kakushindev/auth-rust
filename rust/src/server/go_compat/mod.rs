@@ -68,6 +68,11 @@ pub(super) struct VaryReplaced;
 #[derive(Clone, Copy)]
 pub(super) struct Proxied;
 
+/// Response marker: the request reached `ReverseProxy.ServeHTTP`, around
+/// which Go observes `authentik_main_request_duration_seconds{dest="core"}`.
+#[derive(Clone, Copy)]
+pub(super) struct Observed;
+
 /// Request marker: gorilla negotiated this encoding for the response.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Encoding {
@@ -126,7 +131,7 @@ pub(super) fn unsized_empty_body() -> Body {
 
 /// The `net/http` response writer: header suppression for bodiless statuses,
 /// automatic `Content-Length` for short bodies, `Content-Type` sniffing.
-pub(super) async fn net_http_framing(request: Request, next: Next) -> Response {
+pub(crate) async fn net_http_framing(request: Request, next: Next) -> Response {
     let is_head = request.method() == Method::HEAD;
     let response = next.run(request).await;
     let (mut parts, body) = response.into_parts();
@@ -274,7 +279,7 @@ pub(super) fn decoded_path(raw: &str) -> String {
 
 /// gorilla mux redirects requests whose path is not clean before any route
 /// or middleware runs (`Router.ServeHTTP`, `skipClean == false`).
-pub(super) async fn mux_clean_path(request: Request, next: Next) -> Response {
+pub(crate) async fn mux_clean_path(request: Request, next: Next) -> Response {
     let path = decoded_path(request.uri().path());
     let clean = mux_clean(&path);
     if clean == path {

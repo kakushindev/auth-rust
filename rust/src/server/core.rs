@@ -147,7 +147,7 @@ async fn forward_request(
     TrustedProxy(trusted_proxy): TrustedProxy,
     tls_state: Option<Extension<TlsState>>,
     OriginalUri(uri): OriginalUri,
-    mut request: Request,
+    request: Request,
 ) -> Result<Response> {
     let accept_header = request
         .headers()
@@ -168,6 +168,42 @@ async fn forward_request(
             .into_response());
     }
 
+    // authentik-rs: Go observes `authentik_main_request_duration_seconds`
+    // only around `rp.ServeHTTP`, so only these responses count.
+    let mut response = proxy_to_backend(
+        client_ip,
+        &host,
+        scheme,
+        &server,
+        trusted_proxy,
+        tls_state,
+        uri,
+        request,
+        &accept_header,
+    )
+    .await
+    .into_response();
+    response.extensions_mut().insert(go_compat::Observed);
+    Ok(response)
+}
+
+/// authentik-rs: the part of `forward_request` that 2026.2.7 runs inside
+/// `ReverseProxy.ServeHTTP`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "We need all that data to forward the request properly"
+)]
+async fn proxy_to_backend(
+    client_ip: std::net::IpAddr,
+    host: &str,
+    scheme: axum::http::uri::Scheme,
+    server: &Arc<Server>,
+    trusted_proxy: bool,
+    tls_state: Option<Extension<TlsState>>,
+    uri: Uri,
+    mut request: Request,
+    accept_header: &str,
+) -> Result<Response> {
     let peer = go_compat::peer_addr(&request);
     let uri = Uri::builder()
         .scheme("http")
@@ -178,7 +214,7 @@ async fn forward_request(
         .headers()
         .get(HOST)
         .cloned()
-        .or_else(|| HeaderValue::from_str(&host).ok());
+        .or_else(|| HeaderValue::from_str(host).ok());
     *request.uri_mut() = uri;
 
     // authentik-rs: ReverseProxy notes the requested protocol switch before
@@ -190,7 +226,7 @@ async fn forward_request(
             go_compat::go_quote(&upgrade)
         );
         warn!(err, "failed to proxy to backend");
-        return Ok(proxy_error_response(&accept_header, &err));
+        return Ok(proxy_error_response(accept_header, &err));
     }
 
     // authentik-rs: the headers Django receives from the 2026.2.7 Go server.
@@ -266,7 +302,7 @@ async fn forward_request(
             res,
             &upgrade,
             client_upgrade,
-            &accept_header,
+            accept_header,
         )),
         Ok(res) => {
             let (mut parts, body) = res.into_parts();
@@ -286,7 +322,7 @@ async fn forward_request(
         // authentik-rs: proxyErrorHandler answers 502 once the backend runs.
         Err(err) => {
             warn!(?err, "failed to proxy to backend");
-            Ok(proxy_error_response(&accept_header, &err))
+            Ok(proxy_error_response(accept_header, &err))
         }
     }
 }

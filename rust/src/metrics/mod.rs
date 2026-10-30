@@ -4,11 +4,15 @@ use ak_axum::{
     router::{make_request_body_limit_layer, wrap_router},
     server,
 };
+#[cfg(feature = "core")]
+use ak_common::Mode;
 use ak_common::{
     arbiter::{Arbiter, Tasks},
     config,
 };
 use arc_swap::ArcSwapOption;
+#[cfg(feature = "core")]
+use axum::middleware::from_fn;
 use axum::{Router, routing::any};
 use eyre::Result;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
@@ -23,6 +27,7 @@ use crate::server::Server;
 #[cfg(feature = "core")]
 use crate::worker::Workers;
 
+mod go_text;
 mod handlers;
 
 pub(crate) fn socket_path() -> PathBuf {
@@ -31,6 +36,8 @@ pub(crate) fn socket_path() -> PathBuf {
 
 pub(crate) struct Metrics {
     prometheus: PrometheusHandle,
+    /// authentik-rs: `promhttp.InstrumentMetricHandler`'s collectors.
+    promhttp: go_text::PromHttp,
     #[cfg(feature = "core")]
     pub(crate) server: ArcSwapOption<Server>,
     #[cfg(feature = "core")]
@@ -42,9 +49,13 @@ impl Metrics {
         info!("installing Prometheus recorder");
         let prometheus = PrometheusBuilder::new()
             .with_recommended_naming(true)
+            // authentik-rs: histograms with client_golang's default buckets,
+            // as 2026.2.7's Go server exports them.
+            .set_buckets(&go_text::GO_DEFAULT_BUCKETS)?
             .install_recorder()?;
         Ok(Self {
             prometheus,
+            promhttp: go_text::PromHttp::default(),
             #[cfg(feature = "core")]
             server: ArcSwapOption::empty(),
             #[cfg(feature = "core")]
@@ -68,6 +79,17 @@ async fn run_upkeep(arbiter: Arbiter, state: Arc<Metrics>) -> Result<()> {
 }
 
 fn build_router(state: Arc<Metrics>) -> Router {
+    // authentik-rs: 2026.2.7's Go server serves `/metrics` only, through a
+    // bare gorilla mux on `net/http`; other modes keep upstream's router.
+    #[cfg(feature = "core")]
+    if Mode::get() == Mode::Server {
+        return Router::new()
+            .route("/metrics", any(handlers::go_metrics_handler))
+            .fallback(handlers::go_not_found)
+            .with_state(state)
+            .layer(from_fn(crate::server::go_compat::mux_clean_path))
+            .layer(from_fn(crate::server::go_compat::net_http_framing));
+    }
     wrap_router(
         Router::new()
             .fallback(any(handlers::metrics_handler))

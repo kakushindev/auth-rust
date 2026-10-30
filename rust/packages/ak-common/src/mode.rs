@@ -93,7 +93,9 @@ impl Mode {
 
     /// Set the current mode.
     pub fn set(mode: Self) -> Result<()> {
-        std::fs::write(mode_path(), mode.to_string())?;
+        // authentik-rs: `echo $1 >$MODE_FILE` in 2026.2.7's `lifecycle/ak`
+        // writes a trailing newline; `load` trims it.
+        std::fs::write(mode_path(), format!("{mode}\n"))?;
         MODE.store(mode.into(), Ordering::SeqCst);
         Ok(())
     }

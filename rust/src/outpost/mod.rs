@@ -109,7 +109,8 @@ impl OutpostController {
         metrics::describe_gauge!("authentik_outpost_last_update", "Time of last update");
         let m_last_update = metrics::gauge!("authentik_outpost_last_update", &m_labels);
         metrics::describe_gauge!("authentik_outpost_connection", "Connection status");
-        let m_connection = metrics::gauge!("authentik_outpost_connection", &m_labels);
+        // authentik-rs: Go's connection gauge has no version/build labels.
+        let m_connection = metrics::gauge!("authentik_outpost_connection", &m_labels[..3]);
 
         let reload_offset = Duration::from_secs(rand::random_range(0..10));
         let controller = Self {
