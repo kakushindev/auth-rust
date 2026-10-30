@@ -1,5 +1,9 @@
 use std::{
-    collections::HashMap, fmt::Display, net::SocketAddr, num::NonZeroUsize, path::PathBuf,
+    collections::HashMap,
+    fmt::Display,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs as _},
+    num::NonZeroUsize,
+    path::PathBuf,
     str::FromStr,
 };
 
@@ -27,6 +31,126 @@ where
         .iter()
         .filter(|entry| !entry.is_empty())
         .map(|entry| entry.parse().map_err(D::Error::custom))
+        .collect()
+}
+
+/// authentik-rs: Go's `SplitHostPort` (2026.2.7 binds with `net.Listen("tcp", address)`).
+fn split_go_host_port(address: &str) -> Result<(&str, &str), String> {
+    let err = |why: &str| Err(format!("address {address}: {why}"));
+    let Some(i) = address.rfind(':') else {
+        return err("missing port in address");
+    };
+    let (host, j, k) = if address.starts_with('[') {
+        let Some(end) = address.find(']') else {
+            return err("missing ']' in address");
+        };
+        if end + 1 == address.len() {
+            return err("missing port in address");
+        }
+        if end + 1 != i {
+            if address.as_bytes()[end + 1] == b':' {
+                return err("too many colons in address");
+            }
+            return err("missing port in address");
+        }
+        (&address[1..end], 1, end + 1)
+    } else {
+        let host = &address[..i];
+        if host.contains(':') {
+            return err("too many colons in address");
+        }
+        (host, 0, 0)
+    };
+    if address[j..].contains('[') {
+        return err("unexpected '[' in address");
+    }
+    if address[k..].contains(']') {
+        return err("unexpected ']' in address");
+    }
+    Ok((host, &address[i + 1..]))
+}
+
+/// authentik-rs: Go's `parsePort` followed by `LookupPort`'s range check. An
+/// empty port is 0 (a random port), and a sign or leading zeros are accepted.
+/// Go would look a non-numeric port up as a service name; that is rejected.
+fn parse_go_port(port: &str) -> Result<u16, String> {
+    let digits = port.strip_prefix(['+', '-']).unwrap_or(port);
+    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("unsupported service name as port: {port}"));
+    }
+    let value = digits
+        .bytes()
+        .try_fold(0_u32, |n, d| {
+            n.checked_mul(10)?.checked_add(u32::from(d - b'0'))
+        })
+        .unwrap_or(u32::MAX);
+    match u16::try_from(value) {
+        Ok(0) => Ok(0),
+        Ok(n) if !port.starts_with('-') => Ok(n),
+        _ => Err(format!("address {port}: invalid port")),
+    }
+}
+
+/// authentik-rs: resolve a listen address like Go's `net.Listen("tcp", address)`.
+///
+/// An empty host is the wildcard, an IPv4-mapped IPv6 literal is IPv4, `::`
+/// is turned into `0.0.0.0` (Go issue 18806), and a hostname resolves to its
+/// first IPv4 address, else its first address. Wildcards are bound dual-stack
+/// by `ak_axum::server`, as Go does.
+pub fn parse_go_listen_addr(address: &str) -> Result<SocketAddr, String> {
+    let (host, port) = split_go_host_port(address)?;
+    let port = parse_go_port(port)?;
+    let addrs: Vec<SocketAddr> = if host.is_empty() {
+        vec![(Ipv4Addr::UNSPECIFIED, port).into()]
+    } else if let Ok(ip) = host.parse::<IpAddr>() {
+        vec![(ip, port).into()]
+    } else {
+        (host, port)
+            .to_socket_addrs()
+            .map_err(|err| format!("lookup {host}: {err}"))?
+            .collect()
+    };
+    let addrs: Vec<SocketAddr> = match addrs.as_slice() {
+        [addr] if addr.ip() == Ipv6Addr::UNSPECIFIED => vec![(Ipv4Addr::UNSPECIFIED, port).into()],
+        _ => addrs
+            .into_iter()
+            .map(|addr| match addr.ip().to_canonical() {
+                ip @ IpAddr::V4(_) => (ip, port).into(),
+                IpAddr::V6(_) => addr,
+            })
+            .collect(),
+    };
+    addrs
+        .iter()
+        .find(|addr| addr.is_ipv4())
+        .or_else(|| addrs.first())
+        .copied()
+        .ok_or_else(|| format!("lookup {host}: no such host"))
+}
+
+/// authentik-rs: 2026.2.7 configures each listener as one address string
+/// (`http: 0.0.0.0:9000`), upstream Rust as a list. Accept both, ignoring
+/// empty entries like [`deserialize_list`], and resolve each entry the way Go
+/// does.
+fn deserialize_listen<'de, D>(deserializer: D) -> Result<Vec<SocketAddr>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    let entries = match OneOrMany::deserialize(deserializer)? {
+        OneOrMany::One(entry) => vec![entry],
+        OneOrMany::Many(entries) => entries,
+    };
+    entries
+        .iter()
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| parse_go_listen_addr(entry).map_err(D::Error::custom))
         .collect()
 }
 
@@ -201,11 +325,12 @@ pub struct PostgreSQLConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListenConfig {
-    #[serde(deserialize_with = "deserialize_list")]
+    // authentik-rs: `deserialize_listen` (2026.2.7 scalar addresses).
+    #[serde(deserialize_with = "deserialize_listen")]
     pub http: Vec<SocketAddr>,
-    #[serde(deserialize_with = "deserialize_list")]
+    #[serde(deserialize_with = "deserialize_listen")]
     pub https: Vec<SocketAddr>,
-    #[serde(deserialize_with = "deserialize_list")]
+    #[serde(deserialize_with = "deserialize_listen")]
     pub metrics: Vec<SocketAddr>,
     pub debug_tokio: Option<SocketAddr>,
     #[serde(deserialize_with = "deserialize_list")]

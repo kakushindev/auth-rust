@@ -573,6 +573,65 @@ mod tests {
         );
     }
 
+    // authentik-rs: 2026.2.7 listen addresses. These avoid `listen.http`,
+    // which the env tests above set process-wide.
+    #[test]
+    fn listen_go_defaults() {
+        let (config, _) = super::Config::load(&[], None).expect("failed to load config");
+
+        assert_eq!(
+            config.listen.https,
+            ["0.0.0.0:9443".parse().expect("infallible")]
+        );
+        assert_eq!(
+            config.listen.metrics,
+            ["0.0.0.0:9300".parse().expect("infallible")]
+        );
+    }
+
+    #[test]
+    fn listen_yaml_scalar_and_list() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let config_file_path = temp_dir.path().join("config");
+        let mut config_file = File::create(&config_file_path).expect("failed to create file");
+        writeln!(
+            config_file,
+            "listen:\n  https: 127.0.0.1:9444\n  metrics:\n    - \"[::1]:9301\"\n    - \
+             \":9302\"\n    - \"[::]:9303\""
+        )
+        .expect("failed to write to file");
+        drop(config_file);
+
+        let (config, _) =
+            super::Config::load(&[config_file_path], None).expect("failed to load config");
+
+        assert_eq!(
+            config.listen.https,
+            ["127.0.0.1:9444".parse().expect("infallible")]
+        );
+        assert_eq!(
+            config.listen.metrics,
+            [
+                "[::1]:9301".parse().expect("infallible"),
+                "0.0.0.0:9302".parse().expect("infallible"),
+                "0.0.0.0:9303".parse().expect("infallible"),
+            ]
+        );
+    }
+
+    #[test]
+    fn listen_invalid_address() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let config_file_path = temp_dir.path().join("config");
+        let mut config_file = File::create(&config_file_path).expect("failed to create file");
+        writeln!(config_file, "listen:\n  https: \"::1:9444\"").expect("failed to write to file");
+        drop(config_file);
+
+        let err = super::Config::load(&[config_file_path], None).expect_err("invalid address");
+
+        assert!(err.to_string().contains("too many colons"), "{err}");
+    }
+
     #[test]
     fn env_string() {
         #[expect(unsafe_code, reason = "testing")]

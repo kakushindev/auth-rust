@@ -18,11 +18,17 @@ eyre.workspace = true
 futures.workspace = true
 ipnet.workspace = true
 pin-project-lite.workspace = true
+# authentik-rs
+socket2.workspace = true
 tokio-rustls.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 tower.workspace = true
 tracing.workspace = true
+
+# authentik-rs
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true

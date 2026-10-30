@@ -1,0 +1,176 @@
+[
+  {
+    "address": "0.0.0.0:19001",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": 19001
+  },
+  {
+    "address": "[::]:19002",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": 19002
+  },
+  {
+    "address": ":19003",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": 19003
+  },
+  {
+    "address": "127.0.0.1:19004",
+    "error": false,
+    "family": "inet",
+    "ip": "127.0.0.1",
+    "port": 19004
+  },
+  {
+    "address": "[::1]:19005",
+    "error": false,
+    "family": "inet6",
+    "ip": "::1",
+    "port": 19005,
+    "v6only": true
+  },
+  {
+    "address": "[::ffff:127.0.0.1]:19006",
+    "error": false,
+    "family": "inet",
+    "ip": "127.0.0.1",
+    "port": 19006
+  },
+  {
+    "address": "[::ffff:0.0.0.0]:19007",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": 19007
+  },
+  {
+    "address": "localhost:19008",
+    "error": false,
+    "family": "inet",
+    "ip": "127.0.0.1",
+    "port": 19008
+  },
+  {
+    "address": "[0.0.0.0]:19009",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": 19009
+  },
+  {
+    "address": "0.0.0.0:+19010",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": 19010
+  },
+  {
+    "address": "0.0.0.0:019011",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": 19011
+  },
+  {
+    "address": "0.0.0.0:",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": -1
+  },
+  {
+    "address": "0.0.0.0:+",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": -1
+  },
+  {
+    "address": "0.0.0.0:-",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": -1
+  },
+  {
+    "address": "0.0.0.0:-0",
+    "error": false,
+    "family": "inet6",
+    "ip": "::",
+    "port": -1
+  },
+  {
+    "address": "0.0.0.0:-1",
+    "error": true
+  },
+  {
+    "address": "0.0.0.0:65536",
+    "error": true
+  },
+  {
+    "address": "0.0.0.0:99999999999999999999",
+    "error": true
+  },
+  {
+    "address": "0.0.0.0:9x",
+    "error": true
+  },
+  {
+    "address": "0.0.0.0:+-1",
+    "error": true
+  },
+  {
+    "address": "0.0.0.0",
+    "error": true
+  },
+  {
+    "address": "::1:19012",
+    "error": true
+  },
+  {
+    "address": "[::1]19013",
+    "error": true
+  },
+  {
+    "address": "[::1]",
+    "error": true
+  },
+  {
+    "address": "[::1",
+    "error": true
+  },
+  {
+    "address": "::1]:19014",
+    "error": true
+  },
+  {
+    "address": "[[::1]]:19015",
+    "error": true
+  },
+  {
+    "address": "[::1]:19016]",
+    "error": true
+  },
+  {
+    "address": "0.0.0.0:19017,0.0.0.0:19018",
+    "error": true
+  },
+  {
+    "address": "192.0.2.1:19019",
+    "error": true
+  },
+  {
+    "address": "no-such-host.invalid:19020",
+    "error": true
+  },
+  {
+    "address": "010.0.0.1:19021",
+    "error": true
+  }
+]

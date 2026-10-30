@@ -14,8 +14,8 @@ use axum::{
     http::{
         HeaderName, HeaderValue, Method, StatusCode, Uri,
         header::{
-            ACCEPT, CONTENT_LENGTH, CONTENT_TYPE, HOST, LOCATION, RETRY_AFTER, TRANSFER_ENCODING,
-            X_CONTENT_TYPE_OPTIONS,
+            ACCEPT, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, HOST, LOCATION, RETRY_AFTER,
+            TRANSFER_ENCODING, UPGRADE, X_CONTENT_TYPE_OPTIONS,
         },
     },
     middleware,
@@ -23,14 +23,12 @@ use axum::{
     routing::any,
 };
 use http_body_util::BodyExt as _;
+use hyper::{body::Incoming, upgrade::OnUpgrade};
+use hyper_util::rt::TokioIo;
 use serde_json::json;
-use tracing::warn;
+use tracing::{debug, warn};
 
-use crate::server::{
-    GUNICORN_READY, Server,
-    core::websockets::{handle_websocket_upgrade, is_websocket_upgrade},
-    go_compat,
-};
+use crate::server::{GUNICORN_READY, Server, go_compat};
 
 static STARTUP_RESPONSE_JSON: LazyLock<Response<String>> = LazyLock::new(|| {
     Response::builder()
@@ -183,6 +181,18 @@ async fn forward_request(
         .or_else(|| HeaderValue::from_str(&host).ok());
     *request.uri_mut() = uri;
 
+    // authentik-rs: ReverseProxy notes the requested protocol switch before
+    // stripping hop-by-hop headers, and refuses a non-printable one.
+    let upgrade = go_compat::upgrade_type(request.headers()).to_vec();
+    if !go_compat::is_print(&upgrade) {
+        let err = format!(
+            "client tried to switch to invalid protocol {}",
+            go_compat::go_quote(&upgrade)
+        );
+        warn!(err, "failed to proxy to backend");
+        return Ok(proxy_error_response(&accept_header, &err));
+    }
+
     // authentik-rs: the headers Django receives from the 2026.2.7 Go server.
     let method = request.method().clone();
     let forward_host = go_compat::go_forward_headers(
@@ -198,11 +208,17 @@ async fn forward_request(
     }
     let _ = (client_ip, scheme);
 
-    if is_websocket_upgrade(request.headers()) {
-        let mut response = handle_websocket_upgrade(request, &server.socket_path).await?;
-        response.extensions_mut().insert(go_compat::Proxied);
-        return Ok(response);
+    // authentik-rs: ...and adds the switch back afterwards. Any protocol is
+    // proxied, websocket or not, byte for byte (see `upgrade_response`).
+    if !upgrade.is_empty() {
+        request
+            .headers_mut()
+            .insert(CONNECTION, HeaderValue::from_static("Upgrade"));
+        request
+            .headers_mut()
+            .insert(UPGRADE, HeaderValue::from_bytes(&upgrade)?);
     }
+    let client_upgrade = hyper::upgrade::on(&mut request);
 
     if let Some(tls_state) = tls_state
         && let Some(peer_certificates) = &tls_state.peer_certificates
@@ -246,6 +262,12 @@ async fn forward_request(
     }
 
     match result {
+        Ok(res) if res.status() == StatusCode::SWITCHING_PROTOCOLS => Ok(upgrade_response(
+            res,
+            &upgrade,
+            client_upgrade,
+            &accept_header,
+        )),
         Ok(res) => {
             let (mut parts, body) = res.into_parts();
             // authentik-rs: ReverseProxy drops hop-by-hop headers and flushes
@@ -267,6 +289,60 @@ async fn forward_request(
             Ok(proxy_error_response(&accept_header, &err))
         }
     }
+}
+
+/// authentik-rs: `handleUpgradeResponse` in Go 1.25.5's `ReverseProxy`.
+///
+/// The backend must switch to the protocol the client asked for. The client
+/// then gets the backend's 101 with its headers untouched, apart from
+/// `ModifyResponse`, and both connections are spliced byte for byte, each
+/// side's EOF half-closing the other (`switchProtocolCopier`).
+fn upgrade_response(
+    mut res: hyper::Response<Incoming>,
+    requested: &[u8],
+    client_upgrade: OnUpgrade,
+    accept_header: &str,
+) -> Response {
+    let switched = go_compat::upgrade_type(res.headers());
+    let err = if !go_compat::is_print(switched) {
+        Some(format!(
+            "backend tried to switch to invalid protocol {}",
+            go_compat::go_quote(switched)
+        ))
+    } else if !switched.eq_ignore_ascii_case(requested) {
+        Some(format!(
+            "backend tried to switch protocol {} when {} was requested",
+            go_compat::go_quote(switched),
+            go_compat::go_quote(requested)
+        ))
+    } else {
+        None
+    };
+    if let Some(err) = err {
+        warn!(err, "failed to proxy to backend");
+        return proxy_error_response(accept_header, &err);
+    }
+
+    let backend_upgrade = hyper::upgrade::on(&mut res);
+    tokio::spawn(async move {
+        let (client, backend) = match tokio::try_join!(client_upgrade, backend_upgrade) {
+            Ok(upgraded) => upgraded,
+            Err(err) => {
+                debug!(?err, "protocol switch failed");
+                return;
+            }
+        };
+        if let Err(err) =
+            tokio::io::copy_bidirectional(&mut TokioIo::new(client), &mut TokioIo::new(backend))
+                .await
+        {
+            debug!(?err, "switched protocol connection closed");
+        }
+    });
+
+    let (mut parts, _) = res.into_parts();
+    parts.extensions.insert(go_compat::Proxied);
+    Response::from_parts(parts, Body::empty())
 }
 
 pub(super) fn build_router(server: &Arc<Server>) -> eyre::Result<Router> {
@@ -347,6 +423,9 @@ mod tests {
     }
 }
 
+// authentik-rs: replaced by `upgrade_response`, which splices any protocol
+// switch like 2026.2.7's ReverseProxy instead of re-framing websockets.
+#[expect(dead_code, reason = "authentik-rs: replaced by upgrade_response")]
 mod websockets {
     use std::path::Path;
 

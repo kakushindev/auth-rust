@@ -24,6 +24,7 @@ import gzip
 import json
 import pathlib
 import re
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -123,6 +124,25 @@ FRONT_CASES = [
 ]
 
 
+# Protocol switches (method UPGRADE: a raw GET handshake, see `fetch_upgrade`).
+WS = {"Connection": "Upgrade", "Upgrade": "websocket", "Sec-WebSocket-Version": "13"}
+WS_DEFLATE = {**WS, "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits"}
+ZERO_UUID = "00000000-0000-0000-0000-000000000000"
+UPGRADE_CASES = [
+    ("anon", "UPGRADE", "/ws/client/", WS),
+    ("anon", "UPGRADE", "/ws/client/", WS_DEFLATE),
+    ("token", "UPGRADE", "/ws/client/", WS_DEFLATE),
+    ("anon", "UPGRADE", "/ws/client/", {**WS, "Connection": "keep-alive, upgrade", "Upgrade": "WebSocket"}),
+    ("anon", "UPGRADE", f"/ws/outpost/{ZERO_UUID}/", WS),
+    ("token", "UPGRADE", f"/ws/outpost/{ZERO_UUID}/", WS),
+    ("anon", "UPGRADE", "/ws/nope/", WS),
+    ("anon", "UPGRADE", "/api/v3/root/config/", WS),
+    ("anon", "UPGRADE", "/api/v3/root/config/", {"Connection": "Upgrade", "Upgrade": "h2c"}),
+    ("anon", "UPGRADE", "/ws/client/", {**WS, "Connection": "keep-alive"}),
+    ("anon", "UPGRADE", "/ws/client/", {**WS, "Upgrade": "caf\xe9"}),
+]
+
+
 def cases():
     ops = json.loads((ROOT / "baseline/inventory/openapi_operations.json").read_text())["operations"]
     paths = sorted({o["path"] for o in ops if o["method"] == "GET" and "{" not in o["path"]})
@@ -132,7 +152,7 @@ def cases():
         url = "/api/v3" + p
         out.append(("anon", "GET", url, {}))
         out.append(("token", "GET", url, {}))
-    return out + FRONT_CASES
+    return out + FRONT_CASES + UPGRADE_CASES
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -161,6 +181,67 @@ def fetch(base, path, token, method="GET", extra=None):
     for k, v in resp.headers.items():
         headers.setdefault(k.lower(), []).append(v)
     return resp.status, headers, body
+
+
+WS_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
+
+
+def read_until_closed(sock, limit):
+    data = b""
+    while len(data) < limit:
+        try:
+            chunk = sock.recv(65536)
+        except socket.timeout:
+            break
+        if not chunk:
+            break
+        data += chunk
+    return data
+
+
+def fetch_upgrade(base, path, token, extra):
+    """Raw HTTP/1.1 upgrade handshake. On 101 the body records the frame the
+    server answers a websocket Close (1000) with, proving bytes flow both ways
+    through the switched connection."""
+    host, port = base.removeprefix("http://").split(":")
+    lines = [f"GET {path} HTTP/1.1", f"Host: {HOST}", "Accept: application/json, text/html;q=0.9"]
+    if token:
+        lines.append(f"Authorization: Bearer {token}")
+    if "Sec-WebSocket-Version" in extra:
+        lines.append(f"Sec-WebSocket-Key: {WS_KEY}")
+    lines += [f"{k}: {v}" for k, v in extra.items()]
+    sock = socket.create_connection((host, int(port)), timeout=10)
+    try:
+        sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+        head, _, rest = buf.partition(b"\r\n\r\n")
+        status_line, *header_lines = head.decode("latin-1").split("\r\n")
+        status = int(status_line.split()[1])
+        headers = {}
+        for line in header_lines:
+            k, _, v = line.partition(":")
+            headers.setdefault(k.strip().lower(), []).append(v.strip())
+        if status == 101:
+            # Masked close frame, status code 1000, zero mask.
+            sock.sendall(bytes([0x88, 0x82, 0, 0, 0, 0, 0x03, 0xE8]))
+            sock.settimeout(5)
+            frame = rest + read_until_closed(sock, 2 + 125)
+            body = b"switched; close reply " + frame[:4].hex().encode()
+        elif "content-length" in headers:
+            length = int(headers["content-length"][0])
+            sock.settimeout(5)
+            body = (rest + read_until_closed(sock, length - len(rest)))[:length]
+        else:
+            sock.settimeout(5)
+            body = rest + read_until_closed(sock, 1 << 20)
+        return status, headers, body
+    finally:
+        sock.close()
 
 
 def normalize_json(value):
@@ -280,9 +361,10 @@ def main():
     results = []
     for who, method, path, extra in cases():
         tok = token if who == "token" else None
-        ref = fetch(args.reference, path, tok, method, extra)
-        ref2 = fetch(args.reference2, path, tok, method, extra)
-        cand = fetch(args.candidate, path, tok, method, extra)
+        get = (lambda base: fetch_upgrade(base, path, tok, extra)) if method == "UPGRADE" else (
+            lambda base: fetch(base, path, tok, method, extra)
+        )
+        ref, ref2, cand = get(args.reference), get(args.reference2), get(args.candidate)
         diffs = compare(ref, cand)
         noise = compare(ref, ref2)
         noise_kinds = {kind(d) for d in noise}

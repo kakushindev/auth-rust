@@ -415,6 +415,8 @@ dependencies = [
  "futures",
  "ipnet",
  "pin-project-lite",
+ "serde_json",
+ "socket2",
  "tokio",
  "tokio-rustls",
  "tower",

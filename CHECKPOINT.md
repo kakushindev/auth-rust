@@ -2,6 +2,16 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 5 — 2026-10-30
+
+- **Listen addresses**: scalar (2026.2.7) or list config. Entries resolve like Go's `net.Listen` and bind like `favoriteAddrFamily` (a wildcard is `[::]` dual-stack). Accepted sockets get Go's `TCP_NODELAY`/keep-alive. Defaults are 2026.2.7's. Go differential `tests/differential/listen/run.sh`: 32/32 match.
+- **Websocket regression from batch 4 fixed**: hop-by-hop stripping removed `Upgrade`, so every handshake reached Django as a plain GET (the embedded outpost's `HTTP error: 200 OK`; `/ws/client/` too). Ported `ReverseProxy`'s upgrade path as a byte splice. The embedded outpost now connects.
+- HTTP differential (now with 11 upgrade cases): 504 cases, 496 equal / 8 nondeterministic / **0 different**; schema guard clean. Clippy clean.
+- Upstream `ak-common`/`authentik` tests need nextest (one process per test) and a live PostgreSQL. Under plain `cargo test`, the env/tracing tests race, and the `db::`/session tests fail without a database. Each passes alone.
+
+### Exact next action
+Continue the M2 open items in `docs/COMPATIBILITY_REPORT.md`: `healthcheck worker` semantics and metrics on :9300 next. Owner decision needed: what the Rust embedded outpost reports for `golangVersion`, `openssl*` and `fipsEnabled` in its hello.
+
 ## Batch 4 — 2026-10-30
 
 - Go front-server parity layer (`rust/src/server/go_compat/`): HTTP differential 484 equal / 9 nondeterministic / **0 different**; clippy clean; 9 parity unit tests.

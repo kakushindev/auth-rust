@@ -425,6 +425,75 @@ pub(super) fn remove_hop_by_hop(headers: &mut HeaderMap) {
     }
 }
 
+/// `upgradeType` in `net/http/httputil`: the `Upgrade` value when
+/// `Connection` lists the `upgrade` token, else empty.
+pub(super) fn upgrade_type(headers: &HeaderMap) -> &[u8] {
+    let listed = headers.get_all(CONNECTION).iter().any(|value| {
+        value
+            .as_bytes()
+            .split(|&b| b == b',')
+            .any(|token| trim_ows(token).eq_ignore_ascii_case(b"upgrade"))
+    });
+    if !listed {
+        return b"";
+    }
+    headers.get(UPGRADE).map_or(b"", HeaderValue::as_bytes)
+}
+
+/// `httpguts` `trimOWS`: optional whitespace is only space and tab.
+fn trim_ows(mut token: &[u8]) -> &[u8] {
+    while let [b' ' | b'\t', rest @ ..] = token {
+        token = rest;
+    }
+    while let [rest @ .., b' ' | b'\t'] = token {
+        token = rest;
+    }
+    token
+}
+
+/// `internal/ascii.IsPrint`
+pub(super) fn is_print(value: &[u8]) -> bool {
+    value.iter().all(|b| (b' '..=b'~').contains(b))
+}
+
+/// `fmt`'s `%q` (`strconv.Quote`) for the protocol names in `ReverseProxy`'s
+/// upgrade errors. Exact for ASCII and invalid UTF-8; Unicode printability is
+/// approximated by "not a control or non-space whitespace character".
+pub(super) fn go_quote(value: &[u8]) -> String {
+    let mut out = String::from("\"");
+    for chunk in value.utf8_chunks() {
+        for c in chunk.valid().chars() {
+            match c {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\u{7}' => out.push_str("\\a"),
+                '\u{8}' => out.push_str("\\b"),
+                '\u{c}' => out.push_str("\\f"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                '\u{b}' => out.push_str("\\v"),
+                c if c.is_ascii_control() => {
+                    let _ = write!(out, "\\x{:02x}", u32::from(c));
+                }
+                c if c.is_control() || (c.is_whitespace() && c != ' ') => {
+                    if u32::from(c) < 0x1_0000 {
+                        let _ = write!(out, "\\u{:04x}", u32::from(c));
+                    } else {
+                        let _ = write!(out, "\\U{:08x}", u32::from(c));
+                    }
+                }
+                c => out.push(c),
+            }
+        }
+        for byte in chunk.invalid() {
+            let _ = write!(out, "\\x{byte:02x}");
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// Go `net.SplitHostPort`, host only.
 fn split_host(addr: &str) -> Option<String> {
     if let Some(rest) = addr.strip_prefix('[') {
@@ -593,6 +662,55 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::*;
+
+    #[test]
+    fn upgrade_type_needs_connection_token() {
+        let headers = |pairs: &[(HeaderName, &str)]| {
+            let mut map = HeaderMap::new();
+            for (name, value) in pairs {
+                map.append(name, HeaderValue::from_str(value).expect("valid"));
+            }
+            map
+        };
+        assert_eq!(
+            upgrade_type(&headers(&[
+                (CONNECTION, "keep-alive, \tUpgrade "),
+                (UPGRADE, "WebSocket")
+            ])),
+            b"WebSocket"
+        );
+        assert_eq!(
+            upgrade_type(&headers(&[
+                (CONNECTION, "close"),
+                (CONNECTION, "upgrade"),
+                (UPGRADE, "h2c")
+            ])),
+            b"h2c"
+        );
+        assert_eq!(upgrade_type(&headers(&[(UPGRADE, "websocket")])), b"");
+        assert_eq!(
+            upgrade_type(&headers(&[
+                (CONNECTION, "upgraded"),
+                (UPGRADE, "websocket")
+            ])),
+            b""
+        );
+        assert_eq!(upgrade_type(&headers(&[(CONNECTION, "Upgrade")])), b"");
+    }
+
+    #[test]
+    fn go_quote_matches_fmt_q() {
+        // Expected values printed by Go 1.25.5's fmt.Printf("%q").
+        assert_eq!(go_quote(b"websocket"), r#""websocket""#);
+        assert_eq!(go_quote(b""), r#""""#);
+        assert_eq!(go_quote(br#"web"so\cket"#), r#""web\"so\\cket""#);
+        assert_eq!(go_quote(b"a\x01b\x7f\tc"), r#""a\x01b\x7f\tc""#);
+        assert_eq!(go_quote(b"\xff\xfeok"), r#""\xff\xfeok""#);
+        assert_eq!(go_quote("é\u{a0}".as_bytes()), "\"é\\u00a0\"");
+        assert!(is_print(b" websocket~"));
+        assert!(!is_print(b"web\x7fsocket"));
+        assert!(!is_print("é".as_bytes()));
+    }
 
     #[tokio::test]
     async fn empty_head_has_no_content_length() {
