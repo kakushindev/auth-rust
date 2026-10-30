@@ -116,6 +116,18 @@ Evidence: `tests/models/run.sh` restores a reference snapshot, populates it thro
 
 Not yet covered: typed domain models (enums, validation) and the behavior built on them start in M5.
 
+## Request identity (M5, part 1)
+
+`rust/crates/ak-auth` decides, as 2026.2.7's Django does:
+- **`host::get_host`**: Django 5.2's host validation with `ALLOWED_HOSTS = ["*"]`, i.e. Python lowercasing then `^([a-z0-9.-]+|\[[a-f0-9]*:[a-f0-9.:]+\])(?::([0-9]+))?$`. It returns the raw host. `tenant_hostname` drops the port and a leading `www.` (django-tenants).
+- **`brand::resolve`**: `get_brand_for_request`, using Django's exact SQL (`UPPER`, `LIKE` with escaped `%`/`_`, longest domain first, then the default brand). It compares the raw `get_host()`, so a port in `Host` defeats a portless domain.
+- **`tenant::resolve`**: `DefaultTenantMiddleware.get_tenant` (the exact domain, else the public tenant).
+- **`token::bearer_auth`**: `TokenAuthentication.bearer_auth`. It covers Python's `str.strip`/`split` whitespace (including U+001C..U+001F) and the API token, OAuth access token (`icontains` then an exact scope check), secret key and IPC key paths. An inactive user fails. A revoked access token still authenticates, as in Django. A non-UTF-8 header and non-ASCII `compare_digest` input are Django 500s (`UnicodeDecodeError`, `TypeError`).
+
+Evidence: `tests/auth/run.sh` populates a snapshot with brands (case, ports, `_`, `%`, Unicode), a tenant domain, and tokens and access tokens in every state. Django decides every vector inside a rolled-back transaction. 25 hosts (`get_host`, brand, tenant hostname, tenant) and 34 `Authorization` headers: all identical. The outcomes cover every path (6 distinct brands, default fallback, `DisallowedHost`, API token, JWT, secret key, IPC, failures, both exception kinds).
+
+Deferred to the write layer (M8): Django deletes expired tokens and access tokens it encounters while authenticating (through the ORM, which cascades to `FlowToken` and writes an audit event), and creates the embedded outpost's service user if missing. `ak-auth` makes the same decision (expired is absent; `SecretKey { user: None }`) without those writes. They must exist before Rust serves authenticated routes (M7).
+
 ## Not verified / open
 
 - The 9 nondeterministic cases are compared only coarsely, so a real difference inside them would be masked. They need field-level masking, e.g. sorting `system_permissions` after checking set equality.
