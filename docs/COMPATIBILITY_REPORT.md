@@ -105,6 +105,17 @@ Deviation (kept): with `debug: true` Go runs `./manage.py dev_server` and talks 
 
 Still open in M2: `%q` quoting of non-ASCII Unicode format characters in upgrade errors is approximate.
 
+## Models (M4)
+
+`rust/crates/ak-models` is the storage layer for the identity tables: 80 row types, one per table (core users, groups and their M2M tables, applications, entitlements, tokens, sessions, providers and sources with all non-Enterprise subclasses and runtime rows, brands, tenants, and the policy-binding parent). `scripts/gen_models.py` generates them from the pinned schema snapshot with each column's exact Postgres type: jsonb as its exact text (`RawValue`), so numerals are never renumbered; inet, bytea and text[] map exactly too. Unknown types fail generation. `inheritance::resolve` gives a row's most-derived Django class, Enterprise subclasses included.
+
+Evidence: `tests/models/run.sh` restores a reference snapshot, populates it through Django's ORM (`tests/models/populate.py`: every model type, NULLs, unicode, nested JSON with 20- and 30-digit integers, IPv4/IPv6, binary session data, group hierarchies, one Enterprise provider) and runs `cargo test -p ak-models` against it:
+- All 282 rows of all 80 tables decode.
+- In one rolled-back transaction, every row written back by primary key, then every table deleted and re-inserted from the decoded rows, leaves all tables and the group-ancestry view byte-equal as Postgres renders them, and every deferred foreign key holds. A seeded difference (a 30-digit integer passed through f64) is detected.
+- The class of each of the 79 rows in the provider, source, property-mapping and source-connection hierarchies equals Django's `select_subclasses()`.
+
+Not yet covered: typed domain models (enums, validation) and the behavior built on them start in M5.
+
 ## Not verified / open
 
 - The 9 nondeterministic cases are compared only coarsely, so a real difference inside them would be masked. They need field-level masking, e.g. sorting `system_permissions` after checking set equality.
