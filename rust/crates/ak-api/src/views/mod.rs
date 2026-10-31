@@ -2,6 +2,8 @@
 
 pub(crate) mod common;
 pub mod core_brands;
+pub mod core_groups;
+pub mod core_users;
 pub mod crypto_certificatekeypairs;
 pub mod events_notification_mappings;
 pub mod events_notification_transports;

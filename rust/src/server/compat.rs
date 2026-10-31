@@ -39,6 +39,10 @@ pub(super) const PORTED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/v3/propertymappings/notification/{pk}/"),
     ("GET", "/api/v3/crypto/certificatekeypairs/"),
     ("GET", "/api/v3/crypto/certificatekeypairs/{pk}/"),
+    ("GET", "/api/v3/core/users/"),
+    ("GET", "/api/v3/core/users/{pk}/"),
+    ("GET", "/api/v3/core/groups/"),
+    ("GET", "/api/v3/core/groups/{pk}/"),
 ];
 
 pub(super) fn build_router(server: &Arc<Server>) -> Router {
@@ -56,7 +60,7 @@ mod tests {
             let path = pattern.replace("{pk}", "00000000-0000-0000-0000-000000000000");
             assert!(ak_api::handles(method, &path), "{method} {pattern}");
         }
-        assert!(!ak_api::handles("GET", "/api/v3/core/users/"));
+        assert!(!ak_api::handles("GET", "/api/v3/core/users/me/"));
         assert!(!ak_api::handles("GET", "/api/v3/core/brands/current/"));
     }
 }

@@ -134,6 +134,30 @@ CertificateKeyPair.objects.filter(pk=bare.pk).update(
 Role.objects.get(name="m6-object").assign_perms(
     "authentik_crypto.view_certificatekeypair", generated[PrivateKeyAlg.ECDSA]
 )
+# Users for UserSerializer: initials from several name shapes, an
+# attribute avatar (the tenant tries attributes.m7.avatar first), a
+# non-dict path in that walk, and group and role memberships.
+from authentik.core.models import Group  # noqa: E402
+from authentik.tenants.models import Tenant  # noqa: E402
+
+Tenant.objects.filter(schema_name="public").update(avatars="attributes.m7.avatar,gravatar,initials")
+m7_group = Group.objects.create(name="m7-group", attributes={"g": 1.5})
+for username, name, attributes in [
+    ("m7-user-a", "Ada  Lovelace Byron", {}),
+    ("m7-user-b", "\u00df\u00e9 x", {"m7": {"avatar": "https://img.example.test/a.png"}}),
+    ("m7-user-c", "", {"m7": {"avatar": ""}}),
+    ("m7-user-d", "  ", {"m7": {}}),
+    ("m7-user-e", "&lt; <b>", {"m7": "plain"}),
+    ("m7-user-f", "\u03a3\u039f\u03a6\u039f\u03a3 one", {"upn": "u@example.test"}),
+]:
+    u = User.objects.create(username=username, name=name, attributes=attributes, path="users/m7")
+    u.groups.add(m7_group)
+    if username in ("m7-user-a", "m7-user-b"):
+        u.groups.add(Group.objects.get(name="m6-g-super-child"))
+        u.roles.add(Role.objects.get(name="m6-model"), Role.objects.get(name="m6-object"))
+Role.objects.get(name="m6-object").assign_perms(
+    "authentik_core.view_user", User.objects.get(username="m7-user-c")
+)
 transaction.commit()
 print(f"[populate] tokens for {len(subjects)} subjects")
 print("[populate] ok")

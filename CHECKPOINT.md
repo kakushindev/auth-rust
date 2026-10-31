@@ -2,6 +2,23 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 18 — 2026-10-31
+
+- M7 part 4: `core/users` and `core/groups` are served from Rust, including the reproduced R2 `autocomplete`. The full read-API run is **9 431 equal + 3 nondeterministic of 9 435**, with 9 004 answered by Rust; the one difference is `users/me/`, which Django serves and whose `system_permissions` order varies. The schema guard is clean.
+- New in `ak-api`:
+  - `cache.rs`: Django's Postgres cache (key format, pickle subset, `get`/`has_key`/`touch`, with writes queued until the response is certain);
+  - `avatar.rs`: every `get_avatar` mode, lxml-identical initials SVGs;
+  - `UserSerializer`, `GroupSerializer`, `PartialGroupSerializer`, `PartialUserSerializer` and `RelatedGroupSerializer`, with Django's exact prefetch SQL;
+  - more django-filter kinds (startswith, isnull, `MultipleChoiceFilter`, int- and field-keyed `ModelMultipleChoiceFilter`);
+  - `run.sh` takes `API_ONLY`.
+- Found while doing it:
+  - `etree.tostring` writes non-ASCII as character references;
+  - `IsoDateTimeField` rejects a blank value;
+  - `touch()` cuts the 8-hour avatar cache entry back to 300 s on every hit.
+
+### Exact next action
+Port `core/tokens` (`user_obj` through `UserSerializer`), then `core/applications` and `events/events` (QL `autocomplete` with the `SELECT DISTINCT app` options).
+
 ## Batch 17 — 2026-10-31
 
 - M7 part 3: four more viewsets read from Rust: `core/brands`, `events/transports`, `propertymappings/notification` and `crypto/certificatekeypairs`. The whole read API passes `tests/api/run.sh` with **7 089/7 089 equal** (6 925 Rust-served); the schema guard is clean on all 3 databases.

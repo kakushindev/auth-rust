@@ -122,6 +122,8 @@ pub fn admit(req: &ApiRequest<'_>, query: &QueryDict) -> Result<(), Decline> {
 pub struct Tenant {
     pub default_page_size: i64,
     pub max_page_size: i64,
+    /// `Tenant.avatars`: comma-separated avatar modes.
+    pub avatars: String,
 }
 
 /// The request's tenant, as `DefaultTenantMiddleware` resolves it.
@@ -141,15 +143,16 @@ pub async fn tenant(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Result<Tenant, D
         .await
         .map_err(|_| Decline("database error"))?
         .ok_or(Decline("no tenant"))?;
-    let row: Option<(String, bool, i32, i32)> = sqlx::query_as(
-        "SELECT schema_name, ready, pagination_default_page_size, pagination_max_page_size FROM \
-         authentik_tenants_tenant WHERE tenant_uuid = $1",
+    let row: Option<(String, bool, i32, i32, String)> = sqlx::query_as(
+        "SELECT schema_name, ready, pagination_default_page_size, pagination_max_page_size, \
+         avatars FROM authentik_tenants_tenant WHERE tenant_uuid = $1",
     )
     .bind(uuid)
     .fetch_optional(ctx.pool)
     .await
     .map_err(|_| Decline("database error"))?;
-    let (schema, ready, default_page_size, max_page_size) = row.ok_or(Decline("no tenant"))?;
+    let (schema, ready, default_page_size, max_page_size, avatars) =
+        row.ok_or(Decline("no tenant"))?;
     if schema != "public" || !ready {
         return Err(Decline("tenant"));
     }
@@ -164,6 +167,7 @@ pub async fn tenant(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Result<Tenant, D
     Ok(Tenant {
         default_page_size: i64::from(default_page_size),
         max_page_size: i64::from(max_page_size),
+        avatars,
     })
 }
 

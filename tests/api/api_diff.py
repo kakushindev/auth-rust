@@ -527,6 +527,150 @@ def certificate_cases():
     return cases
 
 
+def user_cases():
+    base = "/api/v3/core/users/"
+    rows = all_pages(base + "?search=m7-user") + all_pages(base + "?search=m6-")
+    a = next(r for r in rows if r["username"] == "m7-user-a")
+    groups = all_pages("/api/v3/core/groups/?search=m7-group&include_users=false")
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        "",
+        q(page_size=1),
+        q(search="m7-user"),
+        q(search="m7-user", include_groups="false"),
+        q(search="m7-user", include_groups="False", include_roles="0"),
+        q(search="m7-user", include_roles="TRUE"),
+        q(search="m7-user", page_size=2, page=2),
+        q(search="m6-", page="last", page_size=3),
+        q(search="m6-", ordering="-username"),
+        q(search="m6-", ordering="is_active,-pk"),
+        q(search="m7-user", ordering="name"),
+        q(search="m7-user", ordering="-last_login,username"),
+        q(search="m7-user", ordering="type,email,-uuid"),
+        q(search="m7-user", ordering="path,password_change_date"),
+        q(search="m7-user", ordering="is_superuser"),
+        q(search="m7-user", ordering="uid"),
+        q(search="m7-user", ordering="groups"),
+        q(search="m7-user", ordering="avatar"),
+        q(search="m7-user", ordering="attributes"),
+        q(search=a["uuid"][:8]),
+        q(search="LOVELACE"),
+        q(search="a\x00b"),
+        q(username="m7-user-a"),
+        q(username=" m7-user-a "),
+        q(email=""),
+        q(name="Ada  Lovelace Byron"),
+        q(is_active="true", search="m6-"),
+        q(is_active="3", search="m6-"),
+        q(is_active="1", search="m6-"),
+        q(is_superuser="true"),
+        q(is_superuser="false", search="m6-"),
+        q(is_superuser="2", search="m7-user"),
+        q(groups_by_name="m7-group"),
+        q(groups_by_name="m6-g-super-child", search="m7"),
+        q(groups_by_name="nope"),
+        q(groups_by_name=""),
+        q(groups_by_name="a\x00b"),
+        "?" + urllib.parse.urlencode([("groups_by_name", "m7-group"), ("groups_by_name", "m6-g-super")]),
+        q(groups_by_pk=groups[0]["pk"]) if groups else q(groups_by_pk=missing),
+        q(groups_by_pk=missing),
+        q(groups_by_pk="bogus"),
+        q(roles_by_name="m6-model"),
+        q(roles_by_name="nope"),
+        q(roles_by_pk=a["roles"][0]),
+        q(roles_by_pk="x"),
+        q(type="internal", search="m7"),
+        q(type="service_account"),
+        q(type="bogus"),
+        "?" + urllib.parse.urlencode([("type", "internal"), ("type", "external"), ("search", "m")]),
+        "?" + urllib.parse.urlencode([("type", "internal"), ("type", "x")]),
+        q(last_login__isnull="true", search="m7-user"),
+        q(last_login__isnull="false"),
+        q(uuid=a["uuid"]),
+        q(uuid="nope"),
+        q(path="users/m7"),
+        q(path_startswith="users/m"),
+        q(path_startswith="users_"),
+        q(path_startswith="a\x00b"),
+        q(date_joined__gt="2020-01-01T00:00:00Z", search="m7"),
+        q(attributes='{"m7": {}}'),
+        q(date_joined=" "),
+        q(username="a\x00b", groups_by_name="nope", type="x", uuid="y"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pk']}/" for r in rows]
+    cases += [
+        f"{base}{a['pk']}/{q(include_groups='false', include_roles='false')}",
+        f"{base}{a['pk']}/{q(groups_by_name='nope')}",
+        f"{base}{a['pk']}/{q(search='zzz')}",
+        f"{base}999999/",
+        f"{base}abc/",
+        f"{base}me/",
+        f"{base}paths/",
+        f"{base}{a['pk']}/used_by/",
+    ]
+    return cases
+
+
+def group_cases():
+    base = "/api/v3/core/groups/"
+    rows = all_pages(base + "?search=m6-g") + all_pages(base + "?search=m7-group")
+    sup = next(r for r in rows if r["name"] == "m6-g-super-child")
+    member = all_results("/api/v3/core/users/?search=m6-super")[0]["pk"]
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        "",
+        q(search="m6-g"),
+        q(search="m6-g", page_size=2, page=2),
+        q(search="m6-g", page="last", page_size=2),
+        q(search="true"),
+        q(search="m6-g", include_users="false"),
+        q(search="m6-g", include_users="0", include_children="true"),
+        q(search="m6-g", include_parents="TRUE", include_inherited_roles="true"),
+        q(search="m6-g", include_children="1", include_parents="yes"),
+        q(search="m7", include_inherited_roles="True", include_users="False"),
+        q(search="m6-g", ordering="-name"),
+        q(search="m6-g", ordering="is_superuser,name"),
+        q(search="m6-g", ordering="-pk"),
+        q(search="m6-g", ordering="num_pk"),
+        q(search="m6-g", ordering="users"),
+        q(search="m6-g", ordering="attributes"),
+        q(search="a\x00b"),
+        q(name="m6-g-super"),
+        q(name=" m6-g-super "),
+        q(name="a\x00b"),
+        q(is_superuser="true"),
+        q(is_superuser="3", search="m6"),
+        q(is_superuser="1", search="m6"),
+        q(members_by_pk=member),
+        q(members_by_pk=f" {member}"),
+        q(members_by_pk="x"),
+        q(members_by_pk=""),
+        q(members_by_pk="999999"),
+        q(members_by_pk="99999999999"),
+        "?" + urllib.parse.urlencode([("members_by_pk", member), ("members_by_pk", member)]),
+        q(members_by_username="m6-super"),
+        q(members_by_username="m7-user-a", include_inherited_roles="true"),
+        q(members_by_username="nope"),
+        q(members_by_username=""),
+        "?" + urllib.parse.urlencode([("members_by_username", "m7-user-a"), ("members_by_pk", member)]),
+        q(attributes='{"g": 1.5}'),
+        q(name="a\x00b", members_by_pk="x", members_by_username="nope"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pk']}/" for r in rows]
+    cases += [
+        f"{base}{sup['pk']}/{q(include_children='true', include_parents='true', include_inherited_roles='true')}",
+        f"{base}{sup['pk']}/{q(include_users='false')}",
+        f"{base}{sup['pk']}/{q(name='nope')}",
+        f"{base}{sup['pk'].upper()}/",
+        f"{base}{missing}/",
+        f"{base}bogus/",
+        f"{base}{sup['pk']}/used_by/",
+    ]
+    return cases
+
+
 ENDPOINTS = {
     "rbac_roles": role_cases,
     "rbac_permissions": permission_cases,
@@ -535,6 +679,8 @@ ENDPOINTS = {
     "events_transports": transport_cases,
     "propertymappings_notification": webhook_mapping_cases,
     "crypto_certificatekeypairs": certificate_cases,
+    "core_users": user_cases,
+    "core_groups": group_cases,
 }
 
 

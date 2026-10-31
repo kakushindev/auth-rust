@@ -4,7 +4,7 @@
 # subject (populate.py), dump that as the shared snapshot, then run
 # reference, second reference and candidate from it and compare every read
 # API case (api_diff.py). The schema guard checks all databases afterwards.
-# Usage: CANDIDATE_IMAGE=... run.sh [--keep]
+# Usage: CANDIDATE_IMAGE=... [API_ONLY=endpoint,...] run.sh [--keep]
 set -euo pipefail
 export PATH="$HOME/.cargo/bin:$PATH"
 cd "$(dirname "$0")/../.."
@@ -47,7 +47,7 @@ for port in 29000 29100 29200; do
 done
 
 status=0
-python3 -I "$here/api_diff.py" --report "$here/last-report.json" || status=$?
+python3 -I "$here/api_diff.py" --report "$here/last-report.json" ${API_ONLY:+--only "$API_ONLY"} || status=$?
 for port in 25432 25532 25632; do
   rust/target/debug/ak-schema-guard verify --database-url \
     "postgres://authentik:${PG_PASS}@127.0.0.1:${port}/authentik" \

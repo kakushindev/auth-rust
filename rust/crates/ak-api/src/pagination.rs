@@ -113,24 +113,33 @@ impl Page {
         }
     }
 
-    /// `get_paginated_response(data)`.
+    /// `get_paginated_response(data)` for a view without `get_ql_fields`.
     pub fn response<T: Serialize>(&self, results: Vec<T>) -> impl Serialize {
-        #[derive(Serialize)]
-        struct Paginated<T> {
-            pagination: Pagination,
-            results: Vec<T>,
-            autocomplete: Empty,
-        }
         #[derive(Serialize)]
         #[expect(
             clippy::empty_structs_with_brackets,
             reason = "serializes as {}, not null"
         )]
         struct Empty {}
+        self.response_with(results, Empty {})
+    }
+
+    /// `get_paginated_response(data)` with the view's `autocomplete`.
+    pub fn response_with<T: Serialize, A: Serialize>(
+        &self,
+        results: Vec<T>,
+        autocomplete: A,
+    ) -> impl Serialize {
+        #[derive(Serialize)]
+        struct Paginated<T, A> {
+            pagination: Pagination,
+            results: Vec<T>,
+            autocomplete: A,
+        }
         Paginated {
             pagination: self.pagination(),
             results,
-            autocomplete: Empty {},
+            autocomplete,
         }
     }
 }
@@ -143,6 +152,7 @@ mod tests {
         Tenant {
             default_page_size: 20,
             max_page_size: 100,
+            avatars: String::new(),
         }
     }
 

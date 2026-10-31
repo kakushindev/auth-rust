@@ -10,6 +10,8 @@
 //! Each view names the upstream code it ports; `tests/api/run.sh` checks
 //! every route against the pinned reference.
 
+pub mod avatar;
+pub mod cache;
 pub mod drf;
 pub mod filters;
 pub mod json;
@@ -59,6 +61,10 @@ enum Route<'a> {
     WebhookMappingsRetrieve(&'a str),
     CertificateKeyPairsList,
     CertificateKeyPairsRetrieve(&'a str),
+    UsersList,
+    UsersRetrieve(&'a str),
+    GroupsList,
+    GroupsRetrieve(&'a str),
 }
 
 /// A `DefaultRouter` path under one viewset prefix.
@@ -121,6 +127,18 @@ fn route(path: &str) -> Option<Route<'_>> {
         return Some(match v {
             Viewset::List => Route::CertificateKeyPairsList,
             Viewset::Detail(pk) => Route::CertificateKeyPairsRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/core/users/", views::core_users::ACTIONS) {
+        return Some(match v {
+            Viewset::List => Route::UsersList,
+            Viewset::Detail(pk) => Route::UsersRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/core/groups/", &[]) {
+        return Some(match v {
+            Viewset::List => Route::GroupsList,
+            Viewset::Detail(pk) => Route::GroupsRetrieve(pk),
         });
     }
     None
@@ -200,6 +218,22 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
         Route::CertificateKeyPairsRetrieve(pk) => (
             "crypto_certificatekeypairs",
             views::crypto_certificatekeypairs::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::UsersList => (
+            "core_users",
+            views::core_users::list(ctx, req, &query).await,
+        ),
+        Route::UsersRetrieve(pk) => (
+            "core_users",
+            views::core_users::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::GroupsList => (
+            "core_groups",
+            views::core_groups::list(ctx, req, &query).await,
+        ),
+        Route::GroupsRetrieve(pk) => (
+            "core_groups",
+            views::core_groups::retrieve(ctx, req, &query, pk).await,
         ),
     };
     match result {

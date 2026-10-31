@@ -29,7 +29,7 @@ pub struct QuerySet {
 }
 
 /// Django's `connection.ops.prep_for_like_query`.
-fn prep_for_like(value: &str) -> String {
+pub fn prep_for_like(value: &str) -> String {
     value
         .replace('\\', "\\\\")
         .replace('%', "\\%")

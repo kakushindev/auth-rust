@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     Decline,
     py::{QueryDict, UuidLookup, strip, uuid_lookup},
-    sql::{Bind, DjangoQuery},
+    sql::{Bind, DjangoQuery, prep_for_like},
 };
 
 const NUL: &str = "Null characters are not allowed.";
@@ -43,6 +43,34 @@ pub enum Kind {
         column: &'static str,
         target: (&'static str, &'static str),
     },
+    /// `CharFilter(lookup_expr="startswith")`.
+    StartsWith { column: &'static str },
+    /// `BooleanFilter(lookup_expr="isnull")` (`NullBooleanSelect`).
+    IsNull { column: &'static str },
+    /// `MultipleChoiceFilter`: `column = value` joined with OR and `.distinct()`;
+    /// the first invalid value in request order is the error.
+    MultipleChoice {
+        column: &'static str,
+        choices: &'static [&'static str],
+    },
+    /// A filter whose parsing is not ported: any non-empty value declines
+    /// (`IsoDateTimeField` rejects a blank one).
+    Declined,
+    /// `ModelMultipleChoiceFilter(to_field_name=…)` across a many-to-many:
+    /// `joins` (with their own aliases), `column = value` joined with OR,
+    /// `.distinct()`; `target` is `(table, field column)`.
+    ManyToManyField {
+        joins: &'static [&'static str],
+        column: &'static str,
+        target: (&'static str, &'static str),
+    },
+    /// `ModelMultipleChoiceFilter` for a many-to-many to an integer-keyed
+    /// model (the `id` `AutoField`).
+    ManyToManyInt {
+        join: &'static str,
+        through_column: &'static str,
+        target: (&'static str, &'static str),
+    },
     /// `ModelMultipleChoiceFilter` for a many-to-many to a UUID-keyed
     /// model: Django joins `join`, ORs `through_column = pk` and applies
     /// `.distinct()`.
@@ -69,6 +97,18 @@ enum Cleaned {
         join: &'static str,
         through_column: &'static str,
         values: Vec<Uuid>,
+    },
+    ManyInt {
+        join: &'static str,
+        through_column: &'static str,
+        values: Vec<i32>,
+    },
+    StartsWith(&'static str, String),
+    IsNull(&'static str, bool),
+    AnyText {
+        joins: &'static [&'static str],
+        column: &'static str,
+        values: Vec<String>,
     },
 }
 
@@ -163,6 +203,93 @@ async fn many(
     Ok(Ok(parsed.into_iter().map(|(_, uuid)| uuid).collect()))
 }
 
+/// `ModelMultipleChoiceField._check_values` on an integer key: `int()`
+/// failing is "not a valid value", then `str(val)` must be an existing id.
+async fn many_int(
+    pool: &sqlx::PgPool,
+    raw: &[&str],
+    target: (&'static str, &'static str),
+) -> Result<Result<Vec<i32>, String>, Decline> {
+    let mut distinct: Vec<&str> = Vec::new();
+    for value in raw {
+        if !distinct.contains(value) {
+            distinct.push(value);
+        }
+    }
+    let mut parsed = Vec::new();
+    let mut failures = Vec::new();
+    for value in &distinct {
+        if value.contains('\0') {
+            failures.push(NUL.to_owned());
+            continue;
+        }
+        match crate::py::py_int(value).map_err(|_| Decline("int syntax"))? {
+            None => failures.push(format!("\u{201c}{value}\u{201d} is not a valid value.")),
+            Some(n) => parsed.push((*value, crate::py::int4(n).ok_or(Decline("int range"))?)),
+        }
+    }
+    if let Some(message) = single(failures)? {
+        return Ok(Err(message));
+    }
+    let ids: Vec<i32> = parsed.iter().map(|(_, id)| *id).collect();
+    let found: Vec<i32> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "SELECT \"{}\" FROM \"{}\" WHERE \"{}\" = ANY($1)",
+        target.1, target.0, target.1
+    )))
+    .bind(&ids)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| Decline("database error"))?;
+    let failures: Vec<String> = parsed
+        .iter()
+        .filter(|(value, id)| *value != id.to_string() || !found.contains(id))
+        .map(|(value, _)| {
+            format!("Select a valid choice. {value} is not one of the available choices.")
+        })
+        .collect();
+    if let Some(message) = single(failures)? {
+        return Ok(Err(message));
+    }
+    Ok(Ok(ids))
+}
+
+/// `ModelMultipleChoiceField._check_values` with a `to_field_name`: no
+/// value can make the first pass raise (only NUL does), the second checks
+/// that a row has each value.
+async fn many_field(
+    pool: &sqlx::PgPool,
+    raw: &[&str],
+    target: (&'static str, &'static str),
+) -> Result<Result<Vec<String>, String>, Decline> {
+    let mut distinct: Vec<&str> = Vec::new();
+    for value in raw {
+        if !distinct.contains(value) {
+            distinct.push(value);
+        }
+    }
+    if distinct.iter().any(|v| v.contains('\0')) {
+        // Only NUL values fail the first pass; one message whichever it is.
+        return Ok(Err(NUL.to_owned()));
+    }
+    let found: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "SELECT \"{}\"::text FROM \"{}\" WHERE \"{}\" = ANY($1)",
+        target.1, target.0, target.1
+    )))
+    .bind(distinct.iter().map(|v| (*v).to_owned()).collect::<Vec<_>>())
+    .fetch_all(pool)
+    .await
+    .map_err(|_| Decline("database error"))?;
+    let failures: Vec<String> = distinct
+        .iter()
+        .filter(|v| !found.iter().any(|f| f == *v))
+        .map(|v| format!("Select a valid choice. {v} is not one of the available choices."))
+        .collect();
+    if let Some(message) = single(failures)? {
+        return Ok(Err(message));
+    }
+    Ok(Ok(distinct.into_iter().map(str::to_owned).collect()))
+}
+
 /// `FilterSet(data=request.query_params).form.is_valid()`.
 ///
 /// # Errors
@@ -204,6 +331,86 @@ pub async fn clean(
             Kind::NullBoolean { column } => {
                 if let Some(value) = null_boolean(raw) {
                     cleaned.push(Cleaned::Bool(column, value));
+                }
+            }
+            Kind::IsNull { column } => {
+                if let Some(value) = null_boolean(raw) {
+                    cleaned.push(Cleaned::IsNull(column, value));
+                }
+            }
+            Kind::StartsWith { column } => {
+                let value = strip(raw.unwrap_or_default());
+                if value.contains('\0') {
+                    errors.push((field.name, NUL.to_owned()));
+                } else if !value.is_empty() {
+                    cleaned.push(Cleaned::StartsWith(column, value.to_owned()));
+                }
+            }
+            Kind::Declined => {
+                if !raw.unwrap_or_default().is_empty() {
+                    return Err(Decline("filter not ported"));
+                }
+            }
+            Kind::MultipleChoice { column, choices } => {
+                let values = query.getlist(field.name);
+                if values.is_empty() {
+                    continue;
+                }
+                if let Some(bad) = values.iter().find(|v| !choices.contains(v)) {
+                    errors.push((
+                        field.name,
+                        format!(
+                            "Select a valid choice. {bad} is not one of the available choices."
+                        ),
+                    ));
+                    continue;
+                }
+                let mut distinct: Vec<String> = Vec::new();
+                for v in values {
+                    if !distinct.iter().any(|d| d == v) {
+                        distinct.push(v.to_owned());
+                    }
+                }
+                cleaned.push(Cleaned::AnyText {
+                    joins: &[],
+                    column,
+                    values: distinct,
+                });
+            }
+            Kind::ManyToManyInt {
+                join,
+                through_column,
+                target,
+            } => {
+                let values = query.getlist(field.name);
+                if values.is_empty() {
+                    continue;
+                }
+                match many_int(pool, &values, target).await? {
+                    Ok(values) => cleaned.push(Cleaned::ManyInt {
+                        join,
+                        through_column,
+                        values,
+                    }),
+                    Err(message) => errors.push((field.name, message)),
+                }
+            }
+            Kind::ManyToManyField {
+                joins,
+                column,
+                target,
+            } => {
+                let values = query.getlist(field.name);
+                if values.is_empty() {
+                    continue;
+                }
+                match many_field(pool, &values, target).await? {
+                    Ok(values) => cleaned.push(Cleaned::AnyText {
+                        joins,
+                        column,
+                        values,
+                    }),
+                    Err(message) => errors.push((field.name, message)),
                 }
             }
             Kind::Boolean { column } => {
@@ -289,6 +496,60 @@ impl Form {
                 Cleaned::Uuid(column, uuid) => {
                     let p = qs.bind(Bind::Uuid(*uuid));
                     qs.filter(format!("{column} = {p}"));
+                }
+                Cleaned::ManyInt {
+                    join,
+                    through_column,
+                    values,
+                } => {
+                    qs.join(join);
+                    let ors: Vec<String> = values
+                        .iter()
+                        .map(|id| {
+                            let p = qs.bind(Bind::Int(*id));
+                            format!("{through_column} = {p}")
+                        })
+                        .collect();
+                    qs.filter(if ors.len() == 1 {
+                        ors.join("")
+                    } else {
+                        format!("({})", ors.join(" OR "))
+                    });
+                    qs.distinct();
+                    distinct = true;
+                }
+                Cleaned::StartsWith(column, prefix) => {
+                    let p = qs.bind(Bind::Text(format!("{}%", prep_for_like(prefix))));
+                    qs.filter(format!("{column}::text LIKE {p}"));
+                }
+                Cleaned::IsNull(column, null) => {
+                    qs.filter(format!(
+                        "{column} IS {}NULL",
+                        if *null { "" } else { "NOT " }
+                    ));
+                }
+                Cleaned::AnyText {
+                    joins,
+                    column,
+                    values,
+                } => {
+                    for join in *joins {
+                        qs.join(join);
+                    }
+                    let ors: Vec<String> = values
+                        .iter()
+                        .map(|v| {
+                            let p = qs.bind(Bind::Text(v.clone()));
+                            format!("{column} = {p}")
+                        })
+                        .collect();
+                    qs.filter(if ors.len() == 1 {
+                        ors.join("")
+                    } else {
+                        format!("({})", ors.join(" OR "))
+                    });
+                    qs.distinct();
+                    distinct = true;
                 }
                 Cleaned::Many {
                     join,

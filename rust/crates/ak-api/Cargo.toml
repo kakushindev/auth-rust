@@ -9,12 +9,16 @@ publish.workspace = true
 [dependencies]
 ak-auth = { path = "../ak-auth" }
 ak-rbac = { path = "../ak-rbac" }
+base64.workspace = true
 chrono.workspace = true
+hex.workspace = true
 http.workspace = true
+md-5.workspace = true
 percent-encoding.workspace = true
 ryu.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 uuid.workspace = true
 
