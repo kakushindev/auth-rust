@@ -2,6 +2,21 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 14 — 2026-10-31
+
+- **M6 done**: new crate `rust/crates/ak-rbac`, which ports authentik's role-based permissions through the `ak-guardian` fork. It covers `has_perm`/`has_perms`, `get_objects_for_user`, `ObjectFilter`, DRF `ObjectPermissions` and `permission_required`.
+- `tests/rbac/run.sh` runs the model fixture plus `tests/rbac/populate.py` (roles, group hierarchy, superuser groups, object permissions on two rows of every model). Its 38k decisions for 14 subjects are identical to Django's (`rbac_decide.py`).
+- Behaviour reproduced:
+  - guardian counts duplicate grants;
+  - inactive superusers see every object;
+  - inactive users still get object rows from `get_objects_for_user`;
+  - text-pk models raise `ProgrammingError`, and uncastable `object_pk` raises `DataError`;
+  - service accounts get empty lists instead of 403.
+- Lint/tests clean for ak-rbac; stacks torn down. A full run takes about 5 minutes, mostly in Django's side.
+
+### Exact next action
+M7: read-only API endpoints (`core`, `rbac`, `crypto`, `events` list/retrieve) in the Rust server. The request pipeline combines `ak-auth` (identity, CSRF, cookies) and `ak-rbac` (permissions, with `get_objects_for_user` as a SQL filter). Responses must match DRF's serializers, filtering, ordering, search and pagination. Check them per operation against the reference over HTTP, including 401/403/404.
+
 ## Batch 13 — 2026-10-31
 
 - **M5 done.** New crate `rust/crates/ak-geoip`: a MaxMind reader plus `geoip2` models; `tests/geoip/run.sh` shows 4,328 addresses identical on the image's GeoLite2 databases. New `ak-auth` modules:

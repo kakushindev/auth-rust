@@ -88,6 +88,16 @@ name = "ak-pickle"
 version = "2026.2.7"
 
 [[package]]
+name = "ak-rbac"
+version = "2026.2.7"
+dependencies = [
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "ak-schema-guard"
 version = "2026.2.7"
 dependencies = [

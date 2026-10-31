@@ -173,6 +173,34 @@ Approximations:
 - A pickled `datetime` as `_session_expiry` is treated as the cookie age; Django 5 stores ISO strings.
 - An MMDB map with non-string keys is a `TypeError`.
 
+## Permissions (M6)
+
+`rust/crates/ak-rbac` decides permissions as 2026.2.7 does. authentik grants them only through roles, which come from the user and from the user's groups and their ancestors (`authentik_core_groupancestry`). A superuser group, also inherited, grants everything. The auth backends grant nothing; only the `ak-guardian` fork's `ObjectPermissionBackend` does. The crate covers:
+- **`has_perm` / `has_perms`**: `PermissionsMixin`'s active-superuser shortcut (which `AnonymousUser` lacks; guardian reads the `AnonymousUser` row for it). Then guardian's `WrongAppError`, the inactive and superuser checks, and the union of model-wide and per-object permissions of the user's roles. A codename without an app label matches any app.
+- **`get_objects_for_user`**:
+  - Errors: `GuardianError`, `MixedContentTypeError`, and `DoesNotExist`/`MultipleObjectsReturned` from the permission's content type.
+  - Superusers skip the active check, so an inactive superuser still sees everything.
+  - Model-wide permissions count for every object.
+  - With several permissions, the row count is reproduced: the same permission through two roles satisfies two.
+  - The final `pk IN (… ::uuid | ::bigint …)` query runs as Django runs it. Postgres therefore raises `DataError` for an `object_pk` that does not cast, and `ProgrammingError` for a model with a text primary key.
+- **`ObjectFilter`**: all with the global view permission, then the owner field, then guardian's objects; an empty result is a 403, except for internal service accounts.
+- **DRF**: `ObjectPermissions.has_permission`, which allows any lookup, allows create without permission where the view opts in, and requires authentication, with `MethodNotAllowed`. Also `has_object_permission`: global first, then the owner, then the object; `Http404` for reads, a 403 for writes.
+- **`@permission_required`**.
+
+Evidence: `tests/rbac/run.sh` takes rows of every model type (`tests/models/populate.py`) and a fixture with:
+- roles holding model-wide permissions;
+- per-object permissions on two rows of every model;
+- a three-level group hierarchy, and superuser groups held directly and through a child group;
+- duplicate grants, an uncastable `object_pk`, and inactive, service-account and impersonated users;
+- Django's `AnonymousUser`.
+
+Every decision for the 14 subjects is identical to Django's: 10,500 global and 13,538 object `has_perm` checks, 7,686 `get_objects_for_user`, 2,533 `ObjectFilter`, 3,360 `ObjectPermissions` and 378 `permission_required` decisions.
+
+Left to other milestones:
+- `InitialPermissionsMiddleware`, which assigns permissions on create, is a write (M8).
+- Which views use which lookup, owner field or create flag is route configuration (M7).
+- `get_objects_for_user` returns the matching primary keys rather than a composable filter. M7 will need it as SQL for paginated lists.
+
 ## Not verified / open
 
 - The 9 nondeterministic cases are compared only coarsely, so a real difference inside them would be masked. They need field-level masking, e.g. sorting `system_permissions` after checking set equality.
