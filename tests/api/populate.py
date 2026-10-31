@@ -39,6 +39,22 @@ Token.objects.create(
 from authentik.rbac.models import Role  # noqa: E402
 
 Role.objects.create(name='m7-weird "q" \\ \x01\x1f\x7f \u00e9 \u2028 \U0001f600')
+# InitialPermissions (tests/models creates none): several permissions, none,
+# one; the second carries an object-level view grant for role m6-object.
+from django.contrib.auth.models import Permission  # noqa: E402
+
+from authentik.rbac.models import InitialPermissions  # noqa: E402
+
+role_model = Role.objects.get(name="m6-model")
+perms = list(Permission.objects.filter(content_type__app_label="authentik_core").order_by("id")[:4])
+ip_many = InitialPermissions.objects.create(name="m7-initial-many", role=role_model)
+ip_many.permissions.set(perms)
+ip_none = InitialPermissions.objects.create(name="m7-initial-none", role=role_model)
+ip_one = InitialPermissions.objects.create(
+    name='m7-initial "one" \u00e9', role=Role.objects.get(name="m6-object")
+)
+ip_one.permissions.set(perms[:1])
+Role.objects.get(name="m6-object").assign_perms("authentik_rbac.view_initialpermissions", ip_none)
 transaction.commit()
 print(f"[populate] tokens for {len(subjects)} subjects")
 print("[populate] ok")

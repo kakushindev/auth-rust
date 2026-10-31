@@ -2,6 +2,12 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 16 — 2026-10-31
+
+- M7 part 2: `rbac/permissions` (`DjangoQuery` emits Django's exact SQL so ordering ties match) and `rbac/initial_permissions` (nested `PermissionSerializer`, `Permission` default ordering) are verified. All RBAC read endpoints pass: **3 570/3 570 equal**, 3 524 Rust-served, schema clean.
+- New `ak-api` pieces: `json::render_jsonb` (jsonb → orjson, `ryu` floats), `registry.rs` (verbose names, generated), `views/common.rs`.
+- Next, `core/brands` needs generic django-filter field types (`UUIDFilter`, `ModelChoiceFilter`, `ModelMultipleChoiceFilter`, whose `frozenset` validation order is nondeterministic upstream), m2m search via `EXISTS` with `distinct`, and the `attributes` jsonb. `core/tokens` and every endpoint embedding `user_obj` wait for a `UserSerializer` port: its `avatar` resolves the tenant's avatar providers, and gravatar is a cached outbound HTTP check.
+
 ## Batch 15 — 2026-10-31
 
 - **M7 part 1**: new crate `rust/crates/ak-api` (DRF/Django read pipeline: admission and declines, content negotiation, token authentication, `ObjectPermissions`, Enterprise-search backend order with DRF `SearchFilter` fallback, `ObjectFilter`, django-filter primitives, ordering, `AutocompletePagination`, Python parsing semantics), wired in `src/server/core.rs` `read_api` with routes registered in `compat.rs`.

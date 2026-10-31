@@ -20,10 +20,17 @@ use crate::server::Server;
 /// Method + path pattern of every route served by Rust, mirrored in
 /// `docs/COMPATIBILITY_REPORT.md` (`{pk}` is DRF's `[^/.]+`). Verified by
 /// `tests/api/run.sh`.
-#[cfg_attr(not(test), expect(dead_code, reason = "the registry is checked by tests"))]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the registry is checked by tests")
+)]
 pub(super) const PORTED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/v3/rbac/roles/"),
     ("GET", "/api/v3/rbac/roles/{pk}/"),
+    ("GET", "/api/v3/rbac/permissions/"),
+    ("GET", "/api/v3/rbac/permissions/{pk}/"),
+    ("GET", "/api/v3/rbac/initial_permissions/"),
+    ("GET", "/api/v3/rbac/initial_permissions/{pk}/"),
 ];
 
 pub(super) fn build_router(server: &Arc<Server>) -> Router {

@@ -159,6 +159,7 @@ uuid = { version = "= 1.24.0", features = ["serde", "v4"] }
 
 # --- authentik-rs additions (not in upstream) ---
 http = "= 1.4.0"
+ryu = "= 1.0.23"
 async-compression = { version = "= 0.4.41", features = ["tokio", "gzip", "deflate"] }
 httpdate = "= 1.0.3"
 socket2 = { version = "= 0.6.3", features = ["all"] }

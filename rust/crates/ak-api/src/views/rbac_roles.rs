@@ -14,7 +14,10 @@ use crate::{
     Answer, Decline,
     drf::{self, ApiRequest, Context, User},
     pagination::{Page, page_size},
-    py::{PyInt, QueryDict, int4, py_decimal, py_uuid, search_smart_split, strip},
+    py::{
+        PyInt, QueryDict, UuidLookup, int4, py_decimal, py_uuid, search_smart_split, strip,
+        uuid_lookup,
+    },
     sql::{Bind, QuerySet},
 };
 
@@ -381,32 +384,6 @@ pub async fn list(
     Ok(drf::json(200, &page.response(results), ALLOW_LIST))
 }
 
-/// How Django's `queryset.get(pk=value)` reads a URL `pk`.
-enum Lookup {
-    Valid(Uuid),
-    /// `ValidationError`, which DRF's `get_object_or_404` turns into a
-    /// bare `Http404` ("Not found.").
-    Invalid,
-}
-
-fn lookup(pk: &str) -> Result<Lookup, Decline> {
-    if let Ok(uuid) = py_uuid(pk) {
-        return Ok(Lookup::Valid(uuid));
-    }
-    // `uuid.UUID(hex=…)`: after the replacements anything but 32 chars is a
-    // ValueError; 32 chars of `int(…, 16)` syntax are not reproduced.
-    let hex = pk.replace("urn:", "").replace("uuid:", "");
-    let hex = hex.trim_matches(['{', '}']).replace('-', "");
-    if hex.chars().count() != 32
-        || !hex
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() || matches!(c, '_' | '+' | '-' | ' '))
-    {
-        return Ok(Lookup::Invalid);
-    }
-    Err(Decline("pk syntax"))
-}
-
 /// `GET /api/v3/rbac/roles/{pk}/`.
 pub async fn retrieve(
     ctx: &Context<'_>,
@@ -424,9 +401,9 @@ pub async fn retrieve(
         Ok(qs) => qs,
         Err(answer) => return Ok(answer),
     };
-    let uuid = match lookup(pk)? {
-        Lookup::Valid(uuid) => uuid,
-        Lookup::Invalid => return Ok(drf::detail(404, "Not found.", ALLOW_DETAIL)),
+    let uuid = match uuid_lookup(pk).map_err(|_| Decline("pk syntax"))? {
+        UuidLookup::Valid(uuid) => uuid,
+        UuidLookup::Invalid => return Ok(drf::detail(404, "Not found.", ALLOW_DETAIL)),
     };
     let p = qs.bind(Bind::Uuid(uuid));
     qs.filter(format!("t.\"uuid\" = {p}"));

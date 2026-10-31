@@ -35,6 +35,7 @@ dependencies = [
  "chrono",
  "http",
  "percent-encoding",
+ "ryu",
  "serde",
  "serde_json",
  "sqlx",

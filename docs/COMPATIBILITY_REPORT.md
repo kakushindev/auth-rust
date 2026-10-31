@@ -221,6 +221,10 @@ Ported: DRF content negotiation; authentik's `TokenAuthentication` (403 rather t
 | Route | Evidence | Result |
 | --- | --- | --- |
 | `GET /api/v3/rbac/roles/`, `GET /api/v3/rbac/roles/{pk}/` | `tests/api/run.sh` (3 stacks from a snapshot populated by tests/models, tests/rbac and tests/api: 13 subjects with API tokens, plus no/invalid/expired/recovery tokens; 66 list queries covering pagination, ordering, search, every `RoleFilterSet` field and its invalid values, combined errors and repeated parameters; and retrieve for every role plus malformed and missing pks) | **1 870 / 1 870 equal**; 1 831 answered by Rust (marked with `X-Authentik-Rs` under `AUTHENTIK_RS_API_TRACE`), and the 39 declines answered by Django; schema guard clean on all 3 databases |
+| `GET /api/v3/rbac/permissions/`, `/{pk}/` | same suite: every page at sizes 100 and 7 (permission names repeat, so the SQL is Django's own text so that ties come back in Django's order), all ordering sources, multi-field search, each filter including invalid and missing roles, retrieve with `int()` edge pks and duplicate-name rows | **1 241 / 1 241 equal, all answered by Rust** |
+| `GET /api/v3/rbac/initial_permissions/`, `/{pk}/` | same suite; tests/api/populate.py adds three rows, one with an object-level grant; nested `permissions_obj` uses `Permission`'s default ordering | **459 / 459 equal**, 452 by Rust (`ordering=permissions`, a duplicating m2m join, is declined) |
+
+Also ported for these: Django's `jsonb` → `json.loads` → orjson rendering (`ak_api::json`: key order, int/float split, `ryu` float forms as checked against orjson in the image), and the generated app/model verbose-name registry (`scripts/gen_api_registry.py`). The model field's message `“x” is not a valid UUID.` wins over the choice field's "Select a valid choice".
 
 Upstream behavior reproduced as is: `users=<id>&inherited=true` (and `groups=…&inherited=true`) replaces the queryset with `all_roles()`, dropping the search and object-permission restriction; `users=1.5` matches user 1; `managed=None` matches the NULL choice text.
 

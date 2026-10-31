@@ -323,6 +323,38 @@ pub fn py_uuid(s: &str) -> Result<Uuid, Unsupported> {
     Uuid::parse_str(&hex).map_err(|_| Unsupported)
 }
 
+/// How Django's `queryset.get(pk=value)` reads a `UUIDField` lookup value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UuidLookup {
+    Valid(Uuid),
+    /// `uuid.UUID(hex=…)` raises: DRF's `get_object_or_404` answers
+    /// "Not found.", a `ModelChoiceField` "Select a valid choice."
+    Invalid,
+}
+
+/// `uuid.UUID(hex=value)` for a lookup value.
+///
+/// # Errors
+///
+/// [`Unsupported`] for 32 characters of `int(…, 16)` syntax (signs,
+/// underscores, spaces), which `uuid` may accept.
+pub fn uuid_lookup(value: &str) -> Result<UuidLookup, Unsupported> {
+    if let Ok(uuid) = py_uuid(value) {
+        return Ok(UuidLookup::Valid(uuid));
+    }
+    // After the replacements anything but 32 characters is a ValueError.
+    let hex = value.replace("urn:", "").replace("uuid:", "");
+    let hex = hex.trim_matches(['{', '}']).replace('-', "");
+    if hex.chars().count() != 32
+        || !hex
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || matches!(c, '_' | '+' | '-' | ' '))
+    {
+        return Ok(UuidLookup::Invalid);
+    }
+    Err(Unsupported)
+}
+
 /// `django.utils.text.smart_split`: whitespace-separated bits, keeping
 /// quoted phrases (with backslash escapes) together.
 pub fn smart_split(text: &str) -> Vec<String> {

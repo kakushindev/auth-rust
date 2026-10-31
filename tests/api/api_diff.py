@@ -172,7 +172,122 @@ def role_cases():
     return cases
 
 
-ENDPOINTS = {"rbac_roles": role_cases}
+def all_pages(path):
+    out, page = [], 1
+    while True:
+        sep = "&" if "?" in path else "?"
+        data = admin_get(f"{path}{sep}page_size=100&page={page}")
+        out += data["results"]
+        if not data["pagination"]["next"]:
+            return out
+        page += 1
+
+
+def permission_cases():
+    perms = all_pages("/api/v3/rbac/permissions/")
+    roles = {r["name"]: r["pk"] for r in all_results("/api/v3/rbac/roles/")}
+    total_pages = (len(perms) + 99) // 100
+    base = "/api/v3/rbac/permissions/"
+    names = {}
+    for perm in perms:
+        names.setdefault(perm["name"], []).append(perm["id"])
+    dup_ids = [i for ids in names.values() if len(ids) > 1 for i in ids]
+    lists = [""]
+    lists += [q(page_size=100, page=n) for n in range(1, total_pages + 1)]
+    lists += [q(page_size=7, page=n) for n in (1, 2, 50, 99, 100)]
+    lists += [
+        q(page="last", page_size=7),
+        q(page_size=1000),
+        q(ordering="-name", page_size=100),
+        q(ordering="id"),
+        q(ordering="-id", page_size=50, page=3),
+        q(ordering="codename", page_size=100, page=4),
+        q(ordering="content_type__model", page_size=100, page=2),
+        q(ordering="-content_type__app_label,id", page_size=100),
+        q(ordering="model"),
+        q(ordering="app_label_verbose"),
+        q(search="view"),
+        q(search="can view", page_size=100),
+        q(search="authentik_core"),
+        q(search="USER"),
+        q(search='"Can view"'),
+        q(search="token's"),
+        q(search="a\x00b"),
+        q(codename="view_role"),
+        q(codename=" view_role "),
+        q(content_type__model="role"),
+        q(content_type__app_label="authentik_rbac"),
+        q(codename="view_role", content_type__model="role", content_type__app_label="authentik_rbac"),
+        q(codename="a\x00b"),
+        q(role=roles["m6-model"]),
+        q(role=roles["m6-parent"], search="view"),
+        q(role="bogus"),
+        q(role="00000000-0000-0000-0000-000000000000"),
+        q(role=""),
+        "?codename=a%00b&role=bogus",
+        q(content_type__app_label="auth"),
+        q(unknown="1"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    for perm in perms[:5] + perms[-5:]:
+        cases.append(f"{base}{perm['id']}/")
+    cases += [f"{base}{i}/" for i in dup_ids]
+    first = perms[0]["id"]
+    cases += [
+        f"{base}abc/",
+        f"{base}%20{first}/",
+        f"{base}+{first}/",
+        f"{base}0/",
+        f"{base}-1/",
+        f"{base}99999999999/",
+        f"{base}{first}/{q(role='bogus')}",
+        f"{base}{first}/{q(codename='nope')}",
+        f"{base}{first}/{q(search='zzz')}",
+    ]
+    return cases
+
+
+def initial_permission_cases():
+    rows = all_results("/api/v3/rbac/initial_permissions/")
+    base = "/api/v3/rbac/initial_permissions/"
+    lists = [
+        "",
+        q(page_size=1, page=2),
+        q(page="last", page_size=2),
+        q(page=9),
+        q(ordering="pk"),
+        q(ordering="-pk"),
+        q(ordering="-name"),
+        q(ordering="role,-pk"),
+        q(ordering="permissions"),
+        q(ordering="-permissions_obj"),
+        q(search="m7"),
+        q(search='"initial \\"one"'),
+        q(search="initial one"),
+        q(search="a\x00b"),
+        q(name="m7-initial-many"),
+        q(name=" m7-initial-none "),
+        q(name="a\x00b"),
+        q(name="nope"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pk']}/" for r in rows]
+    cases += [
+        f"{base}abc/",
+        f"{base}0/",
+        f"{base}99999999999/",
+        f"{base}{rows[0]['pk']}/{q(ordering='permissions')}",
+        f"{base}{rows[0]['pk']}/{q(name='nope')}",
+        f"{base}{rows[0]['pk']}/{q(search='a\x00b')}",
+    ]
+    return cases
+
+
+ENDPOINTS = {
+    "rbac_roles": role_cases,
+    "rbac_permissions": permission_cases,
+    "rbac_initial_permissions": initial_permission_cases,
+}
 
 
 def strip_trace(response):

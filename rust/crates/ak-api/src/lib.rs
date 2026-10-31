@@ -11,8 +11,10 @@
 //! every route against the pinned reference.
 
 pub mod drf;
+pub mod json;
 pub mod pagination;
 pub mod py;
+mod registry;
 pub mod sql;
 pub mod views;
 
@@ -44,15 +46,48 @@ pub enum Outcome {
 enum Route<'a> {
     RolesList,
     RolesRetrieve(&'a str),
+    PermissionsList,
+    PermissionsRetrieve(&'a str),
+    InitialPermissionsList,
+    InitialPermissionsRetrieve(&'a str),
+}
+
+/// A `DefaultRouter` path under one viewset prefix.
+enum Viewset<'a> {
+    List,
+    Detail(&'a str),
+}
+
+/// `prefix` itself (list) or `prefix{pk}/` (detail).
+fn viewset<'a>(path: &'a str, prefix: &str) -> Option<Viewset<'a>> {
+    let rest = path.strip_prefix(prefix)?;
+    if rest.is_empty() {
+        return Some(Viewset::List);
+    }
+    let pk = rest.strip_suffix('/')?;
+    (!pk.is_empty() && !pk.contains(['/', '.'])).then_some(Viewset::Detail(pk))
 }
 
 fn route(path: &str) -> Option<Route<'_>> {
-    let rest = path.strip_prefix("/api/v3/rbac/roles/")?;
-    if rest.is_empty() {
-        return Some(Route::RolesList);
+    if let Some(v) = viewset(path, "/api/v3/rbac/roles/") {
+        return Some(match v {
+            Viewset::List => Route::RolesList,
+            Viewset::Detail(pk) => Route::RolesRetrieve(pk),
+        });
     }
-    let pk = rest.strip_suffix('/')?;
-    (!pk.is_empty() && !pk.contains(['/', '.'])).then_some(Route::RolesRetrieve(pk))
+    if let Some(v) = viewset(path, "/api/v3/rbac/initial_permissions/") {
+        return Some(match v {
+            Viewset::List => Route::InitialPermissionsList,
+            Viewset::Detail(pk) => Route::InitialPermissionsRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/rbac/permissions/") {
+        return Some(match v {
+            Viewset::List => Route::PermissionsList,
+            Viewset::Detail(pk) => Route::PermissionsRetrieve(pk),
+        });
+    }
+    None
 }
 
 /// Whether `serve` might answer `GET path`; cheap, for the server to skip
@@ -81,6 +116,22 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
         Route::RolesRetrieve(pk) => (
             "rbac_roles",
             views::rbac_roles::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::PermissionsList => (
+            "rbac_permissions",
+            views::rbac_permissions::list(ctx, req, &query).await,
+        ),
+        Route::PermissionsRetrieve(pk) => (
+            "rbac_permissions",
+            views::rbac_permissions::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::InitialPermissionsList => (
+            "rbac_initial_permissions",
+            views::rbac_initial_permissions::list(ctx, req, &query).await,
+        ),
+        Route::InitialPermissionsRetrieve(pk) => (
+            "rbac_initial_permissions",
+            views::rbac_initial_permissions::retrieve(ctx, req, &query, pk).await,
         ),
     };
     match result {

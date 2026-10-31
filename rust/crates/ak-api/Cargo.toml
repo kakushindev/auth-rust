@@ -12,6 +12,7 @@ ak-rbac = { path = "../ak-rbac" }
 chrono.workspace = true
 http.workspace = true
 percent-encoding.workspace = true
+ryu.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
