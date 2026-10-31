@@ -43,6 +43,12 @@ pub enum Kind {
         column: &'static str,
         target: (&'static str, &'static str),
     },
+    /// `CharFilter` on a forward foreign key's column (`fk__field`),
+    /// joining the related table once.
+    JoinedChar {
+        join: &'static str,
+        column: &'static str,
+    },
     /// `CharFilter(lookup_expr="startswith")`.
     StartsWith { column: &'static str },
     /// `BooleanFilter(lookup_expr="isnull")` (`NullBooleanSelect`).
@@ -61,6 +67,13 @@ pub enum Kind {
     /// `.distinct()`; `target` is `(table, field column)`.
     ManyToManyField {
         joins: &'static [&'static str],
+        column: &'static str,
+        target: (&'static str, &'static str),
+    },
+    /// `ModelChoiceFilter` for a foreign key to an integer-keyed model:
+    /// `queryset.get(pk=value)` takes Python `int()`, and any failure is
+    /// the plain invalid-choice message.
+    ForeignKeyInt {
         column: &'static str,
         target: (&'static str, &'static str),
     },
@@ -93,6 +106,7 @@ enum Cleaned {
     Text(&'static str, String),
     Bool(&'static str, bool),
     Uuid(&'static str, Uuid),
+    Int(&'static str, i32),
     Many {
         join: &'static str,
         through_column: &'static str,
@@ -104,6 +118,7 @@ enum Cleaned {
         values: Vec<i32>,
     },
     StartsWith(&'static str, String),
+    JoinedText(&'static str, &'static str, String),
     IsNull(&'static str, bool),
     AnyText {
         joins: &'static [&'static str],
@@ -338,6 +353,14 @@ pub async fn clean(
                     cleaned.push(Cleaned::IsNull(column, value));
                 }
             }
+            Kind::JoinedChar { join, column } => {
+                let value = strip(raw.unwrap_or_default());
+                if value.contains('\0') {
+                    errors.push((field.name, NUL.to_owned()));
+                } else if !value.is_empty() {
+                    cleaned.push(Cleaned::JoinedText(join, column, value.to_owned()));
+                }
+            }
             Kind::StartsWith { column } => {
                 let value = strip(raw.unwrap_or_default());
                 if value.contains('\0') {
@@ -430,6 +453,34 @@ pub async fn clean(
                     }
                 }
             }
+            Kind::ForeignKeyInt { column, target } => {
+                let Some(value) = raw.filter(|v| !v.is_empty()) else {
+                    continue;
+                };
+                if value.contains('\0') {
+                    errors.push((field.name, NUL.to_owned()));
+                    continue;
+                }
+                let id = match crate::py::py_int(value).map_err(|_| Decline("int syntax"))? {
+                    None => None,
+                    Some(n) => Some(crate::py::int4(n).ok_or(Decline("int range"))?),
+                };
+                let found = match id {
+                    None => false,
+                    Some(id) => sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(format!(
+                        "SELECT EXISTS (SELECT 1 FROM \"{}\" WHERE \"{}\" = $1)",
+                        target.0, target.1
+                    )))
+                    .bind(id)
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|_| Decline("database error"))?,
+                };
+                match id {
+                    Some(id) if found => cleaned.push(Cleaned::Int(column, id)),
+                    _ => errors.push((field.name, INVALID_CHOICE.to_owned())),
+                }
+            }
             Kind::ForeignKeyUuid { column, target } => {
                 let Some(value) = raw.filter(|v| !v.is_empty()) else {
                     continue;
@@ -493,6 +544,10 @@ impl Form {
                         format!("NOT {column}")
                     });
                 }
+                Cleaned::Int(column, id) => {
+                    let p = qs.bind(Bind::Int(*id));
+                    qs.filter(format!("{column} = {p}"));
+                }
                 Cleaned::Uuid(column, uuid) => {
                     let p = qs.bind(Bind::Uuid(*uuid));
                     qs.filter(format!("{column} = {p}"));
@@ -517,6 +572,11 @@ impl Form {
                     });
                     qs.distinct();
                     distinct = true;
+                }
+                Cleaned::JoinedText(join, column, text) => {
+                    qs.join(join);
+                    let p = qs.bind(Bind::Text(text.clone()));
+                    qs.filter(format!("{column} = {p}"));
                 }
                 Cleaned::StartsWith(column, prefix) => {
                     let p = qs.bind(Bind::Text(format!("{}%", prep_for_like(prefix))));

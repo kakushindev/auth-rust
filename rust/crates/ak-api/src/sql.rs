@@ -233,6 +233,16 @@ impl DjangoQuery {
         self.conds.push(cond);
     }
 
+    /// A later `.filter()` that ANDs on a join an earlier OR made `LEFT
+    /// OUTER`: Django demotes it to `inner` in place, or adds `inner`.
+    pub fn demote_join(&mut self, outer: &'static str, inner: &'static str) {
+        if let Some(slot) = self.joins.iter_mut().find(|j| **j == outer) {
+            *slot = inner;
+        } else {
+            self.join(inner);
+        }
+    }
+
     /// `column__icontains=value` on a qualified column.
     pub fn icontains(&mut self, column: &str, value: &str) -> String {
         let p = self.bind(Bind::Text(format!("%{}%", prep_for_like(value))));

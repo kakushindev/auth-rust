@@ -13,7 +13,9 @@ counted, so a silent fall-back to Django cannot pass as coverage.
 """
 
 import argparse
+import concurrent.futures
 import json
+import os
 import pathlib
 import sys
 import urllib.parse
@@ -243,6 +245,11 @@ def permission_cases():
         f"{base}{first}/{q(role='bogus')}",
         f"{base}{first}/{q(codename='nope')}",
         f"{base}{first}/{q(search='zzz')}",
+    ]
+    # Viewsets the router registers under this prefix before it.
+    cases += [
+        "/api/v3/rbac/permissions/roles/",
+        "/api/v3/rbac/permissions/assigned_by_roles/",
     ]
     return cases
 
@@ -671,6 +678,198 @@ def group_cases():
     return cases
 
 
+def token_cases():
+    base = "/api/v3/core/tokens/"
+    rows = all_pages(base + "?search=m7-")
+    lists = [
+        "",
+        q(page_size=3),
+        q(page_size=3, page=2),
+        q(search="m7-m6"),
+        q(search="m7", include_groups="false"),
+        q(search="m7", include_roles="false", page_size=4),
+        q(search="RECOVERY"),
+        q(search="akadmin"),
+        q(search="a\x00b"),
+        q(search="m7", ordering="-identifier"),
+        q(search="m7", ordering="user,-pk"),
+        q(search="m7", ordering="-expires,identifier"),
+        q(search="m7", ordering="intent,expiring,identifier"),
+        q(search="m7", ordering="user_obj"),
+        q(search="m7", ordering="key"),
+        q(identifier="m7-akadmin"),
+        q(identifier=" m7-akadmin "),
+        q(identifier="a\x00b"),
+        q(intent="recovery"),
+        q(intent="api", search="m7-m6-s"),
+        q(intent="API"),
+        q(intent="bogus"),
+        q(user__username="akadmin"),
+        q(user__username="m6-direct", search="m7"),
+        q(user__username="a\x00b"),
+        q(description=""),
+        q(expiring="true"),
+        q(expiring="0", search="m7-m6"),
+        q(expiring="2"),
+        q(managed="x"),
+        q(expires="2020-01-01T00:00:00Z"),
+        q(intent="bogus", identifier="a\x00b"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['identifier']}/" for r in rows]
+    cases += [
+        f"{base}m7-akadmin/{q(include_groups='false', include_roles='false')}",
+        f"{base}m7-akadmin/{q(intent='recovery')}",
+        f"{base}m7-akadmin/{q(intent='bogus')}",
+        f"{base}does-not-exist/",
+        f"{base}M7-AKADMIN/",
+        f"{base}m7-akadmin/used_by/",
+    ]
+    return cases
+
+
+def event_cases():
+    base = "/api/v3/events/events/"
+    rows = all_pages(base + "?action=custom_m7")
+    m7 = {"action": "custom_m7"}
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        q(**m7),
+        q(**m7, page_size=1, page=2),
+        q(**m7, page="last", page_size=3),
+        q(**m7, ordering="created"),
+        q(**m7, ordering="-app,created"),
+        q(**m7, ordering="client_ip,created"),
+        q(**m7, ordering="context"),
+        q(**m7, ordering="-user,-created"),
+        q(**m7, ordering="brand,created"),
+        q(**m7, ordering="-pk"),
+        q(**m7, search="m7-ev"),
+        q(**m7, search="10.0.0"),
+        q(**m7, search="2001:DB8"),
+        q(**m7, search="M7.APP.1"),
+        q(**m7, search="a\x00b"),
+        q(action="CUSTOM_M"),
+        q(**m7, client_ip="10.0.0.1"),
+        q(**m7, client_ip="10.0.0.9"),
+        q(**m7, client_ip="2001:db8::1"),
+        q(**m7, client_ip="not-an-ip"),
+        q(**m7, username="m7-ev"),
+        q(**m7, username="m7-ctx"),
+        q(**m7, username="akadmin"),
+        q(**m7, context_model_pk="0a1b2c"),
+        q(**m7, context_model_pk="0a-1b-2c"),
+        q(**m7, context_model_pk="12"),
+        q(**m7, context_model_pk=" 1-2 "),
+        q(**m7, context_model_name="user"),
+        q(**m7, context_model_app="authentik_rbac"),
+        q(**m7, context_authorized_app="app-1"),
+        q(**m7, brand_name="m7-brand"),
+        q(**m7, actions="login"),
+        q(actions="custom_", search="custom_m7"),
+        q(**m7, actions="bogus"),
+        "?" + urllib.parse.urlencode([("action", "custom_m7"), ("actions", "login"), ("actions", "x")]),
+        q(**m7, username="a\x00b", actions="bogus", brand_name="a\x00b"),
+        q(action="a\x00b"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pk']}/" for r in rows]
+    cases += [
+        f"{base}{rows[0]['pk']}/{q(action='nope')}",
+        f"{base}{rows[0]['pk']}/{q(actions='bogus')}",
+        f"{base}{missing}/",
+        f"{base}bogus/",
+        f"{base}actions/",
+    ]
+    return cases
+
+
+def notification_cases():
+    base = "/api/v3/events/notifications/"
+    rows = all_pages(base)
+    ev = next((r["event"]["pk"] for r in rows if r["event"]), None)
+    admin = all_results("/api/v3/core/users/?username=akadmin")[0]["pk"]
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        "",
+        q(page_size=1),
+        q(page_size=1, page=2),
+        q(ordering="body"),
+        q(ordering="-severity,body"),
+        q(ordering="seen,body"),
+        q(ordering="-created"),
+        q(ordering="hyperlink,body"),
+        q(ordering="event,body"),
+        q(ordering="user"),
+        q(search="m7"),
+        q(search="a\x00b"),
+        q(severity="alert"),
+        q(severity="ALERT"),
+        q(severity="nope"),
+        q(body='m7 body 0 "q"'),
+        q(body="a\x00b"),
+        q(seen="true"),
+        q(seen="0"),
+        q(seen="3"),
+        q(user=admin),
+        q(user=f" {admin} "),
+        q(user="abc"),
+        q(user="999999"),
+        q(user="a\x00b"),
+        q(event=ev) if ev else q(event=missing),
+        q(event=missing),
+        q(event="bogus"),
+        q(created="2020-01-01"),
+        q(severity="nope", user="abc", event="bogus"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pk']}/" for r in rows]
+    cases += [f"{base}{missing}/", f"{base}bogus/", f"{base}mark_all_seen/"]
+    return cases
+
+
+def rule_cases():
+    base = "/api/v3/events/rules/"
+    rows = all_pages(base)
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        "",
+        q(page_size=2, page=2),
+        q(search="m7-rule"),
+        q(search="m7-group"),
+        q(search="authentik Admins"),
+        q(search="m7", include_users="false"),
+        q(search="m7", include_children="true", include_parents="true"),
+        q(search="m7", include_inherited_roles="true"),
+        q(search="a\x00b"),
+        q(ordering="-name"),
+        q(ordering="severity,name"),
+        q(ordering="destination_group,name"),
+        q(ordering="-destination_event_user,name"),
+        q(ordering="transports"),
+        q(ordering="destination_group_obj"),
+        q(name="m7-rule-a"),
+        q(name="a\x00b"),
+        q(severity="alert"),
+        q(severity="bogus"),
+        q(destination_group__name="m7-group"),
+        q(destination_group__name=" m7-group ", search="m7"),
+        q(destination_group__name="nope", search="m7"),
+        q(destination_group__name=" "),
+        q(destination_group__name="a\x00b"),
+        q(severity="bogus", name="a\x00b", destination_group__name="a\x00b"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pk']}/" for r in rows]
+    cases += [
+        f"{base}{rows[0]['pk']}/{q(include_users='false')}",
+        f"{base}{rows[0]['pk']}/{q(severity='bogus')}",
+        f"{base}{missing}/",
+        f"{base}bogus/",
+    ]
+    return cases
+
+
 ENDPOINTS = {
     "rbac_roles": role_cases,
     "rbac_permissions": permission_cases,
@@ -681,6 +880,10 @@ ENDPOINTS = {
     "crypto_certificatekeypairs": certificate_cases,
     "core_users": user_cases,
     "core_groups": group_cases,
+    "core_tokens": token_cases,
+    "events_events": event_cases,
+    "events_notifications": notification_cases,
+    "events_rules": rule_cases,
 }
 
 
@@ -690,50 +893,82 @@ def strip_trace(response):
     return status, headers, body
 
 
+def run_case(name, path, token):
+    """One case: the same request to the three stacks, then the buckets."""
+    ref = harness.fetch(REF, path, token)
+    ref2 = harness.fetch(REF2, path, token)
+    cand = harness.fetch(CAND, path, token)
+    rust = TRACE in cand[1]
+    cand = strip_trace(cand)
+    diffs = harness.compare(ref, cand)
+    noise_kinds = {harness.kind(d) for d in harness.compare(ref, ref2)}
+    if not diffs:
+        bucket = "equal"
+    elif all(harness.kind(d) in noise_kinds for d in diffs):
+        bucket = "nondeterministic"
+    else:
+        bucket = "different"
+    if bucket == "different":
+        print(f"DIFF {token} {path}: " + "; ".join(diffs)[:600], flush=True)
+    return {
+        "endpoint": name,
+        "path": path,
+        "token": token,
+        "status": ref[0],
+        "rust": rust,
+        "bucket": bucket,
+        "diffs": diffs,
+    }
+
+
+def run_token(token, work):
+    """Every case of one token, in suite order. Within a token the order is
+    the sequential run's: a token's own side effects (Django deletes an
+    expired token on first use) happen at the same point on every stack."""
+    return [(index, run_case(name, path, token)) for index, name, path in work]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--report", default=None)
     ap.add_argument("--only", default=None, help="comma-separated endpoint names")
+    ap.add_argument(
+        "--jobs",
+        type=int,
+        default=int(os.environ.get("API_JOBS", "8")),
+        help="tokens run concurrently (1 = the old fully sequential run)",
+    )
     args = ap.parse_args()
 
     tokens = [None, "not-a-token", "m7-expired", "m7-recovery"] + [f"m7-{s}" for s in SUBJECTS]
-    results, served = [], {}
+    # Case lists read the reference through admin_get, so build them first,
+    # in suite order.
+    work = []
     for name, make in ENDPOINTS.items():
         if args.only and name not in args.only.split(","):
             continue
-        for path in make():
-            for token in tokens:
-                ref = harness.fetch(REF, path, token)
-                ref2 = harness.fetch(REF2, path, token)
-                cand = harness.fetch(CAND, path, token)
-                rust = TRACE in cand[1]
-                served[name] = served.get(name, 0) + int(rust)
-                cand = strip_trace(cand)
-                diffs = harness.compare(ref, cand)
-                noise = harness.compare(ref, ref2)
-                noise_kinds = {harness.kind(d) for d in noise}
-                if not diffs:
-                    bucket = "equal"
-                elif all(harness.kind(d) in noise_kinds for d in diffs):
-                    bucket = "nondeterministic"
-                else:
-                    bucket = "different"
-                results.append(
-                    {
-                        "endpoint": name,
-                        "path": path,
-                        "token": token,
-                        "status": ref[0],
-                        "rust": rust,
-                        "bucket": bucket,
-                        "diffs": diffs,
-                    }
-                )
-                if bucket == "different":
-                    print(f"DIFF {token} {path}: " + "; ".join(diffs)[:600])
+        work += [(name, path) for path in make()]
+    indexed = [(i, name, path) for i, (name, path) in enumerate(work)]
 
-    buckets, statuses = {}, {}
+    # Warm-up, sequential: each token's first case, so one-time effects
+    # of a token (the expired one is deleted on first use) are settled on
+    # all stacks before tokens interleave.
+    done = {}
+    first, rest = indexed[:1], indexed[1:]
+    for t, token in enumerate(tokens):
+        for index, case in run_token(token, first):
+            done[(index, t)] = case
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        futures = {pool.submit(run_token, token, rest): t for t, token in enumerate(tokens)}
+        for future in concurrent.futures.as_completed(futures):
+            t = futures[future]
+            for index, case in future.result():
+                done[(index, t)] = case
+    results = [done[key] for key in sorted(done)]
+
+    served, buckets, statuses = {}, {}, {}
     for r in results:
+        served[r["endpoint"]] = served.get(r["endpoint"], 0) + int(r["rust"])
         buckets[r["bucket"]] = buckets.get(r["bucket"], 0) + 1
         statuses[r["status"]] = statuses.get(r["status"], 0) + 1
     summary = {

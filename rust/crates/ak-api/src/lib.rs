@@ -65,6 +65,14 @@ enum Route<'a> {
     UsersRetrieve(&'a str),
     GroupsList,
     GroupsRetrieve(&'a str),
+    TokensList,
+    TokensRetrieve(&'a str),
+    EventsList,
+    EventsRetrieve(&'a str),
+    NotificationsList,
+    NotificationsRetrieve(&'a str),
+    RulesList,
+    RulesRetrieve(&'a str),
 }
 
 /// A `DefaultRouter` path under one viewset prefix.
@@ -99,7 +107,12 @@ fn route(path: &str) -> Option<Route<'_>> {
             Viewset::Detail(pk) => Route::InitialPermissionsRetrieve(pk),
         });
     }
-    if let Some(v) = viewset(path, "/api/v3/rbac/permissions/", &[]) {
+    if let Some(v) = viewset(
+        path,
+        "/api/v3/rbac/permissions/",
+        // Viewsets registered under this prefix before it.
+        &["assigned_by_roles", "roles"],
+    ) {
         return Some(match v {
             Viewset::List => Route::PermissionsList,
             Viewset::Detail(pk) => Route::PermissionsRetrieve(pk),
@@ -139,6 +152,34 @@ fn route(path: &str) -> Option<Route<'_>> {
         return Some(match v {
             Viewset::List => Route::GroupsList,
             Viewset::Detail(pk) => Route::GroupsRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/core/tokens/", &[]) {
+        return Some(match v {
+            Viewset::List => Route::TokensList,
+            Viewset::Detail(pk) => Route::TokensRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(
+        path,
+        "/api/v3/events/events/",
+        views::events_events::ACTIONS,
+    ) {
+        return Some(match v {
+            Viewset::List => Route::EventsList,
+            Viewset::Detail(pk) => Route::EventsRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/events/notifications/", &["mark_all_seen"]) {
+        return Some(match v {
+            Viewset::List => Route::NotificationsList,
+            Viewset::Detail(pk) => Route::NotificationsRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/events/rules/", &[]) {
+        return Some(match v {
+            Viewset::List => Route::RulesList,
+            Viewset::Detail(pk) => Route::RulesRetrieve(pk),
         });
     }
     None
@@ -235,6 +276,38 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
             "core_groups",
             views::core_groups::retrieve(ctx, req, &query, pk).await,
         ),
+        Route::TokensList => (
+            "core_tokens",
+            views::core_tokens::list(ctx, req, &query).await,
+        ),
+        Route::TokensRetrieve(pk) => (
+            "core_tokens",
+            views::core_tokens::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::EventsList => (
+            "events_events",
+            views::events_events::list(ctx, req, &query).await,
+        ),
+        Route::EventsRetrieve(pk) => (
+            "events_events",
+            views::events_events::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::NotificationsList => (
+            "events_notifications",
+            views::events_notifications::list(ctx, req, &query).await,
+        ),
+        Route::NotificationsRetrieve(pk) => (
+            "events_notifications",
+            views::events_notifications::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::RulesList => (
+            "events_rules",
+            views::events_notification_rules::list(ctx, req, &query).await,
+        ),
+        Route::RulesRetrieve(pk) => (
+            "events_rules",
+            views::events_notification_rules::retrieve(ctx, req, &query, pk).await,
+        ),
     };
     match result {
         Ok(answer) => Outcome::Serve {
@@ -264,6 +337,8 @@ mod tests {
         assert!(route("/api/v3/rbac/roles/abc/used_by/").is_none());
         assert!(route("/api/v3/rbac/roles").is_none());
         assert!(route("/api/v3/core/brands/current/").is_none());
+        assert!(route("/api/v3/rbac/permissions/roles/").is_none());
+        assert!(route("/api/v3/rbac/permissions/assigned_by_roles/").is_none());
         assert!(matches!(
             route("/api/v3/core/brands/currentx/"),
             Some(Route::BrandsRetrieve("currentx"))

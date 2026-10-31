@@ -47,7 +47,7 @@ macro_rules! col {
 }
 
 const FROM: &str = "\"authentik_core_group\"";
-const SELECT: &str = concat!(
+pub(crate) const SELECT: &str = concat!(
     col!("attributes"),
     "::text, ",
     col!("group_uuid"),
@@ -142,7 +142,7 @@ struct Role {
 
 /// `GroupSerializer`.
 #[derive(Serialize)]
-struct GroupData {
+pub(crate) struct GroupData {
     pk: String,
     num_pk: u64,
     name: String,
@@ -247,10 +247,13 @@ async fn per_group<T>(
     Ok(out)
 }
 
-async fn serialize_groups(
+/// `GroupSerializer(rows, many=True).data`; `prefetched` when the rows come
+/// from `GroupViewSet.get_queryset`, not from a relation.
+pub(crate) async fn serialize_groups(
     ctx: &Context<'_>,
     query: &QueryDict,
     rows: &[PgRow],
+    prefetched: bool,
 ) -> Result<Vec<GroupData>, Decline> {
     let ids: Vec<Uuid> = rows
         .iter()
@@ -266,7 +269,7 @@ async fn serialize_groups(
     let mut roles = per_group(
         ctx.pool,
         &ids,
-        Some(format!(
+        prefetched.then(|| format!(
             "SELECT (\"authentik_core_group_roles\".\"group_id\") AS \"_prefetch_related_val_group_id\", \
              \"authentik_rbac_role\".\"managed\", \"authentik_rbac_role\".\"uuid\", \"authentik_rbac_role\".\"name\" \
              FROM \"authentik_rbac_role\" INNER JOIN \"authentik_core_group_roles\" ON \
@@ -274,7 +277,11 @@ async fn serialize_groups(
              \"authentik_core_group_roles\".\"group_id\" IN ({})",
             placeholders(n)
         )),
-        String::new(),
+        "SELECT \"authentik_rbac_role\".\"managed\", \"authentik_rbac_role\".\"uuid\", \
+         \"authentik_rbac_role\".\"name\" FROM \"authentik_rbac_role\" INNER JOIN \
+         \"authentik_core_group_roles\" ON (\"authentik_rbac_role\".\"uuid\" = \
+         \"authentik_core_group_roles\".\"role_id\") WHERE \"authentik_core_group_roles\".\"group_id\" = $1"
+            .to_owned(),
         |row, o| {
             let uuid: Uuid = row.try_get(o + 1).map_err(db)?;
             Ok(Role {
@@ -298,14 +305,18 @@ async fn serialize_groups(
     let mut users = per_group(
         ctx.pool,
         &ids,
-        Some(format!(
+        prefetched.then(|| format!(
             "SELECT (\"authentik_core_user_groups\".\"group_id\") AS \"_prefetch_related_val_group_id\", \
              {user_columns} FROM \"authentik_core_user\" INNER JOIN \"authentik_core_user_groups\" ON \
              (\"authentik_core_user\".\"id\" = \"authentik_core_user_groups\".\"user_id\") WHERE \
              \"authentik_core_user_groups\".\"group_id\" IN ({})",
             placeholders(n)
         )),
-        String::new(),
+        format!(
+            "SELECT {user_columns} FROM \"authentik_core_user\" INNER JOIN \"authentik_core_user_groups\" \
+             ON (\"authentik_core_user\".\"id\" = \"authentik_core_user_groups\".\"user_id\") WHERE \
+             \"authentik_core_user_groups\".\"group_id\" = $1"
+        ),
         |row, o| {
             let id: i32 = row.try_get(o).map_err(db)?;
             if !with_users {
@@ -494,7 +505,7 @@ pub async fn list(
         return Ok(drf::detail(404, "Invalid page.", ALLOW_LIST));
     };
     let rows = qs.fetch(ctx.pool, &order, Some(page.slice())).await?;
-    let results = serialize_groups(ctx, query, &rows).await?;
+    let results = serialize_groups(ctx, query, &rows, true).await?;
     let autocomplete =
         RawValue::from_string(AUTOCOMPLETE.to_owned()).map_err(|_| Decline("autocomplete"))?;
     Ok(drf::json(
@@ -556,7 +567,7 @@ pub async fn retrieve(
     .map_err(|_| Decline("object permission raised"))?;
     match access {
         Access::Allow => {
-            let mut groups = serialize_groups(ctx, query, &rows).await?;
+            let mut groups = serialize_groups(ctx, query, &rows, true).await?;
             let one = groups.pop().ok_or(Decline("database error"))?;
             Ok(drf::json(200, &one, ALLOW_DETAIL))
         }

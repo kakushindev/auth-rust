@@ -2,6 +2,19 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 19 — 2026-10-31
+
+- M7 part 5: `core/tokens`, `events/events` (with the R2 `autocomplete`, including the `SELECT DISTINCT app` options), `events/notifications` and `events/rules` are served from Rust. The full parallel run has 12 393 cases; all are equal except Django-served `users/me/`. The 13 differences that run found in notifications and rules were fixed, and those two endpoints re-run at 1 241/1 241 equal.
+- Bugs found and fixed:
+  - DRF registers `rbac/permissions/roles` and `/assigned_by_roles` ahead of `rbac/permissions`, so those paths are now declined;
+  - `ModelChoiceField` does check for NUL;
+  - a join that the filterset adds must not exist yet when `ObjectFilter` runs its `exists()` (new `DjangoQuery::demote_join`).
+- The harness now runs tokens in parallel (`API_JOBS`, default 8). On one image it produced the same buckets and the same Rust-served set as the sequential run, and a full run takes about 15 minutes instead of about 50.
+- `core/applications` is deferred to the policy-engine milestone: its list evaluates policies, and expression policies are Python.
+
+### Exact next action
+`core/authenticated_sessions`, `core/application_entitlements`, `rbac/permissions/roles`, `rbac/permissions/assigned_by_roles`; then close M7 with a list of what stays on Django and why.
+
 ## Batch 18 — 2026-10-31
 
 - M7 part 4: `core/users` and `core/groups` are served from Rust, including the reproduced R2 `autocomplete`. The full read-API run is **9 431 equal + 3 nondeterministic of 9 435**, with 9 004 answered by Rust; the one difference is `users/me/`, which Django serves and whose `system_permissions` order varies. The schema guard is clean.

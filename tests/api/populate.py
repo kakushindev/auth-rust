@@ -158,6 +158,43 @@ for username, name, attributes in [
 Role.objects.get(name="m6-object").assign_perms(
     "authentik_core.view_user", User.objects.get(username="m7-user-c")
 )
+# Events with a fixed action/app, so their lists do not change while the
+# stacks log their own events: JSON lookups on context, user and brand.
+from authentik.events.models import Event  # noqa: E402
+
+for i, (context, user, brand, ip) in enumerate([
+    ({"model": {"pk": "0a1b2c", "app": "authentik_core", "model_name": "user", "name": "x"}}, {"pk": 1, "username": "m7-ev"}, {"name": "m7-brand"}, "10.0.0.1"),
+    ({"model": {"pk": 12, "app": "authentik_rbac", "model_name": "role"}}, {"username": "akadmin"}, {}, None),
+    ({"username": "m7-ctx", "authorized_application": {"pk": "app-1"}, "f": 1.25}, {}, {"name": "m7-brand"}, "10.0.0.2"),
+    ({"http_request": {"path": "/m7", "args": {"q": ["\u00e9"]}}}, {"username": "m7-ev"}, {"pk": "b"}, "2001:db8::1"),
+]):
+    Event.objects.create(action="custom_m7", app=f"m7.app.{i % 2}", context=context, user=user, brand=brand, client_ip=ip)
+# Notifications: one per severity, with and without an event and links,
+# for akadmin and m6-direct (the owner filter).
+from authentik.events.models import Notification  # noqa: E402
+
+ev = Event.objects.filter(action="custom_m7").order_by("app", "event_uuid").first()
+for i, (username, severity, event, link) in enumerate([
+    ("akadmin", "notice", ev, "https://example.test/n?a=1&b=\u00e9"),
+    ("akadmin", "alert", None, None),
+    ("m6-direct", "warning", ev, None),
+    ("m6-direct", "notice", None, ""),
+]):
+    Notification.objects.create(
+        user=User.objects.get(username=username), severity=severity, body=f"m7 body {i} \"q\"",
+        event=event, hyperlink=link, hyperlink_label="open" if link else None, seen=i % 2 == 1,
+    )
+# Notification rules: with a destination group (nested GroupSerializer),
+# without one, with several transports, and an object-level grant.
+from authentik.events.models import NotificationRule  # noqa: E402
+
+rule_a = NotificationRule.objects.create(name="m7-rule-a", severity="alert", destination_group=m7_group)
+rule_a.transports.set(NotificationTransport.objects.filter(name__startswith="m7-"))
+NotificationRule.objects.create(name="m7-rule-b", severity="notice", destination_event_user=True)
+rule_c = NotificationRule.objects.create(
+    name="m7-rule-c", severity="warning", destination_group=Group.objects.get(name="m6-g-super-child")
+)
+Role.objects.get(name="m6-object").assign_perms("authentik_events.view_notificationrule", rule_c)
 transaction.commit()
 print(f"[populate] tokens for {len(subjects)} subjects")
 print("[populate] ok")

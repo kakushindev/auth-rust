@@ -57,7 +57,7 @@ macro_rules! col {
 
 const FROM: &str = "\"authentik_core_user\"";
 /// Django's select list (`attributes` read as text for rendering).
-const SELECT: &str = concat!(
+pub(crate) const SELECT: &str = concat!(
     col!("id"),
     ", ",
     col!("password"),
@@ -479,13 +479,16 @@ async fn is_superuser(pool: &sqlx::PgPool, id: i32) -> Result<bool, Decline> {
     .map_err(db)
 }
 
-/// `UserSerializer(rows, many=True).data`. Avatars are resolved for every
+/// `UserSerializer(rows, many=True).data`; `prefetched` when the rows come
+/// from `UserViewSet.get_queryset` (its `groups`/`roles` prefetches), not
+/// from a relation such as `Token.user`. Avatars are resolved for every
 /// row before any cache write, so a cache miss still declines cleanly.
 pub(crate) async fn serialize_users(
     ctx: &Context<'_>,
     tenant: &drf::Tenant,
     query: &QueryDict,
     rows: &[PgRow],
+    prefetched: bool,
 ) -> Result<Vec<UserData>, Decline> {
     let ids: Vec<i32> = rows
         .iter()
@@ -497,12 +500,12 @@ pub(crate) async fn serialize_users(
     let groups = if ids.is_empty() {
         Vec::new()
     } else {
-        groups_of(ctx.pool, &ids, with_groups).await?
+        groups_of(ctx.pool, &ids, prefetched && with_groups).await?
     };
     let roles = if ids.is_empty() {
         Vec::new()
     } else {
-        roles_of(ctx.pool, &ids, with_roles).await?
+        roles_of(ctx.pool, &ids, prefetched && with_roles).await?
     };
     let install_id = ak_auth::session::install_id(ctx.pool)
         .await
@@ -651,7 +654,7 @@ pub async fn list(
         return Ok(drf::detail(404, "Invalid page.", ALLOW_LIST));
     };
     let rows = qs.fetch(ctx.pool, &order, Some(page.slice())).await?;
-    let results = serialize_users(ctx, &tenant, query, &rows).await?;
+    let results = serialize_users(ctx, &tenant, query, &rows, true).await?;
     let autocomplete =
         RawValue::from_string(AUTOCOMPLETE.to_owned()).map_err(|_| Decline("autocomplete"))?;
     Ok(drf::json(
@@ -711,7 +714,7 @@ pub async fn retrieve(
     .map_err(|_| Decline("object permission raised"))?;
     match access {
         Access::Allow => {
-            let mut users = serialize_users(ctx, &tenant, query, &rows).await?;
+            let mut users = serialize_users(ctx, &tenant, query, &rows, true).await?;
             let one = users.pop().ok_or(Decline("database error"))?;
             Ok(drf::json(200, &one, ALLOW_DETAIL))
         }

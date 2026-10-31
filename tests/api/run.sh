@@ -4,7 +4,9 @@
 # subject (populate.py), dump that as the shared snapshot, then run
 # reference, second reference and candidate from it and compare every read
 # API case (api_diff.py). The schema guard checks all databases afterwards.
-# Usage: CANDIDATE_IMAGE=... [API_ONLY=endpoint,...] run.sh [--keep]
+# Usage: CANDIDATE_IMAGE=... [API_ONLY=endpoint,...] [API_JOBS=n] run.sh [--keep]
+# API_JOBS (default 8) runs that many tokens concurrently; each token keeps
+# the suite order, and 1 is the fully sequential run.
 set -euo pipefail
 export PATH="$HOME/.cargo/bin:$PATH"
 cd "$(dirname "$0")/../.."
