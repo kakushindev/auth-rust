@@ -6,7 +6,7 @@ use crate::{
     Answer, Decline,
     drf::{self, Context, User},
     py::{QueryDict, search_smart_split, strip},
-    sql::{Bind, QuerySet},
+    sql::{Bind, DjangoQuery, QuerySet},
 };
 
 /// `forms.CharField.clean` (`strip=True`, `ProhibitNullCharactersValidator`).
@@ -91,4 +91,55 @@ pub(crate) async fn object_filter(
         }
     }
     Ok(Ok(()))
+}
+
+/// [`object_filter`] on a [`DjangoQuery`] (columns qualified by table).
+///
+/// # Errors
+///
+/// `Ok(Err(answer))` is its `PermissionDenied`.
+pub(crate) async fn django_object_filter(
+    ctx: &Context<'_>,
+    user: &User,
+    model: &Model<'_>,
+    qs: &mut DjangoQuery,
+    allow: &'static str,
+) -> Result<Result<(), Answer>, Decline> {
+    let filter = ak_rbac::object_filter(ctx.pool, user.subject(), model, false)
+        .await
+        .map_err(|_| Decline("object filter raised"))?;
+    if let ObjectFilter::Visible {
+        visible,
+        deny_if_empty,
+    } = filter
+    {
+        if let Visible::Pks(pks) = visible {
+            let p = qs.bind(Bind::TextArray(pks));
+            qs.filter(format!(
+                "\"{}\".\"{}\"::text = ANY({p})",
+                model.db_table, model.pk_column
+            ));
+        }
+        if deny_if_empty && !qs.exists(ctx.pool).await? {
+            return Ok(Err(drf::detail(
+                403,
+                "You do not have permission to perform this action.",
+                allow,
+            )));
+        }
+    }
+    Ok(Ok(()))
+}
+
+/// DRF `SearchFilter` on plain (single-valued) `columns`: one OR group per
+/// term, joined with AND.
+pub(crate) fn django_search(qs: &mut DjangoQuery, columns: &[&str], terms: &[String]) {
+    for term in terms {
+        let ors: Vec<String> = columns.iter().map(|c| qs.icontains(c, term)).collect();
+        qs.filter(if ors.len() == 1 {
+            ors.join("")
+        } else {
+            format!("({})", ors.join(" OR "))
+        });
+    }
 }

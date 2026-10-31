@@ -195,6 +195,7 @@ pub struct DjangoQuery {
     joins: Vec<&'static str>,
     conds: Vec<String>,
     binds: Vec<Bind>,
+    distinct: bool,
     empty: bool,
 }
 
@@ -206,6 +207,7 @@ impl DjangoQuery {
             joins: joins.to_vec(),
             conds: Vec::new(),
             binds: Vec::new(),
+            distinct: false,
             empty: false,
         }
     }
@@ -213,6 +215,11 @@ impl DjangoQuery {
     pub fn bind(&mut self, value: Bind) -> String {
         self.binds.push(value);
         format!("${}", self.binds.len())
+    }
+
+    /// `.distinct()`.
+    pub fn distinct(&mut self) {
+        self.distinct = true;
     }
 
     /// A join a lookup adds (once, in first-use order).
@@ -271,7 +278,8 @@ impl DjangoQuery {
         query
     }
 
-    /// `.count()`: `SELECT COUNT(*) AS "__count" …`.
+    /// `.count()`: `SELECT COUNT(*) AS "__count" …`, over a `DISTINCT`
+    /// subquery for a distinct queryset.
     ///
     /// # Errors
     ///
@@ -280,13 +288,30 @@ impl DjangoQuery {
         if self.empty {
             return Ok(0);
         }
-        let sql = format!("SELECT COUNT(*) AS \"__count\" {}", self.tail_sql());
+        let sql = if self.distinct {
+            format!(
+                "SELECT COUNT(*) FROM (SELECT DISTINCT {} {}) subquery",
+                self.select,
+                self.tail_sql()
+            )
+        } else {
+            format!("SELECT COUNT(*) AS \"__count\" {}", self.tail_sql())
+        };
         let row = self
             .query(sql)
             .fetch_one(pool)
             .await
             .map_err(|_| Decline("database error"))?;
         row.try_get(0).map_err(|_| Decline("database error"))
+    }
+
+    /// `.exists()`.
+    ///
+    /// # Errors
+    ///
+    /// A database error, as a decline.
+    pub async fn exists(&self, pool: &PgPool) -> Result<bool, Decline> {
+        Ok(self.count(pool).await? > 0)
     }
 
     /// The rows of `qs.order_by(order)[bottom:top]`; like Django, no query
@@ -304,7 +329,12 @@ impl DjangoQuery {
         if self.empty || slice.is_some_and(|(limit, _)| limit == 0) {
             return Ok(Vec::new());
         }
-        let mut sql = format!("SELECT {} {}", self.select, self.tail_sql());
+        let mut sql = format!(
+            "SELECT {}{} {}",
+            if self.distinct { "DISTINCT " } else { "" },
+            self.select,
+            self.tail_sql()
+        );
         if !order.is_empty() {
             let _ = write!(sql, " ORDER BY {}", order.join(", "));
         }

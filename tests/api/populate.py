@@ -55,6 +55,85 @@ ip_one = InitialPermissions.objects.create(
 )
 ip_one.permissions.set(perms[:1])
 Role.objects.get(name="m6-object").assign_perms("authentik_rbac.view_initialpermissions", ip_none)
+# Brands: every filterable relation set on some row, two client
+# certificates, a duplicated domain (not unique in the database), floats and
+# escapes in attributes, and an object-level view grant.
+from authentik.brands.models import Brand  # noqa: E402
+from authentik.crypto.models import CertificateKeyPair  # noqa: E402
+from authentik.flows.models import Flow  # noqa: E402
+
+certs = list(CertificateKeyPair.objects.order_by("name")[:2])
+flows = {f.slug: f for f in Flow.objects.all()}
+full = Brand.objects.create(
+    domain="m7-full.test",
+    branding_title='m7 "full" \u00e9',
+    branding_logo="/static/m7/logo.svg",
+    branding_favicon="/static/m7/favicon.ico",
+    branding_custom_css=".m7 { color: red; }\n",
+    branding_default_flow_background="/static/m7/bg.jpg",
+    flow_authentication=flows["default-authentication-flow"],
+    flow_invalidation=flows["default-invalidation-flow"],
+    flow_user_settings=flows["default-user-settings-flow"],
+    web_certificate=certs[0],
+    attributes={"f": 1.5, "e": 0.000001, "u": 18446744073709551615, "n": None, "s": "\u2028 \x01", "nested": {"z": 1, "a": [0.1]}},
+)
+full.client_certificates.set(certs)
+one = Brand.objects.create(domain="m7-one.test", branding_title="m7 one", attributes={})
+one.client_certificates.set(certs[-1:])
+Brand.objects.create(domain="m7-dup.test", branding_title="m7 dup a", web_certificate=certs[-1])
+Brand.objects.create(domain="m7-dup.test", branding_title="m7 dup b")
+Role.objects.get(name="m6-object").assign_perms("authentik_brands.view_brand", one)
+# Notification transports in every mode, with and without webhook mappings.
+from authentik.events.models import (  # noqa: E402
+    NotificationTransport,
+    NotificationWebhookMapping,
+    TransportMode,
+)
+
+body = NotificationWebhookMapping.objects.create(name="m7-body", expression="return {}")
+headers = NotificationWebhookMapping.objects.create(name="m7-headers", expression="return {}")
+NotificationTransport.objects.create(
+    name="m7-webhook", mode=TransportMode.WEBHOOK, webhook_url="https://hooks.example.test/a_b%",
+    webhook_mapping_body=body, webhook_mapping_headers=headers, send_once=True,
+)
+NotificationTransport.objects.create(
+    name="m7-slack \u00e9", mode=TransportMode.WEBHOOK_SLACK, webhook_url="https://slack.example.test/x",
+    webhook_mapping_body=body,
+)
+NotificationTransport.objects.create(
+    name="m7-email", mode=TransportMode.EMAIL, email_subject_prefix="", send_once=True,
+)
+Role.objects.get(name="m6-object").assign_perms("authentik_events.view_notificationwebhookmapping", headers)
+local = NotificationTransport.objects.create(name="m7-local", mode=TransportMode.LOCAL)
+Role.objects.get(name="m6-object").assign_perms("authentik_events.view_notificationtransport", local)
+# Certificate-key pairs: each generated algorithm, a certificate without
+# its key, NULL metadata, a microsecond expiry and an object-level grant.
+from datetime import UTC, datetime  # noqa: E402
+
+from authentik.crypto.builder import CertificateBuilder, PrivateKeyAlg  # noqa: E402
+
+generated = {}
+for alg in [PrivateKeyAlg.RSA, PrivateKeyAlg.ECDSA, PrivateKeyAlg.ED25519]:
+    builder = CertificateBuilder(f"m7-cert-{alg}")
+    builder.alg = alg
+    builder.build(subject_alt_names=["m7.example.test"], validity_days=30)
+    generated[alg] = builder.save()
+CertificateKeyPair.objects.create(
+    name="m7-cert-nokey", certificate_data=generated[PrivateKeyAlg.ECDSA].certificate_data,
+)
+CertificateKeyPair.objects.filter(pk=generated[PrivateKeyAlg.ED25519].pk).update(
+    cert_expiry=datetime(2030, 5, 6, 7, 8, 9, 120, tzinfo=UTC)
+)
+bare = CertificateKeyPair.objects.create(
+    name='m7-cert "bare" \u00e9', certificate_data=generated[PrivateKeyAlg.RSA].certificate_data,
+)
+CertificateKeyPair.objects.filter(pk=bare.pk).update(
+    cert_expiry=None, cert_subject=None, fingerprint_sha256=None, fingerprint_sha1=None,
+    key_type=None, managed="m7-managed",
+)
+Role.objects.get(name="m6-object").assign_perms(
+    "authentik_crypto.view_certificatekeypair", generated[PrivateKeyAlg.ECDSA]
+)
 transaction.commit()
 print(f"[populate] tokens for {len(subjects)} subjects")
 print("[populate] ok")

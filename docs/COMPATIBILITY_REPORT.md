@@ -201,7 +201,7 @@ Left to other milestones:
 - Which views use which lookup, owner field or create flag is route configuration (M7).
 - `get_objects_for_user` returns the matching primary keys rather than a composable filter. M7 will need it as SQL for paginated lists.
 
-## Read API (M7, part 1)
+## Read API (M7)
 
 New crate `rust/crates/ak-api`. The server's `read_api` hook (`src/server/core.rs`) runs after the request is rewritten into exactly what Django receives (forwarded headers, Host), and only for the routes in `src/server/compat.rs` `PORTED_ROUTES`. `ak-api` either produces Django's response or **declines before doing anything**, and the request then goes to Django unchanged. Declines cover:
 - session cookies (sessions write, M8);
@@ -224,11 +224,16 @@ Ported: DRF content negotiation; authentik's `TokenAuthentication` (403 rather t
 | `GET /api/v3/rbac/permissions/`, `/{pk}/` | same suite: every page at sizes 100 and 7 (permission names repeat, so the SQL is Django's own text so that ties come back in Django's order), all ordering sources, multi-field search, each filter including invalid and missing roles, retrieve with `int()` edge pks and duplicate-name rows | **1 241 / 1 241 equal, all answered by Rust** |
 | `GET /api/v3/rbac/initial_permissions/`, `/{pk}/` | same suite; tests/api/populate.py adds three rows, one with an object-level grant; nested `permissions_obj` uses `Permission`'s default ordering | **459 / 459 equal**, 452 by Rust (`ordering=permissions`, a duplicating m2m join, is declined) |
 
+| `GET /api/v3/core/brands/`, `/{pk}/` | same suite; tests/api/populate.py adds brands with every relation set, two client certificates, a duplicated domain and an object-level grant. Cases cover each of the 15 generated filters (UUID, char, `BooleanWidget`, FK and m2m model choices with invalid, missing, non-canonical and repeated values), m2m search through Django's `EXISTS`, ordering by FK columns, and `brands/current/` (a `detail=False` action, left to Django) | **1 360 / 1 360 equal**, 1 276 by Rust. Declines: pages containing the m4 brand whose `attributes` hold an integer orjson rejects (Django answers 500 there), `ordering=client_certificates` (a duplicating join), and two invalid m2m values (Django reports one by hash order) |
+| `GET /api/v3/events/transports/`, `/{pk}/` | same suite; every `TransportMode`, webhook mappings, `send_once`; `ChoiceFilter` (unstripped, case-sensitive), `BooleanWidget`, three-field search | **952 / 952 equal**, 935 by Rust (`used_by/` is not ported) |
+| `GET /api/v3/propertymappings/notification/`, `/{pk}/` | same suite; multi-table inheritance join to `authentik_core_propertymapping` | **289 / 289 equal, all answered by Rust** |
+| `GET /api/v3/crypto/certificatekeypairs/`, `/{pk}/` | same suite; generated RSA/ECDSA/Ed25519 pairs, a certificate without key, NULL metadata, a microsecond expiry; the `managed` JWT key excluded; `has_key` (`NullBooleanSelect`) and `key_type` (`MultipleChoiceFilter`, first invalid value in request order) | **918 / 918 equal**, 901 by Rust (`generate/` is not ported) |
+
 Also ported for these: Django's `jsonb` → `json.loads` → orjson rendering (`ak_api::json`: key order, int/float split, `ryu` float forms as checked against orjson in the image), and the generated app/model verbose-name registry (`scripts/gen_api_registry.py`). The model field's message `“x” is not a valid UUID.` wins over the choice field's "Select a valid choice".
 
 Upstream behavior reproduced as is: `users=<id>&inherited=true` (and `groups=…&inherited=true`) replaces the queryset with `all_roles()`, dropping the search and object-permission restriction; `users=1.5` matches user 1; `managed=None` matches the NULL choice text.
 
-**Blocked by R2:** `core/users`, `core/groups` and `events/events` define `get_ql_fields`. Their list responses therefore carry an `autocomplete` value that the Enterprise search app builds from its QL schema code even without a license. Serving those three endpoints from Rust means reproducing Enterprise output, which needs an owner decision.
+**R2, decided to reproduce:** `core/users`, `core/groups` and `events/events` define `get_ql_fields`, so their list responses carry an `autocomplete` object that the Enterprise search app builds even without a license. The owner decided on 2026-10-31 that Rust reproduces it; MIGRATION_PLAN R2 specifies the output. Not served yet: those viewsets also need `UserSerializer`.
 
 ## Not verified / open
 

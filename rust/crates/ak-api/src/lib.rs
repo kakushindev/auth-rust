@@ -11,6 +11,7 @@
 //! every route against the pinned reference.
 
 pub mod drf;
+pub mod filters;
 pub mod json;
 pub mod pagination;
 pub mod py;
@@ -50,6 +51,14 @@ enum Route<'a> {
     PermissionsRetrieve(&'a str),
     InitialPermissionsList,
     InitialPermissionsRetrieve(&'a str),
+    BrandsList,
+    BrandsRetrieve(&'a str),
+    TransportsList,
+    TransportsRetrieve(&'a str),
+    WebhookMappingsList,
+    WebhookMappingsRetrieve(&'a str),
+    CertificateKeyPairsList,
+    CertificateKeyPairsRetrieve(&'a str),
 }
 
 /// A `DefaultRouter` path under one viewset prefix.
@@ -58,33 +67,60 @@ enum Viewset<'a> {
     Detail(&'a str),
 }
 
-/// `prefix` itself (list) or `prefix{pk}/` (detail).
-fn viewset<'a>(path: &'a str, prefix: &str) -> Option<Viewset<'a>> {
+/// `prefix` itself (list) or `prefix{pk}/` (detail). The router lists a
+/// viewset's `detail=False` actions (`actions`) before its detail route,
+/// so `prefix{action}/` is never a pk.
+fn viewset<'a>(path: &'a str, prefix: &str, actions: &[&str]) -> Option<Viewset<'a>> {
     let rest = path.strip_prefix(prefix)?;
     if rest.is_empty() {
         return Some(Viewset::List);
     }
     let pk = rest.strip_suffix('/')?;
-    (!pk.is_empty() && !pk.contains(['/', '.'])).then_some(Viewset::Detail(pk))
+    (!pk.is_empty() && !pk.contains(['/', '.']) && !actions.contains(&pk))
+        .then_some(Viewset::Detail(pk))
 }
 
 fn route(path: &str) -> Option<Route<'_>> {
-    if let Some(v) = viewset(path, "/api/v3/rbac/roles/") {
+    if let Some(v) = viewset(path, "/api/v3/rbac/roles/", &[]) {
         return Some(match v {
             Viewset::List => Route::RolesList,
             Viewset::Detail(pk) => Route::RolesRetrieve(pk),
         });
     }
-    if let Some(v) = viewset(path, "/api/v3/rbac/initial_permissions/") {
+    if let Some(v) = viewset(path, "/api/v3/rbac/initial_permissions/", &[]) {
         return Some(match v {
             Viewset::List => Route::InitialPermissionsList,
             Viewset::Detail(pk) => Route::InitialPermissionsRetrieve(pk),
         });
     }
-    if let Some(v) = viewset(path, "/api/v3/rbac/permissions/") {
+    if let Some(v) = viewset(path, "/api/v3/rbac/permissions/", &[]) {
         return Some(match v {
             Viewset::List => Route::PermissionsList,
             Viewset::Detail(pk) => Route::PermissionsRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/core/brands/", &["current"]) {
+        return Some(match v {
+            Viewset::List => Route::BrandsList,
+            Viewset::Detail(pk) => Route::BrandsRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/events/transports/", &[]) {
+        return Some(match v {
+            Viewset::List => Route::TransportsList,
+            Viewset::Detail(pk) => Route::TransportsRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/propertymappings/notification/", &[]) {
+        return Some(match v {
+            Viewset::List => Route::WebhookMappingsList,
+            Viewset::Detail(pk) => Route::WebhookMappingsRetrieve(pk),
+        });
+    }
+    if let Some(v) = viewset(path, "/api/v3/crypto/certificatekeypairs/", &["generate"]) {
+        return Some(match v {
+            Viewset::List => Route::CertificateKeyPairsList,
+            Viewset::Detail(pk) => Route::CertificateKeyPairsRetrieve(pk),
         });
     }
     None
@@ -133,6 +169,38 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
             "rbac_initial_permissions",
             views::rbac_initial_permissions::retrieve(ctx, req, &query, pk).await,
         ),
+        Route::BrandsList => (
+            "core_brands",
+            views::core_brands::list(ctx, req, &query).await,
+        ),
+        Route::BrandsRetrieve(pk) => (
+            "core_brands",
+            views::core_brands::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::TransportsList => (
+            "events_transports",
+            views::events_notification_transports::list(ctx, req, &query).await,
+        ),
+        Route::TransportsRetrieve(pk) => (
+            "events_transports",
+            views::events_notification_transports::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::WebhookMappingsList => (
+            "propertymappings_notification",
+            views::events_notification_mappings::list(ctx, req, &query).await,
+        ),
+        Route::WebhookMappingsRetrieve(pk) => (
+            "propertymappings_notification",
+            views::events_notification_mappings::retrieve(ctx, req, &query, pk).await,
+        ),
+        Route::CertificateKeyPairsList => (
+            "crypto_certificatekeypairs",
+            views::crypto_certificatekeypairs::list(ctx, req, &query).await,
+        ),
+        Route::CertificateKeyPairsRetrieve(pk) => (
+            "crypto_certificatekeypairs",
+            views::crypto_certificatekeypairs::retrieve(ctx, req, &query, pk).await,
+        ),
     };
     match result {
         Ok(answer) => Outcome::Serve {
@@ -161,6 +229,11 @@ mod tests {
         assert!(route("/api/v3/rbac/roles/a.b/").is_none());
         assert!(route("/api/v3/rbac/roles/abc/used_by/").is_none());
         assert!(route("/api/v3/rbac/roles").is_none());
+        assert!(route("/api/v3/core/brands/current/").is_none());
+        assert!(matches!(
+            route("/api/v3/core/brands/currentx/"),
+            Some(Route::BrandsRetrieve("currentx"))
+        ));
         assert!(handles("GET", "/api/v3/rbac/roles/"));
         assert!(!handles("POST", "/api/v3/rbac/roles/"));
     }

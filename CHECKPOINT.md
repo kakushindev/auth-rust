@@ -2,6 +2,23 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 17 — 2026-10-31
+
+- M7 part 3: four more viewsets read from Rust: `core/brands`, `events/transports`, `propertymappings/notification` and `crypto/certificatekeypairs`. The whole read API passes `tests/api/run.sh` with **7 089/7 089 equal** (6 925 Rust-served); the schema guard is clean on all 3 databases.
+- New `ak-api` pieces:
+  - `filters.rs`: generic django-filter fields (`CharFilter`, `ChoiceFilter`, both boolean widgets, `UUIDFilter`, FK and m2m `ModelChoiceFilter`);
+  - `drf::datetime`;
+  - `DjangoQuery` versions of `ObjectFilter` and `SearchFilter`;
+  - router support for `detail=False` actions (`brands/current/`, `certificatekeypairs/generate/`).
+- Found while doing it:
+  - Booleans generated from `filterset_fields` use `BooleanWidget` (`true/false/1/0`), while declared filters use `NullBooleanSelect` (`2/3`).
+  - Django picks which of several invalid m2m values to report in per-process hash order, so Rust declines that case.
+  - `jsonb` stores `1e20` as an integer, which orjson cannot render (Django 500).
+- **R2 decided: reproduce** the Enterprise QL `autocomplete` (owner). It is specified in MIGRATION_PLAN R2: users and groups are static, and events adds `SELECT DISTINCT app … ORDER BY app`.
+
+### Exact next action
+Port a `UserSerializer` (avatar providers; gravatar is a cached outbound check). Then serve `core/users` and `core/groups` with the reproduced `autocomplete`, followed by `core/tokens`, `core/applications`, `events/events` and the remaining `events` viewsets (`events/rules` embeds `GroupSerializer`).
+
 ## Batch 16 — 2026-10-31
 
 - M7 part 2: `rbac/permissions` (`DjangoQuery` emits Django's exact SQL so ordering ties match) and `rbac/initial_permissions` (nested `PermissionSerializer`, `Permission` default ordering) are verified. All RBAC read endpoints pass: **3 570/3 570 equal**, 3 524 Rust-served, schema clean.

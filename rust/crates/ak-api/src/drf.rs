@@ -318,6 +318,17 @@ pub fn permission_denied(user: &User, allow: &'static str) -> Answer {
     }
 }
 
+/// DRF `DateTimeField.to_representation` under `TIME_ZONE = "UTC"`:
+/// `isoformat()` (microseconds only when non-zero), `+00:00` as `Z`.
+pub fn datetime(value: DateTime<Utc>) -> String {
+    use chrono::Timelike as _;
+    if value.nanosecond() / 1000 == 0 {
+        value.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+    } else {
+        value.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use http::HeaderValue;
@@ -355,5 +366,14 @@ mod tests {
             &map(&[(header::COOKIE, "a=1; authentik_session=x")]),
             "authentik_session"
         ));
+    }
+
+    #[test]
+    fn datetime_matches_drf() {
+        use chrono::TimeZone as _;
+        let t = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        assert_eq!(datetime(t), "2026-01-02T03:04:05Z");
+        let t = t + chrono::Duration::microseconds(120);
+        assert_eq!(datetime(t), "2026-01-02T03:04:05.000120Z");
     }
 }

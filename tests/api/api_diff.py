@@ -283,10 +283,258 @@ def initial_permission_cases():
     return cases
 
 
+def brand_cases():
+    base = "/api/v3/core/brands/"
+    rows = all_pages(base + "?domain=m7-full.test") + all_pages(base + "?default=true")
+    rows += all_pages(base + "?search=m7-")
+    full = next(r for r in rows if r["domain"] == "m7-full.test")
+    default = next(r for r in rows if r["default"])
+    certs = full["client_certificates"]
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        "",
+        q(page_size=1),
+        q(page_size=1, page=3),
+        q(page_size=2, page=3),
+        q(page="last", page_size=2),
+        q(page=99),
+        q(ordering="-domain", page_size=4),
+        q(ordering="-domain,branding_title", page_size=4),
+        q(ordering="default,-domain", page_size=3),
+        q(ordering="branding_title", search="m7"),
+        q(ordering="flow_authentication,domain", search="m7"),
+        q(ordering="-web_certificate,domain", search="m7"),
+        q(ordering="attributes", search="m7"),
+        q(ordering="client_certificates"),
+        q(ordering="-brand_uuid", search="m7"),
+        q(ordering="bogus", search="m7"),
+        q(search="m7"),
+        q(search="m7 dup"),
+        q(search='"m7 dup"'),
+        q(search="Self-signed"),
+        q(search="internal jwt"),
+        q(search="nothing-matches"),
+        q(search="a\x00b"),
+        q(search="m7", default="false"),
+        q(search="m7", client_certificates=certs[0]),
+        q(search="Self-signed", web_certificate=certs[0]),
+        q(brand_uuid=full["brand_uuid"]),
+        q(brand_uuid=full["brand_uuid"].upper()),
+        q(brand_uuid="bogus"),
+        q(brand_uuid=" "),
+        q(domain="m7-dup.test"),
+        q(domain=" m7-one.test "),
+        q(domain="a\x00b"),
+        q(default="true"),
+        q(default="True"),
+        q(default="2"),
+        q(default="1"),
+        q(default="maybe"),
+        q(default="false", search="m7"),
+        q(default="3", search="m7"),
+        q(default="0", search="m7"),
+        q(default="TRUE"),
+        q(default="FaLsE", search="m7"),
+        q(branding_title="m7 one"),
+        q(branding_logo="/static/m7/logo.svg"),
+        q(branding_favicon="/static/m7/favicon.ico"),
+        q(branding_default_flow_background="/static/m7/bg.jpg"),
+        q(flow_authentication=full["flow_authentication"]),
+        q(flow_invalidation=full["flow_invalidation"], domain="m7-full.test"),
+        q(flow_user_settings=full["flow_user_settings"], search="m7"),
+        q(flow_recovery=missing),
+        q(flow_unenrollment="bogus"),
+        q(flow_device_code="a\x00b"),
+        q(web_certificate=certs[0], search="m7"),
+        q(web_certificate=missing),
+        q(client_certificates=certs[0]),
+        q(client_certificates=certs[-1]),
+        q(client_certificates=certs[0].upper()),
+        q(client_certificates=missing),
+        q(client_certificates="bogus"),
+        "?" + urllib.parse.urlencode([("client_certificates", c) for c in certs]),
+        "?" + urllib.parse.urlencode([("client_certificates", certs[0])] * 2),
+        # Two invalid values: Django reports whichever comes first in a
+        # frozenset (per-process hash order), so Rust declines.
+        "?" + urllib.parse.urlencode([("client_certificates", certs[0]), ("domain", "m7-one.test")]),
+        q(client_certificates=certs[0], page_size=1, page=2),
+        q(brand_uuid="bogus", domain="a\x00b", flow_recovery="bogus"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['brand_uuid']}/" for r in rows if r["brand_uuid"] != default["brand_uuid"]]
+    cases += [
+        f"{base}{default['brand_uuid']}/",
+        f"{base}{full['brand_uuid'].upper()}/",
+        f"{base}{full['brand_uuid'].replace('-', '')}/",
+        f"{base}{missing}/",
+        f"{base}bogus/",
+        f"{base}current/",
+        f"{base}{full['brand_uuid']}/{q(domain='m7-one.test')}",
+        f"{base}{full['brand_uuid']}/{q(brand_uuid='bogus')}",
+        f"{base}{full['brand_uuid']}/{q(search='nothing-matches')}",
+        f"{base}{full['brand_uuid']}/{q(client_certificates=certs[0])}",
+    ]
+    return cases
+
+
+def transport_cases():
+    base = "/api/v3/events/transports/"
+    rows = all_pages(base)
+    webhook = next(r for r in rows if r["name"] == "m7-webhook")
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        "",
+        q(page_size=2),
+        q(page_size=2, page=2),
+        q(page="last", page_size=4),
+        q(page=0),
+        q(ordering="-name"),
+        q(ordering="mode,name"),
+        q(ordering="-send_once,name"),
+        q(ordering="webhook_mapping_body,name"),
+        q(ordering="-webhook_mapping_headers,-name"),
+        q(ordering="email_subject_prefix,name"),
+        q(ordering="email_template,-pk"),
+        q(ordering="webhook_url,name"),
+        q(ordering="mode_verbose"),
+        q(ordering="-pk"),
+        q(search="m7"),
+        q(search="webhook"),
+        q(search="a_b%"),
+        q(search="EXAMPLE.test"),
+        q(search="m7 slack"),
+        q(search="\u00e9"),
+        q(search="a\x00b"),
+        q(name="m7-local"),
+        q(name=" m7-local "),
+        q(name="a\x00b"),
+        q(mode="email"),
+        q(mode="webhook_slack"),
+        q(mode=" email"),
+        q(mode="EMAIL"),
+        q(mode="bogus"),
+        q(mode="a\x00b"),
+        q(mode=""),
+        q(webhook_url="https://slack.example.test/x"),
+        q(webhook_url=""),
+        q(send_once="true"),
+        q(send_once="False"),
+        q(send_once="maybe"),
+        q(send_once="1"),
+        q(send_once="0"),
+        q(send_once="2"),
+        q(send_once="TRUE"),
+        q(mode="bogus", name="a\x00b"),
+        q(mode="local", send_once="true"),
+        q(search="m7", mode="webhook", ordering="-name"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pk']}/" for r in rows]
+    cases += [
+        f"{base}{webhook['pk'].upper()}/",
+        f"{base}{missing}/",
+        f"{base}bogus/",
+        f"{base}{webhook['pk']}/{q(mode='local')}",
+        f"{base}{webhook['pk']}/{q(mode='bogus')}",
+        f"{base}{webhook['pk']}/used_by/",
+    ]
+    return cases
+
+
+def webhook_mapping_cases():
+    base = "/api/v3/propertymappings/notification/"
+    rows = all_pages(base)
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        "",
+        q(page_size=1, page=2),
+        q(ordering="-name"),
+        q(ordering="expression,-pk"),
+        q(ordering="managed"),
+        q(search="m7"),
+        q(search="HEADERS"),
+        q(search="a\x00b"),
+        q(name="m7-body"),
+        q(name=" m7-body "),
+        q(name="a\x00b"),
+        q(name="nope"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pk']}/" for r in rows]
+    cases += [f"{base}{missing}/", f"{base}bogus/", f"{base}{rows[0]['pk']}/{q(name='nope')}"]
+    return cases
+
+
+def certificate_cases():
+    base = "/api/v3/crypto/certificatekeypairs/"
+    rows = all_pages(base)
+    rsa = next(r for r in rows if r["name"] == "m7-cert-rsa")
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        "",
+        q(page_size=3),
+        q(page_size=3, page=2),
+        q(page="last", page_size=3),
+        q(page="x"),
+        q(ordering="-name"),
+        q(ordering="cert_expiry,name"),
+        q(ordering="-cert_expiry,name"),
+        q(ordering="cert_subject,name"),
+        q(ordering="key_type,-name"),
+        q(ordering="-managed,name"),
+        q(ordering="fingerprint_sha1"),
+        q(ordering="-fingerprint_sha256"),
+        q(ordering="private_key_available"),
+        q(ordering="key_data"),
+        q(ordering="-pk"),
+        q(search="m7"),
+        q(search="CERT-E"),
+        q(search="bare"),
+        q(search="a\x00b"),
+        q(name="m7-cert-rsa"),
+        q(name=" m7-cert-rsa "),
+        q(name="a\x00b"),
+        q(managed="m7-managed"),
+        q(managed="goauthentik.io/crypto/jwt-managed"),
+        q(managed=""),
+        q(managed="a\x00b"),
+        q(has_key="true"),
+        q(has_key="false"),
+        q(has_key="1"),
+        q(has_key="x"),
+        q(key_type="rsa"),
+        q(key_type="ed25519"),
+        q(key_type="RSA"),
+        q(key_type=""),
+        q(key_type="bogus"),
+        "?" + urllib.parse.urlencode([("key_type", "rsa"), ("key_type", "ec")]),
+        "?" + urllib.parse.urlencode([("key_type", "rsa"), ("key_type", "")]),
+        "?" + urllib.parse.urlencode([("key_type", "rsa"), ("key_type", "x"), ("key_type", "y")]),
+        q(has_key="true", key_type="ec", search="m7"),
+        q(name="a\x00b", managed="a\x00b", key_type="y", has_key="x"),
+        q(key_type="y", search="a\x00b"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pk']}/" for r in rows]
+    cases += [
+        f"{base}{rsa['pk'].upper()}/",
+        f"{base}{missing}/",
+        f"{base}bogus/",
+        f"{base}generate/",
+        f"{base}{rsa['pk']}/{q(key_type='ec')}",
+        f"{base}{rsa['pk']}/{q(key_type='x')}",
+    ]
+    return cases
+
+
 ENDPOINTS = {
     "rbac_roles": role_cases,
     "rbac_permissions": permission_cases,
     "rbac_initial_permissions": initial_permission_cases,
+    "core_brands": brand_cases,
+    "events_transports": transport_cases,
+    "propertymappings_notification": webhook_mapping_cases,
+    "crypto_certificatekeypairs": certificate_cases,
 }
 
 

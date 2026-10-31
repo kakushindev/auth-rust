@@ -31,6 +31,14 @@ pub(super) const PORTED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/v3/rbac/permissions/{pk}/"),
     ("GET", "/api/v3/rbac/initial_permissions/"),
     ("GET", "/api/v3/rbac/initial_permissions/{pk}/"),
+    ("GET", "/api/v3/core/brands/"),
+    ("GET", "/api/v3/core/brands/{pk}/"),
+    ("GET", "/api/v3/events/transports/"),
+    ("GET", "/api/v3/events/transports/{pk}/"),
+    ("GET", "/api/v3/propertymappings/notification/"),
+    ("GET", "/api/v3/propertymappings/notification/{pk}/"),
+    ("GET", "/api/v3/crypto/certificatekeypairs/"),
+    ("GET", "/api/v3/crypto/certificatekeypairs/{pk}/"),
 ];
 
 pub(super) fn build_router(server: &Arc<Server>) -> Router {
@@ -49,5 +57,6 @@ mod tests {
             assert!(ak_api::handles(method, &path), "{method} {pattern}");
         }
         assert!(!ak_api::handles("GET", "/api/v3/core/users/"));
+        assert!(!ak_api::handles("GET", "/api/v3/core/brands/current/"));
     }
 }
