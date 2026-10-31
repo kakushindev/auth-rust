@@ -9,6 +9,7 @@ authentik is Copyright (c) 2023 Jens Langhammer and licensed under the MIT licen
 | Rust module | Upstream behavior it reproduces | Upstream license |
 | --- | --- | --- |
 | `rust/crates/ak-passwords` | `django.contrib.auth.hashers` (Django 5.2.17, BSD-3-Clause) as configured by authentik; argon2-cffi and pyca/bcrypt behavior | Django: BSD-3-Clause; argon2-cffi: MIT; pyca/bcrypt: Apache-2.0 |
+| `rust/crates/ak-api` | authentik 2026.2.7 API views (`authentik.rbac.api.roles`, `authentik.api`, `authentik.rbac.filters`); Django REST framework 3.16.1, django-filter 25.2 and Django 5.2.17 request/filter/pagination semantics; the observable *unlicensed* behavior of the Enterprise search app (it defers to DRF's `SearchFilter`, and `autocomplete` is `{}` for views without QL fields; no Enterprise code reproduced) | authentik: MIT; DRF, django-filter, Django: BSD-3-Clause |
 
 ## Upstream files copied verbatim
 

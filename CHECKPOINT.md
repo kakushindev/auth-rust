@@ -2,6 +2,15 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 15 — 2026-10-31
+
+- **M7 part 1**: new crate `rust/crates/ak-api` (DRF/Django read pipeline: admission and declines, content negotiation, token authentication, `ObjectPermissions`, Enterprise-search backend order with DRF `SearchFilter` fallback, `ObjectFilter`, django-filter primitives, ordering, `AutocompletePagination`, Python parsing semantics), wired in `src/server/core.rs` `read_api` with routes registered in `compat.rs`.
+- `GET /api/v3/rbac/roles/` and `/{pk}/` are verified: `tests/api/run.sh` shows **1 870/1 870 equal** and 1 831 Rust-served. Found while doing it: Enterprise search reorders the backends and adds `autocomplete`; django-filter's `NumberFilter` caps at the float `1e50`; `NullBooleanSelect` ignores `1`; an invalid `groups` UUID is Django's own 500.
+- **Owner decision needed (R2)**: the `autocomplete` of `core/users`, `core/groups` and `events/events` comes from Enterprise code.
+
+### Exact next action
+M7 continues with the endpoints not touched by R2: `rbac/permissions` (Django-identical SQL, because permission names repeat and tie order is observable), `rbac/initial_permissions`, `core/tokens`, `core/brands`, `core/applications`, then `crypto/certificatekeypairs` and the `events` viewsets other than `events/events`. Each needs its serializer port and a case list in `tests/api/api_diff.py`.
+
 ## Batch 14 — 2026-10-31
 
 - **M6 done**: new crate `rust/crates/ak-rbac`, which ports authentik's role-based permissions through the `ak-guardian` fork. It covers `has_perm`/`has_perms`, `get_objects_for_user`, `ObjectFilter`, DRF `ObjectPermissions` and `permission_required`.

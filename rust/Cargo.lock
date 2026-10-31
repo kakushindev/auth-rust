@@ -27,6 +27,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ak-api"
+version = "2026.2.7"
+dependencies = [
+ "ak-auth",
+ "ak-rbac",
+ "chrono",
+ "http",
+ "percent-encoding",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "ak-auth"
 version = "2026.2.7"
 dependencies = [
@@ -399,6 +415,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 name = "authentik"
 version = "2026.2.7"
 dependencies = [
+ "ak-api",
  "arc-swap",
  "argh",
  "askama",
@@ -411,6 +428,7 @@ dependencies = [
  "axum-extra",
  "axum-server",
  "base64 0.23.0",
+ "chrono",
  "color-eyre",
  "eyre",
  "futures",

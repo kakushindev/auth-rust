@@ -6,13 +6,13 @@ use ak_axum::{
     extract::{client_ip::ClientIp, host::Host, scheme::Scheme, trusted_proxy::TrustedProxy},
     router::wrap_router,
 };
-use ak_common::config;
+use ak_common::{config, db};
 use axum::{
     Extension, Router,
     body::Body,
     extract::{OriginalUri, Request, State},
     http::{
-        HeaderName, HeaderValue, Method, StatusCode, Uri,
+        HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri,
         header::{
             ACCEPT, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, HOST, RETRY_AFTER, TRANSFER_ENCODING,
             UPGRADE, X_CONTENT_TYPE_OPTIONS,
@@ -26,7 +26,7 @@ use http_body_util::BodyExt as _;
 use hyper::{body::Incoming, upgrade::OnUpgrade};
 use hyper_util::rt::TokioIo;
 use serde_json::json;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 use crate::server::{GUNICORN_READY, Server, go_compat};
 
@@ -70,6 +70,59 @@ fn is_django_http_method(method: &Method) -> bool {
         method.as_str(),
         "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "TRACE"
     )
+}
+
+/// authentik-rs (M7): the decoded path of a request `ak_api` might answer,
+/// under the default `web.path` only.
+fn read_api_path(request: &Request) -> Option<String> {
+    if config::get().web.path != "/" {
+        return None;
+    }
+    let path = go_compat::decoded_path(request.uri().path());
+    ak_api::handles(request.method().as_str(), &path).then_some(path)
+}
+
+/// authentik-rs (M7): `ak_api::serve`. Responses look proxied
+/// (`X-Powered-By`, an explicit length), as Django's do.
+async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Response> {
+    let ipc_key = std::fs::read_to_string(std::env::temp_dir().join(super::IPC_KEY_FILE)).ok();
+    let ctx = ak_api::Context {
+        pool: db::get(),
+        secret_key: &config::get().secret_key,
+        ipc_key: ipc_key.as_deref(),
+        now: chrono::Utc::now(),
+    };
+    let req = ak_api::ApiRequest {
+        path: &path,
+        query: &query,
+        headers: &headers,
+    };
+    let (route, answer) = match ak_api::serve(&ctx, &req).await {
+        ak_api::Outcome::Serve { route, answer } => (route, answer),
+        ak_api::Outcome::Decline(reason) => {
+            trace!(
+                reason = reason.0,
+                path, "read API declined, forwarding to Django"
+            );
+            return None;
+        }
+    };
+    let mut response = Response::new(Body::from(answer.body));
+    *response.status_mut() = StatusCode::from_u16(answer.status).ok()?;
+    for (name, value) in answer.headers {
+        response
+            .headers_mut()
+            .append(name, HeaderValue::from_str(&value).ok()?);
+    }
+    let length = axum::body::HttpBody::size_hint(response.body()).exact()?;
+    response.headers_mut().insert(CONTENT_LENGTH, length.into());
+    if std::env::var_os("AUTHENTIK_RS_API_TRACE").is_some_and(|v| !v.is_empty()) {
+        response
+            .headers_mut()
+            .insert("x-authentik-rs", HeaderValue::from_static(route));
+    }
+    response.extensions_mut().insert(go_compat::Proxied);
+    Some(response)
 }
 
 /// authentik-rs: net/http `isReplayable`.
@@ -272,6 +325,18 @@ async fn proxy_to_backend(
         request
             .headers_mut()
             .insert(X_FORWARDED_CLIENT_CERT, HeaderValue::from_str(&xfcc)?);
+    }
+
+    // authentik-rs (M7): the read API answered in Rust, deciding on the
+    // request exactly as Django would receive it; a decline forwards it to
+    // Django unchanged.
+    if upgrade.is_empty()
+        && let Some(path) = read_api_path(&request)
+    {
+        let query = request.uri().query().unwrap_or_default().to_owned();
+        if let Some(response) = read_api(path, query, request.headers().clone()).await {
+            return Ok(response);
+        }
     }
 
     // authentik-rs: Go's transport replays a request whose pooled connection

@@ -64,6 +64,8 @@ services:
     image: ${CANDIDATE_IMAGE:-authentik-rs-candidate:dev}
     depends_on: { cand-db: { condition: service_healthy } }
     environment:
+      # tests/api/run.sh: mark Rust-served API responses (X-Authentik-Rs).
+      AUTHENTIK_RS_API_TRACE: ${RS_API_TRACE:-}
       AUTHENTIK_POSTGRESQL__HOST: cand-db
       AUTHENTIK_POSTGRESQL__NAME: authentik
       AUTHENTIK_POSTGRESQL__USER: authentik

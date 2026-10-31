@@ -6,8 +6,10 @@
 //! pinned reference (see `docs/TEST_STRATEGY.md`); there is deliberately no
 //! runtime switch that could widen this set.
 //!
-//! The router is empty until the first endpoint is verified, so every
-//! request still reaches Django and behavior is identical to upstream.
+//! The read API (M7) is not routed here: `core::read_api` asks `ak_api`
+//! on the request as Django would receive it, and anything `ak_api`
+//! declines is forwarded unchanged. `PORTED_ROUTES` lists what it answers,
+//! with the suite that verified each route.
 
 use std::sync::Arc;
 
@@ -16,12 +18,13 @@ use axum::Router;
 use crate::server::Server;
 
 /// Method + path pattern of every route served by Rust, mirrored in
-/// `docs/COMPATIBILITY_REPORT.md`.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "read by tests until the first route is ported")
-)]
-pub(super) const PORTED_ROUTES: &[(&str, &str)] = &[];
+/// `docs/COMPATIBILITY_REPORT.md` (`{pk}` is DRF's `[^/.]+`). Verified by
+/// `tests/api/run.sh`.
+#[cfg_attr(not(test), expect(dead_code, reason = "the registry is checked by tests"))]
+pub(super) const PORTED_ROUTES: &[(&str, &str)] = &[
+    ("GET", "/api/v3/rbac/roles/"),
+    ("GET", "/api/v3/rbac/roles/{pk}/"),
+];
 
 pub(super) fn build_router(server: &Arc<Server>) -> Router {
     Router::new().with_state(Arc::clone(server))
@@ -32,8 +35,12 @@ mod tests {
     use super::PORTED_ROUTES;
 
     #[test]
-    fn no_unverified_routes() {
-        // Raise this together with the evidence in docs/feature-status.json.
-        assert!(PORTED_ROUTES.is_empty());
+    fn registry_matches_ak_api() {
+        // Raise this together with the evidence in docs/COMPATIBILITY_REPORT.md.
+        for (method, pattern) in PORTED_ROUTES {
+            let path = pattern.replace("{pk}", "00000000-0000-0000-0000-000000000000");
+            assert!(ak_api::handles(method, &path), "{method} {pattern}");
+        }
+        assert!(!ak_api::handles("GET", "/api/v3/core/users/"));
     }
 }

@@ -201,6 +201,31 @@ Left to other milestones:
 - Which views use which lookup, owner field or create flag is route configuration (M7).
 - `get_objects_for_user` returns the matching primary keys rather than a composable filter. M7 will need it as SQL for paginated lists.
 
+## Read API (M7, part 1)
+
+New crate `rust/crates/ak-api`. The server's `read_api` hook (`src/server/core.rs`) runs after the request is rewritten into exactly what Django receives (forwarded headers, Host), and only for the routes in `src/server/compat.rs` `PORTED_ROUTES`. `ak-api` either produces Django's response or **declines before doing anything**, and the request then goes to Django unchanged. Declines cover:
+- session cookies (sessions write, M8);
+- languages other than `en`/`en-US`;
+- `Accept` headers other than JSON (with no media-type parameters);
+- `?format=`;
+- non-default tenants or `web.path`;
+- any Enterprise license row;
+- tokens Django would delete while looking them up;
+- outpost or IPC identities;
+- inputs whose Python parsing is not ported (non-ASCII digits, `int(…, 16)` UUID syntax);
+- Django's own 500s (an invalid `groups` UUID);
+- more than 1000 query fields.
+
+Ported: DRF content negotiation; authentik's `TokenAuthentication` (403 rather than 401, as there is no `authenticate_header`); `ObjectPermissions`; the Enterprise search app's backend order. Without a license that order is `QLSearch`, which defers to DRF `SearchFilter` (`smart_split`, NUL → 400 list body), then `ObjectFilter` (403 when nothing is visible), django-filter, and `OrderingFilter`. Also ported: `AutocompletePagination` (`autocomplete: {}` for views without QL fields) with the tenant's page sizes, and Django's `QueryDict`, `int()`, `Decimal()` (including django-filter's `MaxValueValidator(1e50)` against the exact float), `NullBooleanSelect`, `uuid.UUID(hex=)` and `prep_for_like_query`.
+
+| Route | Evidence | Result |
+| --- | --- | --- |
+| `GET /api/v3/rbac/roles/`, `GET /api/v3/rbac/roles/{pk}/` | `tests/api/run.sh` (3 stacks from a snapshot populated by tests/models, tests/rbac and tests/api: 13 subjects with API tokens, plus no/invalid/expired/recovery tokens; 66 list queries covering pagination, ordering, search, every `RoleFilterSet` field and its invalid values, combined errors and repeated parameters; and retrieve for every role plus malformed and missing pks) | **1 870 / 1 870 equal**; 1 831 answered by Rust (marked with `X-Authentik-Rs` under `AUTHENTIK_RS_API_TRACE`), and the 39 declines answered by Django; schema guard clean on all 3 databases |
+
+Upstream behavior reproduced as is: `users=<id>&inherited=true` (and `groups=…&inherited=true`) replaces the queryset with `all_roles()`, dropping the search and object-permission restriction; `users=1.5` matches user 1; `managed=None` matches the NULL choice text.
+
+**Blocked by R2:** `core/users`, `core/groups` and `events/events` define `get_ql_fields`. Their list responses therefore carry an `autocomplete` value that the Enterprise search app builds from its QL schema code even without a license. Serving those three endpoints from Rust means reproducing Enterprise output, which needs an owner decision.
+
 ## Not verified / open
 
 - The 9 nondeterministic cases are compared only coarsely, so a real difference inside them would be masked. They need field-level masking, e.g. sorting `system_permissions` after checking set equality.

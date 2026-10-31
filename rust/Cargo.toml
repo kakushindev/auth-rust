@@ -158,6 +158,7 @@ url = "= 2.5.8"
 uuid = { version = "= 1.24.0", features = ["serde", "v4"] }
 
 # --- authentik-rs additions (not in upstream) ---
+http = "= 1.4.0"
 async-compression = { version = "= 0.4.41", features = ["tokio", "gzip", "deflate"] }
 httpdate = "= 1.0.3"
 socket2 = { version = "= 0.6.3", features = ["all"] }
@@ -320,7 +321,13 @@ publish.workspace = true
 
 [features]
 default = ["core", "proxy"]
-core = ["proxy", "ak-common/core", "dep:pyo3", "dep:sqlx"]
+core = [
+  "proxy",
+  "ak-common/core",
+  "dep:ak-api",
+  "dep:chrono",
+  "dep:pyo3",
+  "dep:sqlx"]
 proxy = [
   "ak-common/proxy",
   "dep:ak-client",
@@ -341,6 +348,8 @@ proxy = [
 pyo3-build-config.workspace = true
 
 [dependencies]
+ak-api = { path = "./crates/ak-api", optional = true }
+chrono = { workspace = true, optional = true }
 ak-axum.workspace = true
 ak-client = { workspace = true, optional = true }
 ak-common.workspace = true

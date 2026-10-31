@@ -9,3 +9,5 @@
 /tests/differential/http/last-report-web-path.json
 /tests/differential/http/noise-report.json
 .DS_Store
+/tests/api/last-report.json
+__pycache__/

@@ -97,7 +97,7 @@ pub(crate) struct Server {
 /// authentik-rs: `MetricsKeyFile` and `IPCKeyFile` in 2026.2.7's Go
 /// `internal/web`.
 const METRICS_KEY_FILE: &str = "authentik-core-metrics.key";
-const IPC_KEY_FILE: &str = "authentik-core-ipc.key";
+pub(super) const IPC_KEY_FILE: &str = "authentik-core-ipc.key";
 
 /// authentik-rs: `prepareKeys`: random keys that Django reads from the temp
 /// directory to authenticate the metrics scrape (`MetricsView`) and IPC

@@ -32,6 +32,10 @@ DATABASE_URL=… rust/target/debug/ak-schema-guard verify --baseline baseline/sc
 python3 scripts/gen_feature_matrix.py           # regenerate docs/FEATURE_MATRIX.md
 ```
 
+## Read API differential (M7)
+
+`tests/api/run.sh` populates a snapshot (tests/models, tests/rbac, tests/api tokens), runs reference, second reference and candidate from it, and replays `tests/api/api_diff.py`'s cases for every subject token. The candidate runs with `AUTHENTIK_RS_API_TRACE=1`, so Rust-served responses carry `X-Authentik-Rs`; the harness strips that header before comparing and counts it, so a silent fallback to Django cannot pass as coverage.
+
 ## Rules
 
 - A test that cannot detect a difference does not count. Each differential suite needs at least one seeded-failure check, as the schema guard drift test does.
