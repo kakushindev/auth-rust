@@ -195,6 +195,15 @@ rule_c = NotificationRule.objects.create(
     name="m7-rule-c", severity="warning", destination_group=Group.objects.get(name="m6-g-super-child")
 )
 Role.objects.get(name="m6-object").assign_perms("authentik_events.view_notificationrule", rule_c)
+# Entitlements: one name on two applications (name is unique per app, so
+# ordering by name ties), attributes, and an object-level grant.
+from authentik.core.models import Application, ApplicationEntitlement  # noqa: E402
+
+apps_m4 = list(Application.objects.order_by("slug")[:2])
+for app in apps_m4:
+    ApplicationEntitlement.objects.create(name="m7-ent-same", app=app, attributes={"m7": True})
+granted = ApplicationEntitlement.objects.create(name="m7-ent-solo", app=apps_m4[0], attributes={"x": [1, 2.5]})
+Role.objects.get(name="m6-object").assign_perms("authentik_core.view_applicationentitlement", granted)
 transaction.commit()
 print(f"[populate] tokens for {len(subjects)} subjects")
 print("[populate] ok")

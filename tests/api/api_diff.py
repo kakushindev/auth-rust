@@ -870,6 +870,68 @@ def rule_cases():
     return cases
 
 
+def assigned_by_roles_cases():
+    base = "/api/v3/rbac/permissions/assigned_by_roles/"
+    admin = all_results("/api/v3/core/users/?username=akadmin")[0]["pk"]
+    lists = [
+        "",
+        q(model="authentik_core.user"),
+        q(model="authentik_core.user", object_pk=admin),
+        q(model="authentik_core.user", object_pk=f" {admin} "),
+        q(model="authentik_core.application"),
+        q(model="authentik_rbac.initialpermissions", object_pk="1"),
+        q(model="authentik_core.user", page_size=1, page=2),
+        q(model="authentik_core.user", page_size=50),
+        q(model="authentik_core.user", page_size=3),
+        q(model="authentik_core.user", ordering="-name"),
+        q(model="authentik_core.user", ordering="pk"),
+        q(model="authentik_core.user", ordering="role_pk"),
+        q(model="authentik_core.user", ordering="roleobjectpermission_set"),
+        q(model="authentik_core.user", search="m6-o"),
+        q(model="authentik_core.user", search="a\x00b"),
+        q(model="AUTHENTIK_CORE.USER"),
+        q(model=" authentik_core.user"),
+        q(model="authentik_core.nope"),
+        q(model="authentik_core.user", object_pk="a\x00b"),
+        q(object_pk="1"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}x/", f"{base}x/assign/"]
+    return cases
+
+
+def entitlement_cases():
+    base = "/api/v3/core/application_entitlements/"
+    rows = all_pages(base + "?search=m7-ent")
+    app = rows[0]["app"]
+    missing = "00000000-0000-4000-8000-000000000000"
+    lists = [
+        q(search="m7-ent"),
+        q(search="m7-ent", ordering="-name"),
+        q(search="m7-ent", ordering="app,name"),
+        q(search="m7-ent", ordering="pbm_uuid"),
+        q(search="m7-ent", ordering="attributes"),
+        q(search="m7-ent", page_size=1, page=2),
+        q(search="true"),
+        q(search="m4-app"),
+        q(search="a\x00b"),
+        q(name="m7-ent-same"),
+        q(name="m7-ent-solo"),
+        q(name="a\x00b"),
+        q(pbm_uuid=rows[0]["pbm_uuid"]),
+        q(pbm_uuid="bogus"),
+        q(app=app),
+        q(app=missing),
+        q(app="bogus"),
+        q(app=app, search="solo"),
+        q(name="a\x00b", app="bogus", pbm_uuid="x"),
+    ]
+    cases = [base + suffix for suffix in lists]
+    cases += [f"{base}{r['pbm_uuid']}/" for r in rows]
+    cases += [f"{base}{missing}/", f"{base}bogus/", f"{base}{rows[0]['pbm_uuid']}/{q(name='nope')}"]
+    return cases
+
+
 ENDPOINTS = {
     "rbac_roles": role_cases,
     "rbac_permissions": permission_cases,
@@ -884,6 +946,8 @@ ENDPOINTS = {
     "events_events": event_cases,
     "events_notifications": notification_cases,
     "events_rules": rule_cases,
+    "rbac_permissions_assigned_by_roles": assigned_by_roles_cases,
+    "core_application_entitlements": entitlement_cases,
 }
 
 

@@ -233,6 +233,8 @@ Ported: DRF content negotiation; authentik's `TokenAuthentication` (403 rather t
 | `GET /api/v3/events/events/`, `/{pk}/` | same suite; tests/api/populate.py adds events with a fixed action, so their lists stay stable while the stacks log events of their own. Cases cover the JSON lookups (`context #> '{model,pk}'` as text or `int()`, `user`/`context -> 'username'`, `brand -> 'name'`), `client_ip` (inet text, `HOST()` in search), `MultipleChoiceFilter` on `EventAction`, and `detail=False` actions | **782 / 782 equal**, 751 by Rust; the `autocomplete` (R2) includes the `SELECT DISTINCT app` options. Declines: IPv6 or invalid `client_ip` filter values (normalization, or Django's DataError 500) |
 | `GET /api/v3/events/notifications/`, `/{pk}/` | same suite; notifications of every severity, with and without an event (`EventSerializer` per row) and links; `owner_field`; no `ordering` on the view, so pages keep Django's own SQL (unordered) | **629 / 629 equal**, 594 by Rust. Declines: the `created` date filter, anonymous retrieves at the owner filter (Django 500), and `mark_all_seen/` |
 | `GET /api/v3/events/rules/`, `/{pk}/` | same suite; `PolicyBindingModel` parent join; `destination_group_obj` through `GroupSerializer` without prefetches; the group join is `LEFT OUTER` for search and demoted to `INNER` by the filter, after `ObjectFilter`'s `exists()` | **612 / 612 equal**, 604 by Rust (`ordering=transports` is declined) |
+| `GET /api/v3/rbac/permissions/assigned_by_roles/` | same suite; a required `model` (`ChoiceField` over `model_choices()`, generated into `registry.rs` from `baseline/inventory/model_choices.json`), `object_pk`, and the filterset's own role subqueries (empty `object_pk`: `pk__in=[]` drops out of the OR); nested role object and model permissions | **374 / 374 equal**, 332 by Rust (ordering by the reverse-relation sources is Django's own 500; the detail routes are not list/retrieve) |
+| `GET /api/v3/core/application_entitlements/`, `/{pk}/` | same suite; one name on two applications (ordering ties, so Django's SQL text is used), `PolicyBindingModel` parent join, the `app` join for search | **425 / 425 equal**, 416 by Rust (pages with the m4 `jsonb` Django 500s on are declined) |
 
 Also ported for these: Django's `jsonb` → `json.loads` → orjson rendering (`ak_api::json`: key order, int/float split, `ryu` float forms as checked against orjson in the image), and the generated app/model verbose-name registry (`scripts/gen_api_registry.py`). The model field's message `“x” is not a valid UUID.` wins over the choice field's "Select a valid choice".
 
@@ -242,7 +244,18 @@ Upstream behavior reproduced as is: `users=<id>&inherited=true` (and `groups=…
 
 **Router order** matters beyond `detail=False` actions. DRF registers `rbac/permissions/assigned_by_roles` and `rbac/permissions/roles` before `rbac/permissions`, so those paths belong to other viewsets and are not `rbac/permissions/{pk}/`; Rust declines them (regression cases in `permission_cases`). A scan of every `api_urlpatterns` shows no other ported prefix shadowed this way.
 
-**Not in M7:** `core/applications`. Its list runs `PolicyEngine` for every application (expression policies are Python), caches the result as pickled `Application` objects, and formats `launch_url` with user data. It moves to the policy-engine milestone.
+**M7 closed (2026-10-31):** a full run of the 15 ported viewsets has 13 192 cases: 13 188 equal, 3 nondeterministic and 1 different. All 4 non-equal cases are `users/me/`. Rust never serves that endpoint, so both sides of the comparison are Django, and its `system_permissions` order varies between processes. Rust served 12 676 of the cases.
+
+Every list/retrieve route of `core`, `rbac`, `crypto` and `events` is ported except these four, each moved to the milestone that brings what it depends on:
+
+| Route | Depends on | Moved to |
+| --- | --- | --- |
+| `core/applications/`, `/{slug}/` | the list runs `PolicyEngine` per application (expression policies are Python) and caches results as pickled `Application` objects; `launch_url` formatting; the polymorphic `ProviderSerializer` | M9 / M9b (policy engine) |
+| `core/user_consent/`, `/{id}/` | embeds `ApplicationSerializer` | with `core/applications` |
+| `core/authenticated_sessions/`, `/{uuid}/` | `ua_parser` (its regex database, in Python `re` semantics), MaxMind GeoIP/ASN lookups, and the request's own session (`current`) | M8 (sessions write) |
+| `rbac/permissions/roles/` | `object_description` is `str(obj)` for an object of **any** model, so every model's `__str__` would have to be ported | the model layer's `__str__` port |
+
+GET actions that are not list/retrieve stay on Django until their milestone: `used_by/`, `users/me/`, `users/paths/`, `brands/current/`, `events/actions/`, `/top_per_user/`, `/volume/`, and `view_key/`, `view_certificate/`, `view_private_key/`, which write a `secret_view` event.
 
 **Avatars** (`ak_api::avatar`, `ak_api::cache`): every mode of `get_avatar` is reproduced. Initials SVGs are byte-identical to lxml's ASCII serialization, colours come from `md5(name.lower())`, and strings lxml rejects are declined (Django answers 500). URL modes (`gravatar`, `…://…`) read Django's `django_postgres_cache` rows: keys are `public::1:goauthentik.io/lib/avatars/<host>/…` and values are pickles, decoded for `None`, bools and `str`. On a hit Rust makes Django's own writes, `touch` (expiry = now + 300 s, Django's default timeout) and the deletion of expired rows, after every avatar on the page has been resolved. A miss means Django would send an outbound `HEAD` and cache the result, so Rust declines and Django answers and fills the cache.
 

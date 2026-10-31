@@ -51,6 +51,9 @@ pub(super) const PORTED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/v3/events/notifications/{pk}/"),
     ("GET", "/api/v3/events/rules/"),
     ("GET", "/api/v3/events/rules/{pk}/"),
+    ("GET", "/api/v3/rbac/permissions/assigned_by_roles/"),
+    ("GET", "/api/v3/core/application_entitlements/"),
+    ("GET", "/api/v3/core/application_entitlements/{pk}/"),
 ];
 
 pub(super) fn build_router(server: &Arc<Server>) -> Router {

@@ -2,6 +2,14 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 20 — 2026-10-31
+
+- M7 is **done**. Added `rbac/permissions/assigned_by_roles` (with `model_choices()` generated into `registry.rs` from `baseline/inventory/model_choices.json`) and `core/application_entitlements`. A full run of the 15 viewsets has 13 192 cases; 13 188 are equal and the 4 others are Django-served `users/me/`. Rust answered 12 676.
+- Carve-outs, with their target milestones, are in COMPATIBILITY_REPORT ("M7 closed"): `core/applications` and `user_consent` go to M9/M9b, `authenticated_sessions` to M8, and `rbac/permissions/roles` waits for the model `__str__` port.
+
+### Exact next action
+M8: write endpoints and their side effects (signals, events, cache invalidation), starting with sessions (the session cookie is still declined everywhere). That also brings `authenticated_sessions`.
+
 ## Batch 19 — 2026-10-31
 
 - M7 part 5: `core/tokens`, `events/events` (with the R2 `autocomplete`, including the `SELECT DISTINCT app` options), `events/notifications` and `events/rules` are served from Rust. The full parallel run has 12 393 cases; all are equal except Django-served `users/me/`. The 13 differences that run found in notifications and rules were fixed, and those two endpoints re-run at 1 241/1 241 equal.

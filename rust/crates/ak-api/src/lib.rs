@@ -73,6 +73,9 @@ enum Route<'a> {
     NotificationsRetrieve(&'a str),
     RulesList,
     RulesRetrieve(&'a str),
+    AssignedByRolesList,
+    EntitlementsList,
+    EntitlementsRetrieve(&'a str),
 }
 
 /// A `DefaultRouter` path under one viewset prefix.
@@ -174,6 +177,19 @@ fn route(path: &str) -> Option<Route<'_>> {
         return Some(match v {
             Viewset::List => Route::NotificationsList,
             Viewset::Detail(pk) => Route::NotificationsRetrieve(pk),
+        });
+    }
+    // A list-only viewset (its one detail route is a POST action).
+    if matches!(
+        viewset(path, "/api/v3/rbac/permissions/assigned_by_roles/", &[]),
+        Some(Viewset::List)
+    ) {
+        return Some(Route::AssignedByRolesList);
+    }
+    if let Some(v) = viewset(path, "/api/v3/core/application_entitlements/", &[]) {
+        return Some(match v {
+            Viewset::List => Route::EntitlementsList,
+            Viewset::Detail(pk) => Route::EntitlementsRetrieve(pk),
         });
     }
     if let Some(v) = viewset(path, "/api/v3/events/rules/", &[]) {
@@ -308,6 +324,18 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
             "events_rules",
             views::events_notification_rules::retrieve(ctx, req, &query, pk).await,
         ),
+        Route::AssignedByRolesList => (
+            "rbac_permissions_assigned_by_roles",
+            views::rbac_assigned_by_roles::list(ctx, req, &query).await,
+        ),
+        Route::EntitlementsList => (
+            "core_application_entitlements",
+            views::core_application_entitlements::list(ctx, req, &query).await,
+        ),
+        Route::EntitlementsRetrieve(pk) => (
+            "core_application_entitlements",
+            views::core_application_entitlements::retrieve(ctx, req, &query, pk).await,
+        ),
     };
     match result {
         Ok(answer) => Outcome::Serve {
@@ -338,7 +366,11 @@ mod tests {
         assert!(route("/api/v3/rbac/roles").is_none());
         assert!(route("/api/v3/core/brands/current/").is_none());
         assert!(route("/api/v3/rbac/permissions/roles/").is_none());
-        assert!(route("/api/v3/rbac/permissions/assigned_by_roles/").is_none());
+        assert!(matches!(
+            route("/api/v3/rbac/permissions/assigned_by_roles/"),
+            Some(Route::AssignedByRolesList)
+        ));
+        assert!(route("/api/v3/rbac/permissions/assigned_by_roles/x/").is_none());
         assert!(matches!(
             route("/api/v3/core/brands/currentx/"),
             Some(Route::BrandsRetrieve("currentx"))

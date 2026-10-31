@@ -24,7 +24,7 @@ use crate::{
 const ALLOW_LIST: &str = "GET, POST, HEAD, OPTIONS";
 const ALLOW_DETAIL: &str = "GET, PUT, PATCH, DELETE, HEAD, OPTIONS";
 
-const MODEL: Model<'static> = Model {
+pub(crate) const MODEL: Model<'static> = Model {
     app_label: "authentik_rbac",
     model_name: "role",
     ctype_app_label: "authentik_rbac",
