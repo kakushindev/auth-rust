@@ -128,6 +128,20 @@ Evidence: `tests/auth/run.sh` populates a snapshot with brands (case, ports, `_`
 
 Deferred to the write layer (M8): Django deletes expired tokens and access tokens it encounters while authenticating (through the ORM, which cascades to `FlowToken` and writes an audit event), and creates the embedded outpost's service user if missing. `ak-auth` makes the same decision (expired is absent; `SecretKey { user: None }`) without those writes. They must exist before Rust serves authenticated routes (M7).
 
+## Sessions (M5, part 2)
+
+`ak_auth::session::resolve` decides a request's identity from its `authentik_session` cookie as 2026.2.7's middleware chain does: `ClientIPMiddleware`, `BoundSessionMiddleware`, `AuthenticationMiddleware`, then `ImpersonateMiddleware`'s check.
+- **Cookie**: `SessionMiddleware.decode_session_key`, i.e. PyJWT 2.11 `decode(cookie, sha512(SECRET_KEY).hexdigest(), ["HS256"])`. That covers PyJWT's segment splitting, Python 3.14's lenient urlsafe base64, the header checks (`dict`, `b64`, `alg`), HMAC, and the claim checks: `iat`/`nbf`/`exp` through `int()`, a truthy `aud` rejected, and non-`str` `sub`/`jti` rejected. Then `SessionStore`'s `key and len(key) >= 8`. The JSON is CPython's (`python.rs`): NaN/Infinity, lone surrogates, duplicate keys with the last winning, the 4300-digit limit, and a nesting limit at the image's measured recursion depth. The parser is iterative and its values drop iteratively, so a crafted cookie cannot overflow the stack. Python exceptions that escape (`TypeError`, `OverflowError`, `UnicodeEncodeError`) are Django 500s and are returned as such.
+- **Store**: the session row with `expires > now`, joined to `AuthenticatedSession` and its user. An inactive user is a logout with 400. Session data is read by `ak-pickle`, a pickle reader for protocols 2–5 that never executes anything. It covers memo sharing, model instances (`model_unpickle`), `SimpleLazyObject`, enum members, and dict and list subclasses such as `QueryDict` that take items through `__setitem__`. It is checked against CPython on 39 vectors.
+- **Impersonation**: the pickled user under `authentik/impersonate/user` replaces the authenticated one.
+
+Evidence: `tests/auth/run.sh` makes real sessions over HTTP through the flow executor. These are an anonymous in-flow session, a login, two concurrent logins of one user, one of them then impersonating, a session whose user is then deactivated, a logged-out session, and a session that is then expired. Around a real session key it adds 45 crafted JWTs: claims, header, algorithm and signature variants, deep nesting, and every exception path. All 54 cookies (including an absent one) resolve as Django decides. All 33 keys in the 7 session rows read as Django decodes them (type, and value or length).
+
+Not yet covered: a changed client IP on a session with a network or GeoIP binding returns `BindingCheckRequired`, because deciding it needs the ASN and GeoIP databases (M5 part 2b, with CSRF and response cookies). The logout flush on an inactive user is a write (M8). Known approximations:
+- `int()` on non-ASCII decimal digits in a claim.
+- The JSON nesting limit depends on the runtime stack (measured 47,405–47,449 in the image; Rust uses 47,000).
+- A pickle `ak-pickle` cannot read is an empty session. Django returns an empty session only for `PickleError`/`AttributeError`/`TypeError`, so a pickle that makes Python raise anything else is a 500 there.
+
 ## Not verified / open
 
 - The 9 nondeterministic cases are compared only coarsely, so a real difference inside them would be masked. They need field-level masking, e.g. sorting `system_permissions` after checking set equality.

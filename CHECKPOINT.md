@@ -2,6 +2,15 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 12 — 2026-10-31
+
+- **M5 part 2, sessions**: `ak_auth::session::resolve` (PyJWT cookie decode with CPython's base64/JSON/`int()` semantics in `python.rs`, session store, `AuthenticatedSession`, inactive logout, impersonation) plus the new crate `rust/crates/ak-pickle` (safe pickle reader, 39 CPython vectors).
+- `tests/auth/run.sh` now also logs in over HTTP (`sessions.py`), deactivates/expires in SQL and records Django's middleware decisions (`session_decide.py`): 54 cookies and 33 session-pickle keys identical. Found and fixed on real data: `QueryDict` (dict subclass via `__setitem__`) and `SimpleLazyObject` in session pickles.
+- CPython vectors (`tests/auth/gen_python_vectors.py`) must be generated inside the image: the JSON recursion limit is stack-dependent. `run.sh` needs `~/.cargo/bin` on PATH.
+
+### Exact next action
+M5 part 2b: CSRF (`CsrfViewMiddleware`: `authentik_csrf` cookie, `X-authentik-CSRF` header, masked tokens, origin/referer checks) and `BoundSessionMiddleware`'s network/GeoIP binding checks (ASN/GeoIP readers), with response cookie setting; differential like `tests/auth/run.sh`.
+
 ## Batch 11 — 2026-10-31
 
 - **M5 part 1, request identity**: new crate `rust/crates/ak-auth` (host validation, brand, tenant, bearer token auth) using Django's own SQL. `tests/auth/run.sh`: 25 hosts and 34 Authorization headers decide identically to Django, covering every outcome path.

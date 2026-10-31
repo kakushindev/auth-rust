@@ -168,6 +168,7 @@ pbkdf2 = "= 0.13.0"
 scrypt = "= 0.12.0"
 sha1 = "= 0.11.0"
 sha2 = "= 0.11.0"
+hmac = "= 0.13.0"
 subtle = "= 2.6.1"
 ak-passwords = { path = "./crates/ak-passwords" }
 ak-schema-guard = { path = "./crates/ak-schema-guard" }

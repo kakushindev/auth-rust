@@ -17,7 +17,13 @@ for domain in ["auth.test", "sub.auth.test", "a_b.test", "pct%x.test", "UPPER.te
 Domain.objects.create(domain="tenant-a.test", tenant=Tenant.objects.get(schema_name="public"), is_primary=False)
 
 active = User.objects.create(username="m5-active")
+active.set_password("m5-password")
+active.save()
 inactive = User.objects.create(username="m5-inactive", is_active=False)
+# Logged in over HTTP by sessions.py, then deactivated.
+deactivated = User.objects.create(username="m5-deactivate")
+deactivated.set_password("m5-password")
+deactivated.save()
 past, future = now() - timedelta(days=1), now() + timedelta(days=1)
 for identifier, key, intent, user, expiring, expires in [
     ("m5-api-active", "m5-api-active", TokenIntents.INTENT_API, active, False, past),
