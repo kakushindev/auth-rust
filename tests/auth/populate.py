@@ -7,7 +7,7 @@ from datetime import timedelta
 from django.utils.timezone import now
 
 from authentik.brands.models import Brand
-from authentik.core.models import Token, TokenIntents, User
+from authentik.core.models import Token, TokenIntents, User, UserTypes
 from authentik.flows.models import Flow
 from authentik.providers.oauth2.models import AccessToken, OAuth2Provider
 from authentik.tenants.models import Domain, Tenant
@@ -24,6 +24,9 @@ inactive = User.objects.create(username="m5-inactive", is_active=False)
 deactivated = User.objects.create(username="m5-deactivate")
 deactivated.set_password("m5-password")
 deactivated.save()
+# Outposts may override the client IP with an internal service account's token.
+service = User.objects.create(username="m5-service", type=UserTypes.INTERNAL_SERVICE_ACCOUNT)
+service_account = User.objects.create(username="m5-sa", type=UserTypes.SERVICE_ACCOUNT)
 past, future = now() - timedelta(days=1), now() + timedelta(days=1)
 for identifier, key, intent, user, expiring, expires in [
     ("m5-api-active", "m5-api-active", TokenIntents.INTENT_API, active, False, past),
@@ -34,6 +37,10 @@ for identifier, key, intent, user, expiring, expires in [
     ("m5-api-inactive", "m5-api-inactive", TokenIntents.INTENT_API, inactive, False, future),
     ("m5-api-dup-1", "m5-dup", TokenIntents.INTENT_API, active, False, future),
     ("m5-api-dup-2", "m5-dup", TokenIntents.INTENT_API, inactive, False, future),
+    ("m5-service", "m5-service", TokenIntents.INTENT_API, service, False, future),
+    ("m5-service-expired", "m5-service-expired", TokenIntents.INTENT_API, service, True, past),
+    ("m5-service-recovery", "m5-service-recovery", TokenIntents.INTENT_RECOVERY, service, False, future),
+    ("m5-sa", "m5-sa", TokenIntents.INTENT_API, service_account, False, future),
 ]:
     Token.objects.create(identifier=identifier, key=key, intent=intent, user=user, expiring=expiring, expires=expires)
 

@@ -86,8 +86,37 @@ for depth in (1, 3000, 20000, 100000):
     except RecursionError:
         depth_out.append([depth, "RecursionError"])
 
+# urllib.parse.urlsplit / geturl and quote, as Django's CSRF and redirects use them.
+import random  # noqa: E402
+import urllib.parse  # noqa: E402
+
+url_cases = [
+    "", "/", "http://a", "https://a.test/p?q#f", "HTTPS://A.TEST/", "//host/p", "///p", "https:///p", "https:",
+    "a:b", "1a:b", "a1+-.:b", "a_b:c", "mailto:x@y", "http:/p", "http:p", "http://u:p@h:1/p", "http://[::1]/",
+    "http://[::1]:80/", "http://[::1", "http://::1]/", "http://[1.2.3.4]/", "http://[v1.a]/", "http://[v1.]/",
+    "http://[vz.a]/", "http://x[::1]/", "http://[::1]x/", "http://[fe80::1%25eth0]/", "http://[fe80::1%eth0]/",
+    " \x00\x01http://a/", "ht\ttp://a\n/\rb", "http://a/ ", "http://a?b#c?d", "http://a#b?c", "?x", "#y",
+    "http://ex\u00e4mple/", "http://a\u2100b/", "http://\uff1a/", "http://a\u00bc/", "x://y", "itms-services://x",
+    "git+ssh://h/p", "svn://h", "news:x", "http://a:b:c/", "http://@/", "http://a@b@c/", "http://[::1]:x/",
+    "http://h/p;params?q", "file:///etc", "http://h/%zz", "javascript:alert(1)", "\u00e9:x", "http://[::ffff:1.2.3.4]/",
+]
+rng = random.Random(7)
+alphabet = "ab:/?#[]@%.-+ \t\u00e9v1"
+for _ in range(400):
+    url_cases.append("".join(rng.choice(alphabet) for _ in range(rng.randrange(0, 14))))
+url_out = []
+for case in url_cases:
+    try:
+        r = urllib.parse.urlsplit(case)
+        url_out.append([case, [r.scheme, r.netloc, r.path, r.query, r.fragment, r.geturl()]])
+    except ValueError:
+        url_out.append([case, "ValueError"])
+quote_cases = [bytes(range(256)), "é €/?#".encode(), b"", b"%41"]
+quote_out = [[c.hex(), safe, urllib.parse.quote(c, safe=safe)] for c in quote_cases for safe in ["/", "", "/#%[]=:;$&()+,!?*@'~"]]
+
 json.dump(
-    {"python": sys.version.split()[0], "base64": [[c.hex(), b64(c)] for c in b64_cases], "json": json_out, "values": value_out, "depth": depth_out},
+    {"python": sys.version.split()[0], "base64": [[c.hex(), b64(c)] for c in b64_cases], "json": json_out, "values": value_out, "depth": depth_out,
+     "urlsplit": url_out, "quote": quote_out},
     sys.stdout,
     ensure_ascii=False,
 )

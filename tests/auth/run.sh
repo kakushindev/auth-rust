@@ -2,18 +2,22 @@
 # M5 request-identity differential: restore a reference snapshot into a
 # scratch stack, add the rows in populate.py, record Django's decisions for
 # every vector in vectors.json (host validation, brand, tenant, bearer
-# authentication) and for every session cookie sessions.py makes (real
-# logins, impersonation, logout, crafted JWTs), and check that ak-auth
-# decides the same.
+# authentication), for every session cookie sessions.py makes (real
+# logins, impersonation, logout, sessions bound by bind_sessions.py and
+# requested from other IPs, crafted JWTs) and the session cookie each
+# response sets, and for the request/response pieces web_decide.py covers
+# (CSRF, cookies, redirects, bindings against the image's GeoLite2
+# databases); then check that ak-auth decides the same.
 # Usage: run.sh [--keep]
 set -euo pipefail
+export PATH="$HOME/.cargo/bin:$PATH"
 cd "$(dirname "$0")/../.."
 here=tests/auth
 export PG_PASS="$(sed -n 's/^PG_PASS=//p' reference/.env)"
 export SNAPSHOT_DIR="$(mktemp -d)"
 export WEB_PATH=/
 dc() { docker compose -p ak-auth -f tests/differential/http/compose.yml "$@"; }
-trap 'rm -rf "$SNAPSHOT_DIR"' EXIT
+trap '[[ -n "${KEEP_DIR:-}" ]] && cp -R "$SNAPSHOT_DIR/." "$KEEP_DIR/"; rm -rf "$SNAPSHOT_DIR"' EXIT
 
 docker compose -f reference/compose.yml --env-file reference/.env exec -T postgresql \
   pg_dump -U authentik -d authentik -Fc > "$SNAPSHOT_DIR/snapshot.dump"
@@ -36,8 +40,13 @@ test -s "$SNAPSHOT_DIR/django.json" || { echo "no Django decisions" >&2; exit 1;
 # Sessions: made over HTTP, then a user deactivated and a session expired.
 secret_key="$(sed -n 's/^AUTHENTIK_SECRET_KEY=//p' reference/.env)"
 python3 "$here/sessions.py" http://127.0.0.1:29000 "$secret_key" \
-  "$(sed -n 's/^AUTHENTIK_BOOTSTRAP_PASSWORD=//p' reference/.env)" > "$SNAPSHOT_DIR/cookies.json"
+  "$(sed -n 's/^AUTHENTIK_BOOTSTRAP_PASSWORD=//p' reference/.env)" "$SNAPSHOT_DIR/http.json" \
+  > "$SNAPSHOT_DIR/cookies.json"
 expire="$(python3 -c 'import json, sys; print(next(c["sid"] for c in json.load(open(sys.argv[1])) if c["name"] == "real:to-expire"))' "$SNAPSHOT_DIR/cookies.json")"
+{ printf 'COOKIES = '; python3 -c 'import json, sys; print(repr(json.load(open(sys.argv[1]))))' "$SNAPSHOT_DIR/cookies.json"
+  cat "$here/bind_sessions.py"; } \
+  | docker exec -i "$container" python -m manage shell 2>/dev/null | grep -q '^\[bind\] 8$' \
+  || { echo "binding sessions failed" >&2; exit 1; }
 docker exec -i ak-auth-ref-db-1 psql -q -v ON_ERROR_STOP=1 -U authentik -d authentik <<SQL
 UPDATE authentik_core_user SET is_active = false WHERE username = 'm5-deactivate';
 UPDATE authentik_core_session SET expires = now() - interval '1 minute' WHERE session_key = '$expire';
@@ -48,11 +57,18 @@ SQL
   | docker exec -i "$container" python -m manage shell 2>/dev/null \
   | sed -n 's/^SESSION_DECISIONS //p' > "$SNAPSHOT_DIR/session-django.json"
 test -s "$SNAPSHOT_DIR/session-django.json" || { echo "no Django session decisions" >&2; exit 1; }
+docker exec -i "$container" python -m manage shell < "$here/web_decide.py" 2>/dev/null \
+  | sed -n 's/^WEB_DECISIONS //p' > "$SNAPSHOT_DIR/web.json"
+test -s "$SNAPSHOT_DIR/web.json" || { echo "no Django web decisions" >&2; exit 1; }
+mkdir -p "$SNAPSHOT_DIR/geoip"
+docker cp "$container:/geoip/GeoLite2-ASN.mmdb" "$SNAPSHOT_DIR/geoip/" >/dev/null
+docker cp "$container:/geoip/GeoLite2-City.mmdb" "$SNAPSHOT_DIR/geoip/" >/dev/null
 
 status=0
 (cd rust && AK_AUTH_DATABASE_URL="postgres://authentik:${PG_PASS}@127.0.0.1:25432/authentik" \
   AK_AUTH_VECTORS="$PWD/../$here/vectors.json" AK_AUTH_DJANGO="$SNAPSHOT_DIR/django.json" \
   AK_AUTH_COOKIES="$SNAPSHOT_DIR/cookies.json" AK_AUTH_SESSION_DJANGO="$SNAPSHOT_DIR/session-django.json" \
+  AK_AUTH_WEB="$SNAPSHOT_DIR/web.json" AK_GEOIP_DIR="$SNAPSHOT_DIR/geoip" AK_AUTH_HTTP="$SNAPSHOT_DIR/http.json" \
   AK_AUTH_SECRET_KEY="$secret_key" \
   AK_AUTH_IPC_KEY="$(docker exec "$container" sh -c 'cat ${TMPDIR:-/tmp}/authentik-core-ipc.key')" \
   cargo test -p ak-auth -- --nocapture) || status=$?

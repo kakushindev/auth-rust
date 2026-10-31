@@ -1,42 +1,81 @@
 # Appended after `COOKIES = …` by run.sh; run with `python -m manage shell`.
-"""Django's request identity for each session cookie, as JSON: the real
-middleware order (ClientIPMiddleware, BoundSessionMiddleware,
-AuthenticationMiddleware, then ImpersonateMiddleware's check), inside a
-rolled-back transaction (logout flushes sessions)."""
+"""Django's request identity for each session cookie, and the response's
+session cookie, as JSON.
+
+The real middleware order (ClientIPMiddleware, BoundSessionMiddleware,
+AuthenticationMiddleware, then ImpersonateMiddleware's check) runs for
+each cookie from its client IP, in a savepoint rolled back afterwards
+(logout flushes sessions). The response (the binding redirect, the 400, or
+a 200) then goes through SessionMiddleware.process_response. Time is
+frozen at NOW for both, so the Rust side can replay it."""
 
 import json
+import time
+from datetime import UTC, datetime
 
+import django.http.response
+import django.utils.timezone
 from django.conf import settings
 from django.db import transaction
+from django.http import HttpResponse
 from django.test import RequestFactory
 
+import authentik.root.middleware as ak_middleware
 from authentik.core.middleware import SESSION_KEY_IMPERSONATE_USER, AuthenticationMiddleware
 from authentik.root.middleware import ClientIPMiddleware
 from authentik.stages.user_login.middleware import BoundSessionMiddleware
+
+NOW = float(int(time.time()))
+
+
+class FrozenTime:
+    @staticmethod
+    def time():
+        return NOW
+
+
+django.http.response.time = FrozenTime
+ak_middleware.time = FrozenTime.time
+django.utils.timezone.now = lambda: datetime.fromtimestamp(NOW, UTC)
 
 CLIENT_IP = "203.0.113.9"
 out = []
 with transaction.atomic():
     for case in COOKIES:  # noqa: F821
-        request = RequestFactory().get("/", HTTP_HOST="authentik.test", REMOTE_ADDR=CLIENT_IP)
+        sid = transaction.savepoint()
+        request = RequestFactory().get(
+            "/", HTTP_HOST="authentik.test", REMOTE_ADDR=case.get("client_ip", CLIENT_IP)
+        )
         if case["cookie"] is not None:
             request.COOKIES[settings.SESSION_COOKIE_NAME] = case["cookie"]
+        middleware = BoundSessionMiddleware(lambda r: None)
+        saved = []
         try:
             ClientIPMiddleware(lambda r: None)(request)
-            if BoundSessionMiddleware(lambda r: None).process_request(request) is not None:
-                result = "binding_check"
+            if (response := middleware.process_request(request)) is not None:
+                result = f"redirect:{response['Location']}"
             elif (response := AuthenticationMiddleware(lambda r: None).process_request(request)) is not None:
                 result = f"status:{response.status_code}"
-            elif SESSION_KEY_IMPERSONATE_USER in request.session:
-                real = request.user.pk if request.user.is_authenticated else None
-                result = f"impersonating:{real}:{request.session[SESSION_KEY_IMPERSONATE_USER].pk}"
-            elif request.user.is_authenticated:
-                result = f"user:{request.user.pk}"
             else:
-                result = "anonymous"
+                response = HttpResponse()
+                if SESSION_KEY_IMPERSONATE_USER in request.session:
+                    real = request.user.pk if request.user.is_authenticated else None
+                    request.user = request.session[SESSION_KEY_IMPERSONATE_USER]
+                    result = f"impersonating:{real}:{request.user.pk}"
+                elif request.user.is_authenticated:
+                    result = f"user:{request.user.pk}"
+                else:
+                    result = "anonymous"
+            save = request.session.save
+            request.session.save = lambda *a, **k: (saved.append(True), save(*a, **k))
+            middleware.process_response(request, response)
+            cookies = [c.OutputString() for c in response.cookies.values()]
+            vary = response.headers.get("Vary")
         except Exception as exc:  # noqa: BLE001 - Django answers 500
-            result = f"error:{type(exc).__name__}"
-        out.append({"name": case["name"], "result": result})
+            result, cookies, vary = f"error:{type(exc).__name__}", [], None
+        out.append({"name": case["name"], "result": result, "cookies": cookies, "vary": vary,
+                    "saved": bool(saved)})
+        transaction.savepoint_rollback(sid)
     transaction.set_rollback(True)
 
 
@@ -63,4 +102,4 @@ pickles = []
 for session in Session.objects.all().order_by("session_key"):
     data = SessionStore().decode(bytes(session.session_data))
     pickles.append({"session_key": session.session_key, "data": {k: describe(v) for k, v in data.items()}})
-print("SESSION_DECISIONS " + json.dumps({"decisions": out, "pickles": pickles}))
+print("SESSION_DECISIONS " + json.dumps({"now": NOW, "decisions": out, "pickles": pickles}))

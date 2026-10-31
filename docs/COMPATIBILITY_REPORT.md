@@ -137,10 +137,41 @@ Deferred to the write layer (M8): Django deletes expired tokens and access token
 
 Evidence: `tests/auth/run.sh` makes real sessions over HTTP through the flow executor. These are an anonymous in-flow session, a login, two concurrent logins of one user, one of them then impersonating, a session whose user is then deactivated, a logged-out session, and a session that is then expired. Around a real session key it adds 45 crafted JWTs: claims, header, algorithm and signature variants, deep nesting, and every exception path. All 54 cookies (including an absent one) resolve as Django decides. All 33 keys in the 7 session rows read as Django decodes them (type, and value or length).
 
-Not yet covered: a changed client IP on a session with a network or GeoIP binding returns `BindingCheckRequired`, because deciding it needs the ASN and GeoIP databases (M5 part 2b, with CSRF and response cookies). The logout flush on an inactive user is a write (M8). Known approximations:
+Known approximations:
 - `int()` on non-ASCII decimal digits in a claim.
 - The JSON nesting limit depends on the runtime stack (measured 47,405–47,449 in the image; Rust uses 47,000).
 - A pickle `ak-pickle` cannot read is an empty session. Django returns an empty session only for `PickleError`/`AttributeError`/`TypeError`, so a pickle that makes Python raise anything else is a 500 there.
+
+## Bindings, CSRF, cookies and client IP (M5, part 3)
+
+- **Client IP** (`ak_auth::client_ip`): `ClientIPMiddleware`. It takes the first `X-Forwarded-For` address, else `REMOTE_ADDR`, as `str(ip_address(…))` (IPv6 compressed, scope kept), else `255.255.255.255`. The outpost override (`X-authentik-remote-ip` with `X-authentik-outpost-token`) applies only for an unexpired API token of an internal service account. The outpost user is set even when the delegated IP does not parse.
+- **GeoIP** (`rust/crates/ak-geoip`): a MaxMind DB reader matching `maxminddb` 3.0 (search tree, IPv4-in-IPv6 start node, prefix lengths, every data type, pointers), plus what `geoip2` 5.2 builds from a record. That is the ASN number and network, and the continent, country and city records compared by `to_dict()` equality. It also follows authentik's `MMDBContextProcessor` (reload on a newer mtime, unconfigured when unreadable). On the image's GeoLite2 databases, 4,328 addresses look up identically, raw records and models alike (`tests/geoip/run.sh`).
+- **Bound sessions** (`ak_auth::binding`): `BoundSessionMiddleware.recheck_session`, all network and GeoIP modes. It returns the break reason (`network.missing`, `network.asn`, `network.asn_network`, `network.ip`, `geoip.*`), or a pass that updates `last_ip` when a binding key is present. A broken binding answers `redirect_to_login(request.get_full_path())`. The redirect uses Django's `escape_uri_path`/`iri_to_uri`/`repercent_broken_unicode` and gunicorn's path decoding (`ak_auth::url`).
+- **CSRF** (`ak_auth::csrf`): `CsrfViewMiddleware` with authentik's settings (cookie `authentik_csrf`, header `X-authentik-CSRF`, no trusted origins), and DRF's `enforce_csrf`. It covers the secret format, masking and unmasking, the Origin check, and the Referer check over TLS (CPython 3.14's `urlsplit`/`geturl`, checked on 455 vectors, NFKC included). It also covers token checks from the form or header, every rejection message, and DRF's body parse errors escaping the check.
+- **Response cookies** (`ak_auth::cookie`): Django's `set_cookie`/`delete_cookie`, rendered as Python's `Morsel.OutputString` (sorted attributes, quoting with octal escapes, `CookieError` on control characters), `patch_vary_headers` and `http_date`. On top of these:
+  - `SessionMiddleware.process_response`: delete when the session is empty; otherwise save and set a PyJWT-encoded session cookie with `SameSite`/`Secure` by TLS and `Max-Age` from `_session_expiry`.
+  - authentik's `is_secure`.
+  - The CSRF cookie refresh.
+
+Evidence (`tests/auth/run.sh`, with time frozen on both sides):
+- **Sessions**: real sessions are bound by `bind_sessions.py`, then requested from other client IPs, including an impersonating one and ones with an expiry. All 81 cookies resolve as Django decides: unchanged, passed with the `last_ip` update, broken by ASN, network, IP, continent, city or a missing lookup, redirect included. All 75 resulting session cookies, `Vary` values and saves are identical.
+- **Request/response pieces** (`web_decide.py`), all identical:
+  - 190 CSRF requests, each through both Django and DRF;
+  - 65 token/secret cases and 50 cookie, Vary and date cases;
+  - 397 `process_response` cases;
+  - 80 `is_secure` cases and 18 login redirects;
+  - 1,613 binding rechecks on the real databases;
+  - 77 client IPs.
+- **On the wire**: 13 answers from the running server are reproduced, namely CSRF 403 details through DRF's `SessionAuthentication`, the replacement CSRF cookie, and the session cookie deletion over HTTP and over TLS.
+
+Left to other milestones:
+- The write layer (M8): saving or flushing the session, the `user_logged_out` event a broken binding records, and deleting expired tokens.
+- The request layer (M7): parsing form bodies for `csrfmiddlewaretoken` (the check takes the parsed value) and the WSGI `url_scheme`.
+- Routes (M7, M9): which views are `csrf_exempt`, and the flow executor, which does not enforce CSRF.
+
+Approximations:
+- A pickled `datetime` as `_session_expiry` is treated as the cookie age; Django 5 stores ISO strings.
+- An MMDB map with non-string keys is a `TypeError`.
 
 ## Not verified / open
 

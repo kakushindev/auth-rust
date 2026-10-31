@@ -170,6 +170,7 @@ sha1 = "= 0.11.0"
 sha2 = "= 0.11.0"
 hmac = "= 0.13.0"
 subtle = "= 2.6.1"
+unicode-normalization = "= 0.1.25"
 ak-passwords = { path = "./crates/ak-passwords" }
 ak-schema-guard = { path = "./crates/ak-schema-guard" }
 

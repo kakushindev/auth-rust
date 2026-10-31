@@ -3,7 +3,7 @@
 //! As 2026.2.7's middleware decides it: `SessionMiddleware.decode_session_key` (`PyJWT`
 //! 2.11 `decode(cookie, sha512(SECRET_KEY).hexdigest(), ["HS256"])`),
 //! `SessionStore` (key validation, `expires > now`), `BoundSessionMiddleware`
-//! (unchanged IP or no binding), `AuthenticationMiddleware` (an inactive
+//! (network and `GeoIP` bindings), `AuthenticationMiddleware` (an inactive
 //! user is logged out with a 400) and `ImpersonateMiddleware`.
 
 use chrono::{DateTime, Utc};
@@ -11,15 +11,19 @@ use hmac::{Hmac, KeyInit as _, Mac as _};
 use sha2::{Digest as _, Sha256, Sha512};
 use sqlx::PgPool;
 
-use crate::python::{PyError, PyValue, base64url_decode, json_loads};
+use crate::{
+    binding::{self, Binding, GeoIp, Recheck, SESSION_KEY_BINDING_GEO, SESSION_KEY_BINDING_NET},
+    python::{PyError, PyValue, base64url_decode, json_loads},
+};
 
+/// `settings.SESSION_COOKIE_NAME`.
+pub const SESSION_COOKIE_NAME: &str = "authentik_session";
 /// `authentik/impersonate/user`.
 const SESSION_KEY_IMPERSONATE_USER: &str = "authentik/impersonate/user";
-/// `authentik/stages/user_login/binding/net` and `…/geo`.
-const SESSION_KEY_BINDINGS: [&str; 2] = [
-    "authentik/stages/user_login/binding/net",
-    "authentik/stages/user_login/binding/geo",
-];
+/// `Session.Keys.LAST_IP`.
+const SESSION_KEY_LAST_IP: &str = "last_ip";
+/// Django's `_session_expiry`.
+const SESSION_KEY_EXPIRY: &str = "_session_expiry";
 
 /// The request's identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,9 +39,23 @@ pub enum RequestUser {
     /// The session's user is inactive: Django flushes the session and
     /// answers 400 (the flush is the write layer's, M8).
     InactiveLogout,
-    /// A network or `GeoIP` binding is configured and the IP changed:
-    /// deciding needs the ASN and `GeoIP` databases (M5 part 2b).
-    BindingCheckRequired,
+    /// `SessionBindingBroken(reason)`: the session is flushed (with a
+    /// `user_logged_out` event, the write layer's) and the response is a
+    /// redirect to login ([`crate::url::login_redirect`]).
+    BindingBroken(&'static str),
+}
+
+/// The request's identity and the session state the response needs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Resolved {
+    pub user: RequestUser,
+    /// The live session's key; `None` when there is none or it was flushed
+    /// (the session is then empty).
+    pub session_key: Option<String>,
+    /// `session["last_ip"] = client_ip` (the session is modified and saved).
+    pub set_last_ip: Option<String>,
+    /// `get_expiry_age()` for the cookie, `None` to expire at browser close.
+    pub expiry_age: Option<f64>,
 }
 
 /// A Django 500: the exception that escapes the middleware.
@@ -50,6 +68,15 @@ pub enum Error {
 impl From<sqlx::Error> for Error {
     fn from(err: sqlx::Error) -> Self {
         Self::Database(err)
+    }
+}
+
+impl From<binding::Error> for Error {
+    fn from(err: binding::Error) -> Self {
+        Self::Python(match err {
+            binding::Error::Type => "TypeError",
+            binding::Error::InvalidDatabase => "InvalidDatabaseError",
+        })
     }
 }
 
@@ -195,6 +222,64 @@ pub fn session_key(
 /// data, and its last IP.
 type SessionRow = (Option<i32>, Option<bool>, Vec<u8>, Option<String>);
 
+/// A binding as stored: a string, or a pickled `TextChoices` member
+/// (`NetworkBinding("bind_asn")`), which compares equal to its value.
+fn binding_value(value: Option<ak_pickle::Value>) -> Binding {
+    let value = value?;
+    if let Some(s) = value.as_str() {
+        return Some(Some(s.to_owned()));
+    }
+    if let ak_pickle::Value::Object(object) = &value {
+        let object = object.borrow();
+        if let ak_pickle::Value::Global { name, .. } = &object.callable
+            && name.ends_with("Binding")
+            && let Some([arg]) = object.args.items().as_deref()
+            && let Some(s) = arg.as_str()
+        {
+            return Some(Some(s.to_owned()));
+        }
+    }
+    Some(None)
+}
+
+/// `get_expire_at_browser_close()` / `get_expiry_age()` for the stored
+/// `_session_expiry`, `cookie_age` being `SESSION_COOKIE_AGE`
+/// (`sessions.unauthenticated_age`).
+fn expiry_age(
+    expiry: Option<&ak_pickle::Value>,
+    cookie_age: f64,
+    now: DateTime<Utc>,
+) -> Result<Option<f64>, Error> {
+    use ak_pickle::Value as V;
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_precision_loss,
+        reason = "seconds"
+    )]
+    match expiry {
+        None | Some(V::None | V::Bool(false) | V::Int(0)) => Ok(None),
+        Some(V::Float(f)) if *f == 0.0 => Ok(None),
+        Some(V::Bool(true)) => Ok(Some(1.0)),
+        Some(V::Int(n)) => Ok(Some(*n as f64)),
+        Some(V::Float(f)) => Ok(Some(*f)),
+        Some(V::Str(s)) if s.is_empty() => Ok(Some(cookie_age)),
+        Some(V::Str(s)) => {
+            // `datetime.fromisoformat(expiry) - timezone.now()`; a naive
+            // value cannot be subtracted (`TypeError`).
+            let expiry = DateTime::parse_from_rfc3339(s)
+                .map_err(|_| Error::Python("ValueError"))?
+                .with_timezone(&Utc);
+            Ok(Some(
+                (expiry - now)
+                    .num_microseconds()
+                    .map_or(0.0, |us| (us as f64 / 1e6).floor()),
+            ))
+        }
+        // A pickled datetime: Django 5 stores ISO strings instead.
+        Some(_) => Ok(Some(cookie_age)),
+    }
+}
+
 /// The request's identity for a session cookie and client IP.
 ///
 /// # Errors
@@ -205,10 +290,18 @@ pub async fn resolve(
     cookie: Option<&str>,
     client_ip: &str,
     secret_key: &str,
+    geoip: &GeoIp,
+    cookie_age: f64,
     now: DateTime<Utc>,
-) -> Result<RequestUser, Error> {
+) -> Result<Resolved, Error> {
+    let anonymous = Resolved {
+        user: RequestUser::Anonymous,
+        session_key: None,
+        set_last_ip: None,
+        expiry_age: None,
+    };
     let Some(key) = session_key(cookie, secret_key, now)? else {
-        return Ok(RequestUser::Anonymous);
+        return Ok(anonymous);
     };
     // `_get_session_from_db`, with `select_related("authenticatedsession__user")`.
     let row: Option<SessionRow> = sqlx::query_as(
@@ -222,27 +315,49 @@ pub async fn resolve(
     .fetch_optional(pool)
     .await?;
     let Some((user, is_active, session_data, last_ip)) = row else {
-        return Ok(RequestUser::Anonymous);
+        return Ok(anonymous);
     };
-    // `SessionStore.decode`: an unreadable pickle is an empty session.
+    // `SessionStore.decode`: an unreadable pickle is an empty session. The
+    // pickled data overrides the model fields in `load()`.
     let data = ak_pickle::loads(&session_data).ok();
     let get = |key: &str| {
         let d = data.as_ref()?;
         d.get(key)
     };
+    let last_ip = match get(SESSION_KEY_LAST_IP) {
+        Some(value) => value.as_str().map(str::to_owned),
+        None => last_ip,
+    };
+    let flushed = |user| Resolved {
+        user,
+        session_key: None,
+        set_last_ip: None,
+        expiry_age: None,
+    };
 
-    // BoundSessionMiddleware: only a changed IP with a binding needs a check.
-    if last_ip.as_deref() != Some(client_ip)
-        && SESSION_KEY_BINDINGS
-            .iter()
-            .any(|k| get(k).is_some_and(|v| v.as_str() != Some("no_binding")))
-    {
-        return Ok(RequestUser::BindingCheckRequired);
-    }
+    // BoundSessionMiddleware.
+    let set_last_ip = match binding::recheck(
+        geoip,
+        &binding_value(get(SESSION_KEY_BINDING_NET)),
+        &binding_value(get(SESSION_KEY_BINDING_GEO)),
+        last_ip.as_deref(),
+        client_ip,
+    )? {
+        Recheck::Broken(reason) => return Ok(flushed(RequestUser::BindingBroken(reason))),
+        Recheck::Passed { set_last_ip: true } => Some(client_ip.to_owned()),
+        Recheck::Passed { set_last_ip: false } | Recheck::Unchanged => None,
+    };
     // AuthenticationMiddleware.
     if user.is_some() && is_active == Some(false) {
-        return Ok(RequestUser::InactiveLogout);
+        return Ok(flushed(RequestUser::InactiveLogout));
     }
+    let expiry_age = expiry_age(get(SESSION_KEY_EXPIRY).as_ref(), cookie_age, now)?;
+    let resolved = |user| Resolved {
+        user,
+        session_key: Some(key.clone()),
+        set_last_ip: set_last_ip.clone(),
+        expiry_age,
+    };
     // ImpersonateMiddleware: the pickled User (`model_unpickle`) state's `id`.
     if let Some(impersonated) = get(SESSION_KEY_IMPERSONATE_USER) {
         let id = match &impersonated {
@@ -254,11 +369,26 @@ pub async fn resolve(
         if let Some(ak_pickle::Value::Int(id)) = id
             && let Ok(as_user) = i32::try_from(id)
         {
-            return Ok(RequestUser::Impersonating {
+            return Ok(resolved(RequestUser::Impersonating {
                 real: user,
                 as_user,
-            });
+            }));
         }
     }
-    Ok(user.map_or(RequestUser::Anonymous, RequestUser::User))
+    Ok(resolved(
+        user.map_or(RequestUser::Anonymous, RequestUser::User),
+    ))
+}
+
+/// `get_install_id()` (`get_unique_identifier()` without tenants): the
+/// value `User.uid` hashes.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn install_id(pool: &PgPool) -> Result<String, Error> {
+    let id: String = sqlx::query_scalar("SELECT id FROM authentik_install_id ORDER BY id LIMIT 1")
+        .fetch_one(pool)
+        .await?;
+    Ok(id)
 }

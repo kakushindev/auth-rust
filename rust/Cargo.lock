@@ -30,6 +30,8 @@ dependencies = [
 name = "ak-auth"
 version = "2026.2.7"
 dependencies = [
+ "ak-geoip",
+ "ak-passwords",
  "ak-pickle",
  "base64 0.23.0",
  "chrono",
@@ -39,7 +41,15 @@ dependencies = [
  "sqlx",
  "subtle",
  "tokio",
+ "unicode-normalization",
  "uuid",
+]
+
+[[package]]
+name = "ak-geoip"
+version = "2026.2.7"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

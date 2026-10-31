@@ -2,6 +2,26 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 13 — 2026-10-31
+
+- **M5 done.** New crate `rust/crates/ak-geoip`: a MaxMind reader plus `geoip2` models; `tests/geoip/run.sh` shows 4,328 addresses identical on the image's GeoLite2 databases. New `ak-auth` modules:
+  - `client_ip` (with the outpost override);
+  - `binding` (bound sessions);
+  - `csrf` (Django and DRF);
+  - `cookie` (Morsel rendering, session/CSRF `process_response`, JWT encoding);
+  - `url` (CPython `urlsplit`/`quote`, Django URI helpers, the login redirect).
+- `session::resolve` now applies bindings and returns the session state the response needs.
+- `tests/auth/run.sh` adds:
+  - bound real sessions requested from other IPs: 81 cookies plus 75 response cookies identical;
+  - `web_decide.py`: CSRF, tokens, cookies, `process_response`, `is_secure`, redirects, 1,613 binding rechecks, 77 client IPs, all identical;
+  - 13 HTTP answers on the wire reproduced;
+  - 455 CPython `urlsplit` vectors.
+- Found on the way: the flow executor does not enforce CSRF (a view-level fact for M9), and Python's cookie quoting escapes `;` and `,`.
+- Lint/tests: ak-auth, ak-geoip, ak-pickle, ak-passwords and ak-models pass clippy and their tests. A workspace-wide build on macOS still stops at `aws-lc-fips-sys` (known). Stacks are torn down.
+
+### Exact next action
+M6: RBAC + guardian permissions. Port `authentik.rbac` (roles, `ObjectPermissions`, `InitialPermissionsMiddleware`) and django-guardian's object permissions on top of `ak-models`. Then a permission-matrix differential for all models × roles, using the same pattern: Django decides in a rolled-back transaction, and the Rust test compares.
+
 ## Batch 12 — 2026-10-31
 
 - **M5 part 2, sessions**: `ak_auth::session::resolve` (PyJWT cookie decode with CPython's base64/JSON/`int()` semantics in `python.rs`, session store, `AuthenticatedSession`, inactive logout, impersonation) plus the new crate `rust/crates/ak-pickle` (safe pickle reader, 39 CPython vectors).

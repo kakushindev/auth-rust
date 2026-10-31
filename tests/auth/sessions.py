@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """Create real sessions on a running stack and craft cookie variants.
 
-Usage: sessions.py BASE_URL SECRET_KEY BOOTSTRAP_PASSWORD > cookies.json
+Usage: sessions.py BASE_URL SECRET_KEY BOOTSTRAP_PASSWORD HTTP_JSON > cookies.json
 
 Real sessions are made the way a browser makes them, through the flow
 executor API: an anonymous in-flow session, logins (two concurrent ones
 for the same user), an impersonating session, a session whose user is
 deactivated afterwards, a logged-out session and one that is expired
-afterwards (run.sh does the deactivation and expiry in SQL). Crafted
+afterwards (run.sh does the deactivation and expiry in SQL), and sessions
+that bind_sessions.py binds to their network or location, each requested
+again from other client IPs. Crafted
 cookies are JWTs signed like authentik's, around a real session key,
 exercising PyJWT's decode and claim checks.
+
+HTTP_JSON receives what the server answered on the wire to requests that
+exercise CSRF through DRF (a logged-in POST to an API view) and the
+session cookie's deletion, for ak-auth to reproduce.
 
 Standard library only.
 """
@@ -23,7 +29,7 @@ import sys
 import urllib.error
 import urllib.request
 
-BASE, SECRET_KEY, BOOTSTRAP_PASSWORD = sys.argv[1:4]
+BASE, SECRET_KEY, BOOTSTRAP_PASSWORD, HTTP_JSON = sys.argv[1:5]
 HOST = "authentik.test"
 
 
@@ -83,6 +89,26 @@ real["logged-out"] = logout.cookie("authentik_session")
 status, body = logout.call("GET", "/api/v3/flows/executor/default-invalidation-flow/?query=")
 assert status == 200, (status, body)
 real["to-expire"] = Browser().login("m5-active", "m5-password").cookie("authentik_session")
+# Bound by bind_sessions.py (binding, last IP, expiry), then requested from
+# other client IPs.
+BOUND = {
+    "bound-asn": ["8.8.8.8", "8.8.4.4", "1.1.1.1", "10.0.0.1"],
+    "bound-asn-network-ip": ["8.8.8.8", "8.8.8.9", "8.8.4.4"],
+    "bound-city": ["81.2.69.142", "81.2.69.160", "8.8.8.8"],
+    "bound-continent": ["81.2.69.142", "8.8.8.8", "193.0.6.139"],
+    "bound-no-binding": ["8.8.8.8", "1.1.1.1"],
+    "bound-expiry-seconds": ["8.8.4.4"],
+    "bound-expiry-date": ["8.8.4.4"],
+    "bound-impersonating": ["8.8.4.4", "1.1.1.1"],
+}
+for name in BOUND:
+    if name == "bound-impersonating":
+        continue
+    real[name] = Browser().login("m5-active", "m5-password").cookie("authentik_session")
+impersonator = Browser().login("akadmin", BOOTSTRAP_PASSWORD)
+status, body = impersonator.call("POST", f"/api/v3/core/users/{users['results'][0]['pk']}/impersonate/", {"reason": "m5 bound"})
+assert status in (200, 201, 204), (status, body)
+real["bound-impersonating"] = impersonator.cookie("authentik_session")
 assert all(real.values()), real
 
 # Crafted: signed like SessionMiddleware.encode_session, around a real key.
@@ -155,6 +181,60 @@ crafted = {
     "empty": "",
 }
 cookies = [{"name": f"real:{k}", "cookie": v, "sid": sid(v)} for k, v in real.items()]
+cookies += [
+    {"name": f"real:{k}@{ip}", "cookie": real[k], "sid": sid(real[k]), "client_ip": ip}
+    for k, ips in BOUND.items()
+    for ip in ips
+]
 cookies += [{"name": f"crafted:{k}", "cookie": v} for k, v in crafted.items()]
 cookies.append({"name": "absent", "cookie": None})
 json.dump(cookies, sys.stdout, ensure_ascii=False)
+
+# On the wire: CSRF through DRF, and session cookie deletion.
+checker = Browser().login("m5-active", "m5-password")
+CSRF = checker.cookie("authentik_csrf")
+SESSION = checker.cookie("authentik_session")
+# A view with DRF's SessionAuthentication (the flow executor does not
+# enforce CSRF); m5-active may not create applications, so a request that
+# passes CSRF ends in a permission 403 and writes nothing.
+API = "/api/v3/core/applications/"
+
+
+def raw(method, path, headers, body=None):
+    req = urllib.request.Request(BASE + path, data=body, headers={"Host": HOST, **headers}, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            status, data, hdrs = resp.status, resp.read(), resp.headers
+    except urllib.error.HTTPError as err:
+        status, data, hdrs = err.code, err.read(), err.headers
+    try:
+        detail = json.loads(data).get("detail")
+    except (ValueError, AttributeError):
+        detail = None
+    return {"status": status, "detail": detail, "set_cookie": hdrs.get_all("Set-Cookie") or []}
+
+
+http = []
+csrf_requests = [
+    ("no-header", {}, CSRF),
+    ("right-header", {"X-authentik-CSRF": CSRF}, CSRF),
+    ("wrong-header", {"X-authentik-CSRF": "a" * 32}, CSRF),
+    ("short-header", {"X-authentik-CSRF": "abc"}, CSRF),
+    ("no-cookie", {"X-authentik-CSRF": CSRF}, None),
+    ("bad-cookie", {"X-authentik-CSRF": CSRF}, "x"),
+    ("evil-origin", {"X-authentik-CSRF": CSRF, "Origin": "http://evil.test"}, CSRF),
+    ("own-origin", {"X-authentik-CSRF": CSRF, "Origin": "http://authentik.test"}, CSRF),
+    ("https-no-referer", {"X-authentik-CSRF": CSRF, "X-Forwarded-Proto": "https"}, CSRF),
+    ("https-evil-referer", {"X-authentik-CSRF": CSRF, "X-Forwarded-Proto": "https", "Referer": "https://evil.test/"}, CSRF),
+    ("https-own-referer", {"X-authentik-CSRF": CSRF, "X-Forwarded-Proto": "https", "Referer": "https://authentik.test/x"}, CSRF),
+]
+for name, headers, csrf_cookie in csrf_requests:
+    cookie = f"authentik_session={SESSION}" + (f"; authentik_csrf={csrf_cookie}" if csrf_cookie else "")
+    result = raw("POST", API, {"Cookie": cookie, "Content-Type": "application/json", "Accept": "application/json", **headers},
+                 b"{}")
+    http.append({"name": name, "kind": "csrf", "headers": headers, "csrf_cookie": csrf_cookie, **result})
+for name, headers in [("garbage-cookie", {}), ("garbage-cookie-https", {"X-Forwarded-Proto": "https"})]:
+    result = raw("GET", "/api/v3/root/config/", {"Cookie": "authentik_session=garbage", **headers})
+    http.append({"name": name, "kind": "delete", "headers": headers, **result})
+with open(HTTP_JSON, "w") as f:
+    json.dump(http, f)
