@@ -67,6 +67,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ak-events"
+version = "2026.2.7"
+dependencies = [
+ "ak-auth",
+ "ak-pickle",
+ "chrono",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "ak-geoip"
 version = "2026.2.7"
 dependencies = [

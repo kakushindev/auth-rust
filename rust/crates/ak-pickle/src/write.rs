@@ -20,6 +20,10 @@ pub enum Obj {
     Long(Vec<u8>),
     Float(f64),
     Str(String),
+    /// A `str` Python interns: an identifier-like constant from code, or an
+    /// attribute name (`__dict__` keys). Equal interned strings are one
+    /// object, so a repeat is a memo reference.
+    Interned(String),
     Bytes(Vec<u8>),
     Tuple(Vec<Self>),
     List(Vec<Self>),
@@ -52,6 +56,11 @@ impl Obj {
     }
 
     #[must_use]
+    pub fn interned(s: &str) -> Self {
+        Self::Interned(s.to_owned())
+    }
+
+    #[must_use]
     pub fn global(module: &str, name: &str) -> Self {
         Self::Global {
             module: module.to_owned(),
@@ -75,7 +84,7 @@ impl Obj {
         Self::NewObj {
             cls: Box::new(Self::global("uuid", "UUID")),
             args: Vec::new(),
-            state: Some(Box::new(Self::Dict(vec![(Self::str("int"), int)]))),
+            state: Some(Box::new(Self::Dict(vec![(Self::interned("int"), int)]))),
         }
     }
 
@@ -93,14 +102,15 @@ impl Obj {
             cls: Box::new(Self::global("django.db.models.base", "ModelState")),
             args: Vec::new(),
             state: Some(Box::new(Self::Dict(vec![
-                (Self::str("adding"), Self::Bool(false)),
-                (Self::str("db"), Self::str("default")),
-                (Self::str("fields_cache"), Self::Dict(Vec::new())),
+                (Self::interned("adding"), Self::Bool(false)),
+                // `DEFAULT_DB_ALIAS`, a code constant.
+                (Self::interned("db"), Self::interned("default")),
+                (Self::interned("fields_cache"), Self::Dict(Vec::new())),
             ]))),
         };
-        let mut state = vec![(Self::str("_state"), model_state)];
-        state.extend(fields.into_iter().map(|(k, v)| (Self::str(k), v)));
-        state.push((Self::str("_django_version"), Self::str(django_version)));
+        let mut state = vec![(Self::interned("_state"), model_state)];
+        state.extend(fields.into_iter().map(|(k, v)| (Self::interned(k), v)));
+        state.push((Self::interned("_django_version"), Self::str(django_version)));
         Self::Reduce {
             callable: Box::new(Self::global("django.db.models.base", "model_unpickle")),
             args: vec![Self::Tuple(vec![
@@ -122,6 +132,7 @@ struct Pickler {
     memo_len: u32,
     globals: HashMap<(String, String), u32>,
     modules: HashMap<String, u32>,
+    interned: HashMap<String, u32>,
 }
 
 /// `encode_long`: two's complement, little-endian, minimal.
@@ -261,6 +272,14 @@ impl Pickler {
                 self.out.extend(f.to_be_bytes());
             }
             Obj::Str(s) => self.save_str(s),
+            Obj::Interned(s) => {
+                if let Some(&index) = self.interned.get(s) {
+                    self.get(index);
+                } else {
+                    self.save_str(s);
+                    self.interned.insert(s.clone(), self.memo_len - 1);
+                }
+            }
             Obj::Bytes(b) => {
                 if let Ok(short) = u8::try_from(b.len()) {
                     self.out.extend([b'C', short]);
@@ -366,6 +385,7 @@ pub fn dumps(obj: &Obj) -> Vec<u8> {
         memo_len: 0,
         globals: HashMap::new(),
         modules: HashMap::new(),
+        interned: HashMap::new(),
     };
     p.save(obj);
     p.out.push(b'.');

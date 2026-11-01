@@ -1,0 +1,20 @@
+[package]
+name = "ak-events"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+ak-auth = { path = "../ak-auth" }
+ak-pickle = { path = "../ak-pickle" }
+chrono.workspace = true
+sqlx.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true
