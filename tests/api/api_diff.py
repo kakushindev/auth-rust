@@ -985,11 +985,20 @@ def fetch(base, path, token):
     return harness.fetch(base, path, token)
 
 
+# The three stacks are asked at once. Each stack still receives every
+# token's requests one after another in suite order (a case finishes on all
+# three before the token's next case starts), so what each stack sees is
+# the sequential run's; only the waiting overlaps. API_CASE_SERIAL=1 asks
+# them one after another, as before (for checking that both decide alike).
+FETCHERS = concurrent.futures.ThreadPoolExecutor(max_workers=64)
+
+
 def run_case(name, path, token):
     """One case: the same request to the three stacks, then the buckets."""
-    ref = fetch(REF, path, token)
-    ref2 = fetch(REF2, path, token)
-    cand = fetch(CAND, path, token)
+    if os.environ.get("API_CASE_SERIAL"):
+        ref, ref2, cand = (fetch(base, path, token) for base in (REF, REF2, CAND))
+    else:
+        ref, ref2, cand = (f.result() for f in [FETCHERS.submit(fetch, base, path, token) for base in (REF, REF2, CAND)])
     rust = TRACE in cand[1]
     cand = strip_trace(cand)
     diffs = harness.compare(ref, cand)

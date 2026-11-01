@@ -336,11 +336,13 @@ Still declined: impersonation, flushes (inactive user, broken binding) and logou
 | `logout_decide.py`: 12 real sessions run through Django's middlewares. The scenarios are inactive, five binding reasons, anonymous, inactive with a binding, impersonating, a flow plan, a `delete-on-logout` user and an OAuth2 token | 10 identical (response, events, tasks, remaining rows); the 2 receiver cases declined |
 | `tests/api/run.sh` with `session-inactive` and the new `session-bound` | 15 768 cases: 15 759 equal + 9 nondeterministic (`users/me/`). The 400 and 302 are Rust-served. Logout state ref vs cand is equal: 3 logout events, 3 `outpost_session_end` tasks, both sessions gone. Schema guard clean |
 
+**Database pool (product change)**: the server's pool (vendored `ak-common`, upstream 4 connections) now allows `web.workers × web.threads` connections (2 × 4 = 8 by default, never fewer than 4), as many as Django's web process holds, since the server answers requests gunicorn used to. The API run decided all 15 768 cases as the 4-connection build did.
+
 ## Not verified / open
 
 - **Brand TLS polling (M2)**: 2026.2.7's Go server and embedded outpost refresh brand TLS through the brands API over IPC. Our server reads the database instead. Responses are unaffected, but when that API fails (as for this harness's `1e20` brand attribute), Django records a `system_exception` event per poll on the reference and none on the candidate. This must be reproduced, or explicitly accepted, before M17.
 
-- The 9 nondeterministic cases are compared only coarsely, so a real difference inside them would be masked. They need field-level masking, e.g. sorting `system_permissions` after checking set equality.
+- **Rust request cost**: a Rust-served API request takes about twice Django's time (`rbac/roles` 113 ms against 46 ms, measured on the test stacks). That is correct but slower, and needs profiling of `ak-api`'s per-request queries before Rust serves production traffic at scale.
 - Every row of `FEATURE_MATRIX.md` other than the one above.
 - The upstream Rust components (server shell, proxy outpost) are reused as-is and have not been re-verified here.
 - Lint: `ak-passwords` and `ak-schema-guard` pass clippy with upstream's full lint profile (0 warnings). Generated `client-rust` is not rustfmt-clean upstream either and is left untouched.

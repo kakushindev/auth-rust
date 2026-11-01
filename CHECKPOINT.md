@@ -2,6 +2,23 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 25 — 2026-11-01
+
+- **API differential speed-up**, with nothing loosened:
+  - the three stacks are fetched at once per case (each still sees every token's requests in order);
+  - `API_JOBS=16` and `WEB_WORKERS`;
+  - a cached fixture, keyed by the reference's exact data minus the worker's churn tables, plus the image and every input script; at most 6 hours old; `API_FRESH=1` rebuilds;
+  - `[timing]` per phase;
+  - `compare_reports.py`.
+- On one fixture, the old and new pipelines decide all 15 768 cases identically, at 995 s against 1 101 s.
+- The bottleneck is the candidate: Rust-served requests take about 2× Django's time.
+- Product change: the database pool is sized like Django's web process (`web.workers × web.threads`, default 8) instead of 4.
+- Harness: `users/me/` `system_permissions` is compared as a multiset (it is set-ordered in Django), so a full run is now 15 768/15 768 equal, with no nondeterministic bucket.
+- Corrected an assumption: building the fixture takes 50 s, not about 8 minutes.
+
+### Exact next action
+Profile `ak-api`'s per-request work (queries per request, tenant/license/subject lookups repeated per request). That is the remaining speed lever for both the harness and production. Then the first write endpoints (M8).
+
 ## Batch 24 — 2026-11-01
 
 - **M8 part 3**: `ak_events::event` (the `Event.new().from_http()` writer) and `ak_events::logout` (the middleware logouts and flush) are done, and `ak-api` now serves the inactive-user 400 and the broken-binding redirect.

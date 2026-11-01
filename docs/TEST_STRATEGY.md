@@ -39,6 +39,16 @@ python3 scripts/gen_feature_matrix.py           # regenerate docs/FEATURE_MATRIX
 
 The harness runs tokens concurrently (`API_JOBS`, default 8, which matches gunicorn's 2 workers × 4 threads per stack). Every token keeps the suite's case order, so its own side effects (Django deletes an expired token on first use) happen at the same point on every stack. A sequential warm-up first runs each token's first case on all three stacks, so those one-time effects are settled before tokens interleave. Evidence that this changes nothing: on the same candidate image the sequential run (`API_JOBS=1`) and the parallel run produced identical buckets, and an identical Rust-served set over the 11 067 cases common to both runs. Cases that are not common carry run-specific fixture UUIDs in their paths. A full run takes about 15 minutes instead of about 50.
 
+Speed-ups, each shown on one fixture to decide what the previous run decided:
+- **Concurrent fetching.** Each case asks the three stacks at once (`API_CASE_SERIAL=1` restores one after another). Every stack still receives every token's requests in suite order.
+- **Concurrency settings.** `API_JOBS=16`, and `WEB_WORKERS` sets gunicorn's workers alike on every stack.
+- **Cached fixture.** The populated snapshot and session cookies are cached for at most 6 hours (`API_FRESH=1` rebuilds). The cache key covers the reference database's exact contents (one `pg_dump`, hashed as the SQL it restores to, without pg_dump's random `\restrict` token), the image, the populate and session scripts, `run.sh` and the compose file. It leaves out only the data of the tables the reference's worker keeps rewriting (tasks, schedules, worker status, cache entries), which stay in the fixture. A fixture holding an older copy of those tables is as valid a fixture.
+- **Comparing reports.** `tests/api/compare_reports.py` compares two runs case by case, by endpoint, token and position, since fixture rows get new keys when it is rebuilt. It checks the reference status, whether Rust served each case and the bucket. On one cached fixture, the old pipeline (serial per case, 8 jobs, a 4-connection Rust pool) and the new one decided all 15 768 cases identically (0 differ). The new run took 995 s against 1 101 s; the fixture is 1–2 s cached, 50 s built.
+
+The limit is the candidate, not Django. In a sampled run, the candidate container used about 2 cores and its database 1.3, while each reference used about 0.5. A Rust-served request currently takes about twice Django's time (for example `rbac/roles`: 113 ms against 46 ms), so the next real gain is per-request work in `ak-api`.
+
+`users/me/` used to be the only nondeterministic endpoint: Django builds `system_permissions` from a set, so its order follows the process's hash seed. The harness now compares that list sorted, i.e. as the same multiset, and a full run is 15 768/15 768 equal.
+
 
 Session and CSRF variants run alongside the tokens. `tests/api/sessions.py` creates real sessions on the reference before the snapshot is dumped. They are labels in `api_diff.py` (`cookie:…`, `cookie+bearer:…`, `csrf:…`) and cover every fifth case of each endpoint: what they exercise is the middleware, so a sample of each endpoint is enough.
 

@@ -266,10 +266,26 @@ def fetch_upgrade(base, path, token, extra):
         sock.close()
 
 
+# Lists Django builds from a set, so their order follows the process's
+# string hash seed (`users/me/`'s `system_permissions` comes from
+# `get_all_permissions()`): compared as sorted, i.e. as the same multiset.
+SET_ORDERED_KEYS = {"system_permissions"}
+
+
 def normalize_json(value):
-    """Recursively blank fields that are generated per request."""
+    """Recursively blank fields that are generated per request, and put
+    set-ordered lists in a canonical order."""
     if isinstance(value, dict):
-        return {k: ("<normalized>" if k in {"request_id"} else normalize_json(v)) for k, v in value.items()}
+        return {
+            k: (
+                "<normalized>"
+                if k in {"request_id"}
+                else sorted(v)
+                if k in SET_ORDERED_KEYS and isinstance(v, list) and all(isinstance(x, str) for x in v)
+                else normalize_json(v)
+            )
+            for k, v in value.items()
+        }
     if isinstance(value, list):
         return [normalize_json(v) for v in value]
     return value

@@ -220,6 +220,19 @@ where
     }
 }
 
+/// authentik-rs: [`deserialize_str_or_num`] for an optional value.
+fn deserialize_opt_str_or_num<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de> + sealed::Numeric,
+{
+    #[derive(Deserialize)]
+    #[serde(bound = "T: Deserialize<'de> + sealed::Numeric")]
+    struct Wrapped<T>(#[serde(deserialize_with = "deserialize_str_or_num")] T);
+
+    Ok(Option::<Wrapped<T>>::deserialize(deserializer)?.map(|Wrapped(value)| value))
+}
+
 /// Deserialize a boolean that may arrive as a native bool or as a string (`"true"`/`"false"`,
 /// case-insensitive), for the same `file://` / `env://` reason as [`deserialize_str_or_num`].
 fn deserialize_str_or_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
@@ -409,6 +422,12 @@ impl Default for SessionsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebConfig {
     pub path: String,
+    // authentik-rs: gunicorn's `web.workers` (gunicorn.conf.py's default, 2)
+    // and `web.threads`, which size the database pool (`db::init`).
+    #[serde(default, deserialize_with = "deserialize_opt_str_or_num")]
+    pub workers: Option<u64>,
+    #[serde(default, deserialize_with = "deserialize_opt_str_or_num")]
+    pub threads: Option<u64>,
     pub timeout_http_read_header: String,
     pub timeout_http_read: String,
     pub timeout_http_write: String,

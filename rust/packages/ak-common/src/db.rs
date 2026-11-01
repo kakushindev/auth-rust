@@ -75,9 +75,14 @@ pub async fn init(tasks: &mut Tasks) -> Result<()> {
     let options = get_connect_opts().await?;
     let config = config::get();
 
+    // authentik-rs: the server answers API requests gunicorn used to, so the
+    // pool allows as many concurrent connections as Django's web process
+    // holds (`web.workers` × `web.threads`, 2 × 4 by default), never fewer
+    // than upstream's 4.
+    let django_connections = config.web.workers.unwrap_or(2) * config.web.threads.unwrap_or(4);
     let pool_options = PgPoolOptions::new()
         .min_connections(1)
-        .max_connections(4)
+        .max_connections(u32::try_from(django_connections.max(4)).unwrap_or(u32::MAX))
         .acquire_time_level(LevelFilter::Trace)
         .test_before_acquire(config.postgresql.conn_health_checks)
         .after_connect(|conn, _meta| {

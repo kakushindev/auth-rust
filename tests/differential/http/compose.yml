@@ -45,6 +45,8 @@ services:
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_WEB__PATH: ${WEB_PATH:-/}
+      # Gunicorn workers, the same on every stack (authentik's default is 2).
+      AUTHENTIK_WEB__WORKERS: ${WEB_WORKERS:-2}
       AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${TRUSTED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fe80::/10,::1/128}
     ports: ["127.0.0.1:29000:9000", "127.0.0.1:29443:9443"]
   ref2:
@@ -57,6 +59,8 @@ services:
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_WEB__PATH: ${WEB_PATH:-/}
+      # Gunicorn workers, the same on every stack (authentik's default is 2).
+      AUTHENTIK_WEB__WORKERS: ${WEB_WORKERS:-2}
       AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${TRUSTED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fe80::/10,::1/128}
     ports: ["127.0.0.1:29200:9000", "127.0.0.1:29643:9443"]
   cand:
@@ -71,5 +75,7 @@ services:
       AUTHENTIK_POSTGRESQL__USER: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_WEB__PATH: ${WEB_PATH:-/}
+      # Gunicorn workers, the same on every stack (authentik's default is 2).
+      AUTHENTIK_WEB__WORKERS: ${WEB_WORKERS:-2}
       AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${TRUSTED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fe80::/10,::1/128}
     ports: ["127.0.0.1:29100:9000", "127.0.0.1:29543:9443"]
