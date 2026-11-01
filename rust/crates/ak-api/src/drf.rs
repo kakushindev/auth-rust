@@ -21,15 +21,30 @@ pub struct Context<'a> {
     pub secret_key: &'a str,
     pub ipc_key: Option<&'a str>,
     pub now: DateTime<Utc>,
+    /// What session middleware needs; `None` declines session cookies.
+    pub sessions: Option<&'a SessionSettings>,
+}
+
+/// Settings `SessionMiddleware` and `BoundSessionMiddleware` read.
+pub struct SessionSettings {
+    pub geoip: ak_auth::binding::GeoIp,
+    /// `SESSION_COOKIE_AGE` (`sessions.unauthenticated_age`).
+    pub cookie_age: f64,
+    pub cookie_domain: Option<String>,
+    pub debug: bool,
 }
 
 /// The request exactly as Django receives it from the front server.
+#[derive(Clone)]
 pub struct ApiRequest<'a> {
     /// Decoded path (`request.path_info`).
     pub path: &'a str,
     /// Raw query string.
     pub query: &'a str,
     pub headers: &'a HeaderMap,
+    /// The session middleware's user, set by [`crate::serve`] for a
+    /// request with a session cookie.
+    pub session_user: Option<ak_auth::session::RequestUser>,
 }
 
 fn header_str<'a>(headers: &'a HeaderMap, name: &header::HeaderName) -> Option<&'a str> {
@@ -44,6 +59,27 @@ fn has_cookie(headers: &HeaderMap, name: &str) -> bool {
             .split(';')
             .any(|chunk| chunk.split_once('=').map_or(chunk, |(k, _)| k).trim() == name)
     })
+}
+
+/// `request.COOKIES[name]` (`django.http.parse_cookie` over the joined
+/// `Cookie` headers: last value wins). A quoted value (`_unquote`) or
+/// non-ASCII bytes are not reproduced.
+pub(crate) fn cookie_value(headers: &HeaderMap, name: &str) -> Result<Option<String>, Decline> {
+    let mut found = None;
+    for value in headers.get_all(header::COOKIE) {
+        let text = value.to_str().map_err(|_| Decline("cookie bytes"))?;
+        for chunk in text.split(';') {
+            let (key, val) = chunk.split_once('=').unwrap_or(("", chunk));
+            let (key, val) = (key.trim(), val.trim());
+            if key == name {
+                if val.starts_with('"') {
+                    return Err(Decline("quoted cookie"));
+                }
+                found = Some(val.to_owned());
+            }
+        }
+    }
+    Ok(found)
 }
 
 /// `request.LANGUAGE_CODE` must be `en`: no language cookie, and every
@@ -100,10 +136,11 @@ fn accepts_json(headers: &HeaderMap) -> bool {
 ///
 /// The reason the request is left to Django.
 pub fn admit(req: &ApiRequest<'_>, query: &QueryDict) -> Result<(), Decline> {
-    // Session-authenticated requests save or flush sessions and set
-    // cookies (M8), so they stay with Django for now.
-    if has_cookie(req.headers, "authentik_session") {
-        return Err(Decline("session cookie"));
+    // An invalid `authentik_csrf` cookie: `CsrfViewMiddleware` replaces it
+    // with a new random one on the response.
+    let csrf = cookie_value(req.headers, ak_auth::csrf::CSRF_COOKIE_NAME)?;
+    if ak_auth::csrf::process_request(csrf.as_deref()).needs_update && csrf.is_some() {
+        return Err(Decline("invalid csrf cookie"));
     }
     if !english(req.headers) {
         return Err(Decline("language other than en"));
@@ -191,9 +228,9 @@ impl User {
 
 /// `TokenAuthentication` then `SessionAuthentication`.
 ///
-/// No session cookie gets here, so the session user is anonymous. A token
-/// Django would delete while looking it up, or an outpost/IPC identity, is
-/// declined.
+/// Without a bearer credential the session middleware's user applies
+/// (`ApiRequest::session_user`). A token Django would delete while looking
+/// it up, or an outpost/IPC identity, is declined.
 ///
 /// # Errors
 ///
@@ -247,6 +284,20 @@ pub async fn authenticate(
             }
             Err(_) => return Err(Decline("authentication raised")),
         }
+    }
+    // `SessionAuthentication`: the user the session middleware resolved.
+    match &req.session_user {
+        None | Some(ak_auth::session::RequestUser::Anonymous) => {}
+        Some(ak_auth::session::RequestUser::User(id)) => {
+            let subject = Subject::load(ctx.pool, *id, None)
+                .await
+                .map_err(|_| Decline("database error"))?;
+            return Ok(Ok(User::Authenticated(subject)));
+        }
+        // The impersonated user is the session's pickled object, whose
+        // fields are not the row's; inactive and broken sessions were
+        // declined by `serve`.
+        Some(_) => return Err(Decline("session user")),
     }
     let subject = Subject::anonymous(ctx.pool)
         .await

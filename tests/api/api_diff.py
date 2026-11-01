@@ -957,11 +957,33 @@ def strip_trace(response):
     return status, headers, body
 
 
+# Session and CSRF variants (M8): a label instead of a token. Their cookie
+# values come from sessions.py through $API_SESSIONS.
+SESSIONS = json.loads(pathlib.Path(os.environ["API_SESSIONS"]).read_text()) if os.environ.get("API_SESSIONS") else {}
+VARIANTS = {
+    **{f"cookie:{k}": (None, f"authentik_session={v}") for k, v in SESSIONS.items()},
+    **(
+        {"cookie+bearer:session-plain+m7-akadmin": ("m7-akadmin", f"authentik_session={SESSIONS['session-plain']}")}
+        if SESSIONS
+        else {}
+    ),
+    "csrf:valid": ("m7-akadmin", "authentik_csrf=" + "a" * 32),
+    "csrf:invalid": ("m7-akadmin", "authentik_csrf=not-valid!"),
+}
+
+
+def fetch(base, path, token):
+    if token in VARIANTS:
+        bearer, cookie = VARIANTS[token]
+        return harness.fetch(base, path, bearer, extra={"Cookie": cookie})
+    return harness.fetch(base, path, token)
+
+
 def run_case(name, path, token):
     """One case: the same request to the three stacks, then the buckets."""
-    ref = harness.fetch(REF, path, token)
-    ref2 = harness.fetch(REF2, path, token)
-    cand = harness.fetch(CAND, path, token)
+    ref = fetch(REF, path, token)
+    ref2 = fetch(REF2, path, token)
+    cand = fetch(CAND, path, token)
     rust = TRACE in cand[1]
     cand = strip_trace(cand)
     diffs = harness.compare(ref, cand)
@@ -1017,13 +1039,20 @@ def main():
     # Warm-up, sequential: each token's first case, so one-time effects
     # of a token (the expired one is deleted on first use) are settled on
     # all stacks before tokens interleave.
+    # Session/CSRF variants exercise the middleware rather than the view:
+    # every fifth case of each endpoint.
+    sampled = []
+    for name in dict.fromkeys(n for _, n, _ in indexed):
+        mine = [c for c in indexed if c[1] == name]
+        sampled += mine[::5]
+    sampled.sort()
+    plan = [(t, indexed) for t in tokens] + [(v, sampled) for v in VARIANTS]
     done = {}
-    first, rest = indexed[:1], indexed[1:]
-    for t, token in enumerate(tokens):
-        for index, case in run_token(token, first):
+    for t, (token, cases) in enumerate(plan):
+        for index, case in run_token(token, cases[:1]):
             done[(index, t)] = case
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        futures = {pool.submit(run_token, token, rest): t for t, token in enumerate(tokens)}
+        futures = {pool.submit(run_token, token, cases[1:]): t for t, (token, cases) in enumerate(plan)}
         for future in concurrent.futures.as_completed(futures):
             t = futures[future]
             for index, case in future.result():

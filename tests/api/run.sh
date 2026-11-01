@@ -34,6 +34,13 @@ for script in tests/models/populate.py tests/rbac/populate.py "$here/populate.py
     cat "$SNAPSHOT_DIR/populate.log" >&2; echo "populate failed: $script" >&2; exit 1
   fi
 done
+# Session cookies (sessions.py) on the reference, then the states that
+# need SQL: a deactivated user and an expired session.
+python3 -I "$here/sessions.py" http://127.0.0.1:29000 > "$SNAPSHOT_DIR/sessions.json"
+expired_sid="$(python3 -I -c 'import base64,json,sys; c=json.load(open(sys.argv[1]))["session-expired"].split(".")[1]; print(json.loads(base64.urlsafe_b64decode(c+"="*(-len(c)%4)))["sid"])' "$SNAPSHOT_DIR/sessions.json")"
+dc exec -T ref-db psql -U authentik -d authentik -qc \
+  "UPDATE authentik_core_user SET is_active = false WHERE username = 'm8-sess-inactive'; UPDATE authentik_core_session SET expires = now() - interval '1 hour' WHERE session_key = '${expired_sid}';" >/dev/null
+export API_SESSIONS="$SNAPSHOT_DIR/sessions.json"
 dc exec -T ref-db pg_dump -U authentik -d authentik -Fc > "$SNAPSHOT_DIR/snapshot.dump.new"
 mv "$SNAPSHOT_DIR/snapshot.dump.new" "$SNAPSHOT_DIR/snapshot.dump"
 chmod 644 "$SNAPSHOT_DIR/snapshot.dump"

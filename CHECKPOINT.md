@@ -2,6 +2,18 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 21 — 2026-11-01
+
+- M8 part 1: the read API serves session-cookie requests. M5's `session::resolve` runs before the view, `process_response` after it (including the cookie deletion for an empty session), and DRF's `SessionAuthentication` applies when there is no bearer credential. Declined: sessions Django would modify, flush or impersonate, outpost client-IP overrides, and invalid CSRF cookies. The CSRF case was a latent M7 gap.
+- Supporting changes:
+  - config schema: `events.context_processors`, `sessions.unauthenticated_age`, `cookie_domain`;
+  - `ak_auth::python::timedelta_seconds`, a port of `timedelta_from_string` with test values checked in the image;
+  - GeoIP is opened once in the server.
+- Evidence: `tests/api/sessions.py` makes real logins on the reference before the dump. Session and CSRF variants cover a fifth of every endpoint's cases. The full run has 14 963 cases, all equal except 7 nondeterministic Django-served `users/me/`.
+
+### Exact next action
+M8 part 2: a pickle writer for session data, identical to CPython's protocol 5 for the types sessions hold, so that modified sessions (`last_ip` updates) can be saved. Then logout/flush with its `user_logged_out` event, then the first write endpoints.
+
 ## Batch 20 — 2026-10-31
 
 - M7 is **done**. Added `rbac/permissions/assigned_by_roles` (with `model_choices()` generated into `registry.rs` from `baseline/inventory/model_choices.json`) and `core/application_entitlements`. A full run of the 15 viewsets has 13 192 cases; 13 188 are equal and the 4 others are Django-served `users/me/`. Rust answered 12 676.

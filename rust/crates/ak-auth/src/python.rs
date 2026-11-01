@@ -642,6 +642,46 @@ pub fn json_loads(bytes: &[u8]) -> Result<PyValue, PyError> {
     Ok(value)
 }
 
+/// `timedelta_from_string(expr).total_seconds()`, `None` where it raises.
+///
+/// That is `authentik.lib.utils.time`'s parser (`ValueError` is `None`).
+/// Values go through `float()` after `strip()`; Python-only float syntax
+/// (`1_0`) is rejected here.
+#[must_use]
+pub fn timedelta_seconds(expr: &str) -> Option<f64> {
+    const KEYS: &[(&str, f64)] = &[
+        ("microseconds", 1e-6),
+        ("milliseconds", 1e-3),
+        ("seconds", 1.0),
+        ("minutes", 60.0),
+        ("hours", 3600.0),
+        ("days", 86_400.0),
+        ("weeks", 604_800.0),
+    ];
+    let mut kwargs: Vec<(&str, f64)> = Vec::new();
+    for pair in expr.split(';') {
+        // `key, value = pair.split("=")`: exactly one `=`.
+        let mut parts = pair.split('=');
+        let (Some(key), Some(value), None) = (parts.next(), parts.next(), parts.next()) else {
+            return None;
+        };
+        let key = key.to_lowercase();
+        let Some((name, unit)) = KEYS.iter().find(|(k, _)| *k == key) else {
+            continue;
+        };
+        let value: f64 = value.trim_matches(isspace).parse().ok()?;
+        // Later duplicates replace earlier ones (a dict).
+        kwargs.retain(|(k, _)| k != name);
+        kwargs.push((name, value * unit));
+    }
+    if kwargs.is_empty() {
+        return None;
+    }
+    // `timedelta` keeps whole microseconds.
+    let seconds: f64 = kwargs.iter().map(|(_, v)| v).sum();
+    Some((seconds * 1e6).round() / 1e6)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Write as _;
@@ -787,6 +827,25 @@ mod tests {
                 .py_len()
                 .map_or_else(|_| Value::from("TypeError"), Value::from);
             assert_eq!(len, case[3], "{text} len");
+        }
+    }
+
+    #[test]
+    fn timedelta_matches_authentik() {
+        // `timedelta_from_string(e).total_seconds()` in the reference image.
+        for (expr, seconds) in [
+            ("days=1", 86_400.0_f64),
+            ("hours=1;minutes=30", 5_400.0_f64),
+            ("Seconds=1.5", 1.5_f64),
+            ("weeks=1;days=-1", 518_400.0_f64),
+            ("foo=1;hours=2", 7_200.0_f64),
+            ("milliseconds=1.0000004", 0.001_f64),
+            ("hours=2;hours=3", 10_800.0_f64),
+        ] {
+            assert_eq!(timedelta_seconds(expr), Some(seconds), "{expr}");
+        }
+        for expr in ["", "foo=1", "hours", "hours=1=2", "hours=x"] {
+            assert_eq!(timedelta_seconds(expr), None, "{expr}");
         }
     }
 }

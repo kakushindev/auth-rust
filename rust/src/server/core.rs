@@ -84,6 +84,31 @@ fn read_api_path(request: &Request) -> Option<String> {
 
 /// authentik-rs (M7): `ak_api::serve`. Responses look proxied
 /// (`X-Powered-By`, an explicit length), as Django's do.
+/// The session middleware's settings, read once: `MaxMind` databases are
+/// opened at startup as Django does. `None` (an unparsable
+/// `sessions.unauthenticated_age`, an unreadable database) declines every
+/// request with a session cookie.
+fn session_settings() -> Option<&'static ak_api::SessionSettings> {
+    static SETTINGS: std::sync::OnceLock<Option<ak_api::SessionSettings>> =
+        std::sync::OnceLock::new();
+    SETTINGS
+        .get_or_init(|| {
+            let config = config::get();
+            let processors = &config.events.context_processors;
+            let geoip = ak_api::GeoIp::new(processors.asn.as_deref(), processors.geoip.as_deref())
+                .map_err(|err| warn!(?err, "GeoIP databases unusable, sessions stay with Django"))
+                .ok()?;
+            let cookie_age = ak_api::timedelta_seconds(&config.sessions.unauthenticated_age)?;
+            Some(ak_api::SessionSettings {
+                geoip,
+                cookie_age,
+                cookie_domain: config.cookie_domain.clone(),
+                debug: config.debug,
+            })
+        })
+        .as_ref()
+}
+
 async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Response> {
     let ipc_key = std::fs::read_to_string(std::env::temp_dir().join(super::IPC_KEY_FILE)).ok();
     let ctx = ak_api::Context {
@@ -91,11 +116,13 @@ async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Res
         secret_key: &config::get().secret_key,
         ipc_key: ipc_key.as_deref(),
         now: chrono::Utc::now(),
+        sessions: session_settings(),
     };
     let req = ak_api::ApiRequest {
         path: &path,
         query: &query,
         headers: &headers,
+        session_user: None,
     };
     let (route, answer) = match ak_api::serve(&ctx, &req).await {
         ak_api::Outcome::Serve { route, answer } => (route, answer),

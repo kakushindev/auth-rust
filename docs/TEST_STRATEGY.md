@@ -39,6 +39,9 @@ python3 scripts/gen_feature_matrix.py           # regenerate docs/FEATURE_MATRIX
 
 The harness runs tokens concurrently (`API_JOBS`, default 8, which matches gunicorn's 2 workers × 4 threads per stack). Every token keeps the suite's case order, so its own side effects (Django deletes an expired token on first use) happen at the same point on every stack. A sequential warm-up first runs each token's first case on all three stacks, so those one-time effects are settled before tokens interleave. Evidence that this changes nothing: on the same candidate image the sequential run (`API_JOBS=1`) and the parallel run produced identical buckets, and an identical Rust-served set over the 11 067 cases common to both runs. Cases that are not common carry run-specific fixture UUIDs in their paths. A full run takes about 15 minutes instead of about 50.
 
+
+Session and CSRF variants run alongside the tokens. `tests/api/sessions.py` creates real sessions on the reference before the snapshot is dumped. They are labels in `api_diff.py` (`cookie:…`, `cookie+bearer:…`, `csrf:…`) and cover every fifth case of each endpoint: what they exercise is the middleware, so a sample of each endpoint is enough.
+
 Inputs where Django's own answer depends on the process are left out of the case list, and Rust declines them; each is listed with a comment in `api_diff.py`. One example is several invalid values for a `ModelMultipleChoiceFilter`, where Django reports whichever value comes first in a `frozenset`, so the order follows the per-process string hash seed.
 
 ## Rules

@@ -259,6 +259,31 @@ GET actions that are not list/retrieve stay on Django until their milestone: `us
 
 **Avatars** (`ak_api::avatar`, `ak_api::cache`): every mode of `get_avatar` is reproduced. Initials SVGs are byte-identical to lxml's ASCII serialization, colours come from `md5(name.lower())`, and strings lxml rejects are declined (Django answers 500). URL modes (`gravatar`, `…://…`) read Django's `django_postgres_cache` rows: keys are `public::1:goauthentik.io/lib/avatars/<host>/…` and values are pickles, decoded for `None`, bools and `str`. On a hit Rust makes Django's own writes, `touch` (expiry = now + 300 s, Django's default timeout) and the deletion of expired rows, after every avatar on the page has been resolved. A miss means Django would send an outbound `HEAD` and cache the result, so Rust declines and Django answers and fills the cache.
 
+## Session reads (M8, part 1)
+
+The read API now serves requests that carry an `authentik_session` cookie. `ak_api::session::middleware` runs authentik's session middlewares through M5's `ak_auth::session::resolve`:
+- `SessionMiddleware`'s JWT cookie and session store;
+- `BoundSessionMiddleware` (network and GeoIP bindings, against the image's MaxMind databases);
+- `AuthenticationMiddleware`;
+- `ImpersonateMiddleware`.
+
+After the view, `SessionMiddleware.process_response` runs, including the deletion of the cookie of an empty session. DRF's `TokenAuthentication` is tried first, then `SessionAuthentication` on the session's user.
+
+Declined, because Django writes or the case is not reproduced:
+- a session that would be **modified** (its `last_ip` changes, so Django re-pickles and saves it);
+- one Django **flushes** (inactive user, broken binding: logout and event);
+- an **impersonating** session (`request.user` is the session's pickled object, not the row);
+- an outpost's delegated client IP (its token lookup may delete an expired token);
+- quoted cookie values.
+
+An **invalid `authentik_csrf` cookie** is now declined on every request: `CsrfViewMiddleware` answers it with a new random cookie. This was latent in M7, whose cases sent no CSRF cookie.
+
+| Evidence | Result |
+| --- | --- |
+| `tests/api/run.sh` with session variants. `tests/api/sessions.py` logs in through the flow executor on the reference before the snapshot is dumped, so all three stacks restore the same session rows. Variants: a plain user, a superuser-group member, a user deactivated after login, an anonymous in-flow session, a logged-out session, an expired one, a non-JWT and an empty cookie, a session plus a bearer token, and valid and invalid CSRF cookies. Each variant runs on every fifth case of all 15 endpoints | Full run **14 963 cases: 14 956 equal + 7 nondeterministic** (all `users/me/`, Django-served). The superuser session's status histogram matches the superuser token's. Empty sessions get Django's cookie deletion from Rust. Invalid CSRF cookies and the inactive user's first request (Django's 400 and flush) are declined |
+
+Not covered yet: the modified-session path itself (the run's sessions keep their login IP), and impersonation.
+
 ## Not verified / open
 
 - The 9 nondeterministic cases are compared only coarsely, so a real difference inside them would be masked. They need field-level masking, e.g. sorting `system_permissions` after checking set equality.

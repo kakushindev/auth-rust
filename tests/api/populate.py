@@ -204,6 +204,14 @@ for app in apps_m4:
     ApplicationEntitlement.objects.create(name="m7-ent-same", app=app, attributes={"m7": True})
 granted = ApplicationEntitlement.objects.create(name="m7-ent-solo", app=apps_m4[0], attributes={"x": [1, 2.5]})
 Role.objects.get(name="m6-object").assign_perms("authentik_core.view_applicationentitlement", granted)
+# Users that log in over HTTP in sessions.py (M8 session reads): their
+# password is a test value of this suite.
+for username, group in [("m8-sess-plain", None), ("m8-sess-super", "m6-g-super"), ("m8-sess-inactive", None)]:
+    u = User.objects.create(username=username, name=username, path="users/m8")
+    u.set_password("m8-test-password")
+    u.save()
+    if group:
+        u.groups.add(Group.objects.get(name=group))
 transaction.commit()
 print(f"[populate] tokens for {len(subjects)} subjects")
 print("[populate] ok")

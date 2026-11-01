@@ -18,10 +18,12 @@ pub mod json;
 pub mod pagination;
 pub mod py;
 mod registry;
+mod session;
 pub mod sql;
 pub mod views;
 
-pub use drf::{ApiRequest, Context};
+pub use ak_auth::{binding::GeoIp, python::timedelta_seconds};
+pub use drf::{ApiRequest, Context, SessionSettings};
 
 /// A response as Django would send it (the server adds framing).
 #[derive(Debug, Clone)]
@@ -219,6 +221,14 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
     if let Err(decline) = drf::admit(req, &query) {
         return Outcome::Decline(decline);
     }
+    let (session_user, session_cookies) = match session::middleware(ctx, req).await {
+        Ok(state) => state,
+        Err(decline) => return Outcome::Decline(decline),
+    };
+    let req = &ApiRequest {
+        session_user,
+        ..req.clone()
+    };
     let (name, result) = match route {
         Route::RolesList => (
             "rbac_roles",
@@ -338,10 +348,15 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
         ),
     };
     match result {
-        Ok(answer) => Outcome::Serve {
-            route: name,
-            answer,
-        },
+        Ok(mut answer) => {
+            answer
+                .headers
+                .extend(session_cookies.into_iter().map(|c| ("set-cookie", c)));
+            Outcome::Serve {
+                route: name,
+                answer,
+            }
+        }
         Err(decline) => Outcome::Decline(decline),
     }
 }

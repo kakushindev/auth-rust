@@ -293,6 +293,15 @@ pub struct Config {
 
     pub outposts: OutpostConfig,
 
+    // authentik-rs: read by the ported API (session middleware, avatars'
+    // GeoIP context).
+    #[serde(default)]
+    pub events: EventsConfig,
+    #[serde(default)]
+    pub sessions: SessionsConfig,
+    #[serde(default)]
+    pub cookie_domain: Option<String>,
+
     // Outpost specific fields
     pub host: Option<String>,
     pub host_browser: Option<String>,
@@ -365,6 +374,36 @@ pub struct ComplianceConfig {
 pub struct ComplianceFipsConfig {
     #[serde(deserialize_with = "deserialize_str_or_bool")]
     pub enabled: bool,
+}
+
+/// `events.context_processors`: the `MaxMind` database paths.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EventsConfig {
+    #[serde(default)]
+    pub context_processors: ContextProcessorsConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ContextProcessorsConfig {
+    #[serde(default)]
+    pub geoip: Option<String>,
+    #[serde(default)]
+    pub asn: Option<String>,
+}
+
+/// `sessions`: `unauthenticated_age` is `SESSION_COOKIE_AGE` as a
+/// `timedelta_from_string` expression.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionsConfig {
+    pub unauthenticated_age: String,
+}
+
+impl Default for SessionsConfig {
+    fn default() -> Self {
+        Self {
+            unauthenticated_age: "days=1".to_owned(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
