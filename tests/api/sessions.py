@@ -73,6 +73,9 @@ assert status == 200, (status, body)
 cookies["session-moved-plain"] = Browser().login("m8-sess-plain").cookie()
 cookies["session-moved-super"] = Browser().login("m8-sess-super").cookie()
 cookies["session-moved-bearer"] = Browser().login("m8-sess-plain").cookie()
+# Bound: run.sh adds a network binding and an old last_ip, so the first
+# request breaks it (BoundSessionMiddleware logs out and redirects).
+cookies["session-bound"] = Browser().login("m8-sess-plain").cookie()
 cookies["session-garbage"] = "not-a-jwt"
 cookies["session-empty"] = ""
 assert all(v is not None for v in cookies.values()), cookies

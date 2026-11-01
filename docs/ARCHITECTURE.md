@@ -23,9 +23,15 @@ request ─► Rust server (vendored from upstream src/server)
 | --- | --- | --- |
 | `ak-passwords` | Django password hashers (`django.contrib.auth.hashers`) | Done, verified against reference |
 | `ak-schema-guard` | Schema snapshot/verify (release gate) | Done, verified (restore + drift tests) |
-| `ak-models` (next) | Row types for authentik tables, decoded exactly as Django stores them (UUIDs, JSONB, timestamptz, MTI parent/child) | Planned |
-| `ak-server` (next) | Upstream `src/` server/worker vendored with attribution, plus the compat router | Planned |
-| `ak-sessions`, `ak-auth`, `ak-rbac`, `ak-flows`, `ak-policies`, `ak-stages-*`, `ak-providers-*`, `ak-sources-*`, `ak-events`, `ak-tasks`, `ak-blueprints`, `ak-tenants`, `ak-outposts` | Domain ports, in dependency order | Planned |
+| `ak-models` | Row types for authentik tables, decoded exactly as Django stores them (UUIDs, JSONB, timestamptz, MTI parent/child) | Done (M4) |
+| server (`rust/src/`) | Upstream server/worker vendored with attribution, plus the compat router (`PORTED_ROUTES`) | Done (M2), routes added per milestone |
+| `ak-pickle` | Safe pickle reader, and a writer byte-identical to CPython 3.14's protocol 5 for the graphs authentik stores | Done (M5, M8) |
+| `ak-geoip` | MaxMind DB reader and `geoip2` models | Done (M5) |
+| `ak-auth` | Request identity: host, brand, tenant, client IP, tokens, sessions, bindings, CSRF, response cookies | Done (M5) |
+| `ak-rbac` | Role-based permissions through `ak-guardian` | Done (M6) |
+| `ak-api` | The read API (15 viewsets) and session-cookie handling | Done (M7), M8 in progress |
+| `ak-events` | Write-side side effects: dramatiq tasks on the Postgres broker, events | In progress (M8) |
+| `ak-flows`, `ak-policies`, `ak-stages-*`, `ak-providers-*`, `ak-sources-*`, `ak-blueprints`, `ak-tenants`, `ak-outposts` | Domain ports, in dependency order | Planned |
 
 Shared infrastructure is reused from upstream rather than rewritten: `packages/ak-common` (config loader that already reproduces `AUTHENTIK_*` env/file semantics, DB pool, tracing, arbiter) and `packages/ak-axum` (accept/extract layers). The plan is to depend on them by path from the pinned checkout.
 

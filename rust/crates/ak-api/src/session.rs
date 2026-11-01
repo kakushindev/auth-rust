@@ -4,15 +4,17 @@
 //! and `SessionMiddleware.process_response`.
 //!
 //! A session whose only change is `last_ip` is saved as Django saves it
-//! ([`ak_auth::session::SessionSave`]) and its cookie refreshed. Flushes
-//! (an inactive user, a broken binding: logout and event) are declined.
-//! An empty session (expired or unknown key) gets Django's cookie
-//! deletion.
+//! ([`ak_auth::session::SessionSave`]) and its cookie refreshed. The
+//! middlewares' logouts (an inactive user: 400; a broken binding: a
+//! redirect to login) are written by [`ak_events::logout`] and answered
+//! before the view, as Django answers them; one whose signal receivers are
+//! not reproduced is declined. An empty session (expired or unknown key)
+//! gets Django's cookie deletion.
 
 use http::header;
 
 use crate::{
-    Decline,
+    Answer, Decline,
     drf::{ApiRequest, Context, cookie_value},
 };
 
@@ -33,6 +35,8 @@ pub(crate) struct State {
     pub cookies: Vec<String>,
     /// A modified session to save after the view.
     save: Option<Save>,
+    /// The middleware's own response (a logout), answered without the view.
+    pub early: Option<Answer>,
 }
 
 struct Save {
@@ -147,11 +151,6 @@ pub(crate) async fn middleware(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Resul
     )
     .await
     .map_err(|_| Decline("session middleware raised"))?;
-    match resolved.user {
-        ak_auth::session::RequestUser::InactiveLogout => return Err(Decline("inactive logout")),
-        ak_auth::session::RequestUser::BindingBroken(_) => return Err(Decline("binding broken")),
-        _ => {}
-    }
     let host = req.headers.get(header::HOST).and_then(|v| v.to_str().ok());
     let user_agent = req
         .headers
@@ -164,6 +163,17 @@ pub(crate) async fn middleware(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Resul
         settings.debug,
         user_agent,
     );
+    if matches!(
+        resolved.user,
+        ak_auth::session::RequestUser::InactiveLogout
+            | ak_auth::session::RequestUser::BindingBroken(_)
+    ) {
+        let answer = logout(ctx, req, settings, &resolved, &client_ip, secure).await?;
+        return Ok(State {
+            early: Some(answer),
+            ..State::default()
+        });
+    }
     let save = match (&resolved.set_last_ip, resolved.save) {
         (None, _) => None,
         (Some(_), None) => return Err(Decline("session save not reproduced")),
@@ -201,5 +211,121 @@ pub(crate) async fn middleware(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Resul
         user: Some(resolved.user),
         cookies,
         save,
+        early: None,
+    })
+}
+
+/// The request's tenant for the logout's event and tasks: the public one.
+async fn public_tenant(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Result<uuid::Uuid, Decline> {
+    let raw_host = req
+        .headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .ok_or(Decline("no host"))?;
+    let hostname =
+        ak_auth::host::tenant_hostname(raw_host).map_err(|_| Decline("disallowed host"))?;
+    let tenant = ak_auth::tenant::resolve(ctx.pool, hostname)
+        .await
+        .map_err(|_| Decline("database error"))?
+        .ok_or(Decline("no tenant"))?;
+    let schema: Option<String> = sqlx::query_scalar(
+        "SELECT schema_name FROM authentik_tenants_tenant WHERE tenant_uuid = $1",
+    )
+    .bind(tenant)
+    .fetch_optional(ctx.pool)
+    .await
+    .map_err(|_| Decline("database error"))?;
+    if schema.as_deref() != Some("public") {
+        return Err(Decline("tenant"));
+    }
+    Ok(tenant)
+}
+
+/// `AuthenticationMiddleware`'s 400 for an inactive user, or
+/// `BoundSessionMiddleware`'s redirect to login, after the logout and the
+/// flush; `SessionMiddleware.process_response` then deletes the cookie.
+/// `LocaleMiddleware` sits between the two, so only the 400 has its
+/// `Content-Language` and `Accept-Language` vary.
+async fn logout(
+    ctx: &Context<'_>,
+    req: &ApiRequest<'_>,
+    settings: &crate::SessionSettings,
+    resolved: &ak_auth::session::Resolved,
+    client_ip: &str,
+    secure: bool,
+) -> Result<Answer, Decline> {
+    let flush = resolved
+        .flush
+        .as_ref()
+        .ok_or(Decline("logout without a session"))?;
+    let tenant = public_tenant(ctx, req).await?;
+    // `META["HTTP_USER_AGENT"]`: the header's bytes as Latin-1.
+    let user_agent: String = req
+        .headers
+        .get(header::USER_AGENT)
+        .map(|v| v.as_bytes().iter().copied().map(char::from).collect())
+        .unwrap_or_default();
+    let mut tx = ctx
+        .pool
+        .begin()
+        .await
+        .map_err(|_| Decline("database error"))?;
+    let written = ak_events::logout::logout(
+        &mut tx,
+        tenant,
+        flush,
+        &ak_events::logout::Request {
+            path: req.path,
+            method: "GET",
+            query_string: req.query,
+            user_agent: &user_agent,
+            client_ip,
+        },
+        &settings.geoip,
+        ctx.now,
+    )
+    .await;
+    if written.is_err() {
+        let _ = tx.rollback().await;
+        return Err(Decline("logout not reproduced"));
+    }
+    let effect = ak_auth::cookie::session_process_response(
+        &ak_auth::cookie::SessionResponse {
+            had_cookie: true,
+            accessed: true,
+            modified: false,
+            empty: true,
+            session_key: None,
+            user_uid: None,
+            expiry_age: None,
+            status: 400,
+            secure,
+            web_path: "/",
+            cookie_domain: settings.cookie_domain.as_deref(),
+        },
+        ctx.secret_key,
+        now_seconds(ctx),
+    )
+    .map_err(|_| Decline("cookie rendering"))?;
+    tx.commit().await.map_err(|_| Decline("database error"))?;
+    let mut headers: Vec<(&'static str, String)> = Vec::new();
+    let status = if matches!(resolved.user, ak_auth::session::RequestUser::InactiveLogout) {
+        headers.push(("content-language", "en".to_owned()));
+        headers.push(("content-type", "text/html; charset=utf-8".to_owned()));
+        headers.push(("vary", "Accept-Language, Cookie".to_owned()));
+        400
+    } else {
+        let path = ak_auth::url::request_path(req.path);
+        let next = ak_auth::url::get_full_path(&path, req.query);
+        headers.push(("content-type", "text/html; charset=utf-8".to_owned()));
+        headers.push(("location", ak_auth::url::login_redirect("/", &next)));
+        headers.push(("vary", "Cookie".to_owned()));
+        302
+    };
+    headers.extend(effect.cookies.into_iter().map(|c| ("set-cookie", c)));
+    Ok(Answer {
+        status,
+        headers,
+        body: Vec::new(),
     })
 }

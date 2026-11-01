@@ -516,6 +516,12 @@ impl Record {
         Ok(Self(out))
     }
 
+    /// The fields `to_dict()` keeps, in the record's order.
+    #[must_use]
+    pub fn fields(&self) -> &[(&'static str, Value)] {
+        &self.0
+    }
+
     /// A field's value, if `to_dict()` keeps it.
     #[must_use]
     pub fn get(&self, field: &str) -> Option<&Value> {
@@ -539,6 +545,11 @@ pub struct City {
     pub continent: Record,
     pub country: Record,
     pub city: Record,
+    /// `location.latitude` / `location.longitude`.
+    pub latitude: Option<Value>,
+    pub longitude: Option<Value>,
+    /// `city.name` with the default locales (`["en"]`).
+    pub city_name: Option<Value>,
 }
 
 /// `geoip2.database.Reader`.
@@ -594,6 +605,17 @@ impl Reader {
                 ],
             )?,
             city: Record::new(record.get("city"), &["confidence", "geoname_id", "names"])?,
+            latitude: Record::new(record.get("location"), &["latitude"])?
+                .get("latitude")
+                .cloned(),
+            longitude: Record::new(record.get("location"), &["longitude"])?
+                .get("longitude")
+                .cloned(),
+            city_name: record
+                .get("city")
+                .and_then(|c| c.get("names"))
+                .and_then(|n| n.get("en"))
+                .cloned(),
         }))
     }
 }

@@ -13,6 +13,7 @@ ak-pickle = { path = "../ak-pickle" }
 base64.workspace = true
 chrono.workspace = true
 hmac.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 subtle.workspace = true
@@ -20,7 +21,6 @@ unicode-normalization.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 tokio.workspace = true
 
 [lints]

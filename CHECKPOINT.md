@@ -2,6 +2,32 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 24 — 2026-11-01
+
+- **M8 part 3**: `ak_events::event` (the `Event.new().from_http()` writer) and `ak_events::logout` (the middleware logouts and flush) are done, and `ak-api` now serves the inactive-user 400 and the broken-binding redirect.
+  - `ak_auth::session::Resolved` gains `flush`.
+  - `binding::Broken` carries `to_event()`'s values, and the ASN/GeoIP dict helpers moved to `ak_auth::binding`.
+  - `ak-geoip` exposes location and city name.
+- Evidence: `tests/events/run.sh` has 847 events identical and 12 logouts (10 identical, 2 correctly declined). The full API run has 15 759 equal + 9 nondeterministic responses, an equal logout state ref vs cand, and a clean schema guard.
+- Findings:
+  - `BoundSessionMiddleware` uses Django's own `AuthenticationMiddleware`, so there is one event, even for an inactive user.
+  - `FlowPlan` pickles `(None, slots)` state.
+  - Go's brand TLS watcher polls the brands API, whose 500s write events that our server does not (open item in COMPATIBILITY_REPORT).
+  - Formatting: `ak-api` uses default rustfmt, and the nightly config's `format_strings` corrupts its SQL strings.
+
+### Exact next action
+The first write endpoints of the ported viewsets (create/update/delete): `model_created`/`model_updated`/`model_deleted` events (`AuditMiddleware`), cache invalidation and `InitialPermissions`, with a state-transition differential.
+
+## Batch 23 — 2026-11-01
+
+- M8 foundations:
+  - `ak_pickle::write`: CPython 3.14 protocol 5, byte-identical on image-generated vectors, including a dramatiq `Tenant` message (`732164f`);
+  - `ak-events` with `task::enqueue`: `PostgresBroker.enqueue`, the `Task` row and `TaskLog`, byte-identical on a live stack (`bb5e8f5`).
+- Python interns identifier-like strings, so equal ones are one object and a repeat is a memo reference (`Obj::Interned`).
+
+### Exact next action
+The `Event` writer (`Event.new().from_http()`: context sanitizing, user, brand, GeoIP/ASN, client IP, expiry), then logout/flush on it, then a state differential over the events, tasks and sessions tables.
+
 ## Batch 22 — 2026-11-01
 
 - M8 part 2: modified sessions are saved from Rust. When `last_ip` changes, Rust writes the columns and refreshes the cookie for the DRF user; `session_data` is kept as stored. Django's re-pickle is nondeterministic in CPython, so the contract is semantic equality, recorded in DATABASE_CONTRACT. Saves are declined for unreadable data, keys `create_model_instance` would move, unknown classes and unknown expiry types.

@@ -225,6 +225,12 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
         Ok(state) => state,
         Err(decline) => return Outcome::Decline(decline),
     };
+    if let Some(answer) = session_state.early.take() {
+        return Outcome::Serve {
+            route: "session_logout",
+            answer,
+        };
+    }
     let req = &ApiRequest {
         session_user: session_state.user.take(),
         ..req.clone()

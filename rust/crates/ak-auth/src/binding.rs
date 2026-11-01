@@ -3,6 +3,7 @@
 //! breaks when a request from another IP leaves the binding.
 
 use ak_geoip::{Asn, City, LookupError, OpenError, Processor, Record, parse_ip};
+use serde_json::{Map, Value, json};
 
 /// `SESSION_KEY_BINDING_NET`.
 pub const SESSION_KEY_BINDING_NET: &str = "authentik/stages/user_login/binding/net";
@@ -43,7 +44,11 @@ impl GeoIp {
 
     /// `ASN_CONTEXT_PROCESSOR.asn(ip)`: `None` when unconfigured, for
     /// `GeoIP2Error` and `ValueError`.
-    fn asn(&self, ip: &str) -> Result<Option<Asn>, Error> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error`] where Python raises past the wrapper.
+    pub fn asn(&self, ip: &str) -> Result<Option<Asn>, Error> {
         let Some(reader) = self.asn.reader().map_err(|_| Error::InvalidDatabase)? else {
             return Ok(None);
         };
@@ -59,7 +64,11 @@ impl GeoIp {
     }
 
     /// `GEOIP_CONTEXT_PROCESSOR.city(ip)`.
-    fn city(&self, ip: &str) -> Result<Option<City>, Error> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error`] where Python raises past the wrapper.
+    pub fn city(&self, ip: &str) -> Result<Option<City>, Error> {
         let Some(reader) = self.city.reader().map_err(|_| Error::InvalidDatabase)? else {
             return Ok(None);
         };
@@ -92,8 +101,90 @@ pub enum Recheck {
     /// The new IP is within the binding; with a binding key in the session,
     /// `session["last_ip"]` becomes the new IP (the session is modified).
     Passed { set_last_ip: bool },
-    /// `SessionBindingBroken(reason, …)`: logout and a redirect to login.
-    Broken(&'static str),
+    /// `SessionBindingBroken(reason, old_value, new_value, …)`: logout and
+    /// a redirect to login.
+    Broken(Broken),
+}
+
+/// A broken binding, with the values `SessionBindingBroken.to_event()`
+/// reports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Broken {
+    pub reason: &'static str,
+    pub previous: Value,
+    pub new: Value,
+}
+
+/// A `MaxMind` value as `json.dumps` writes the Python object.
+#[must_use]
+pub fn geo_json(value: &ak_geoip::Value) -> Value {
+    use ak_geoip::Value as G;
+    match value {
+        G::Str(s) => json!(s),
+        G::Double(f) | G::Float(f) => json!(f),
+        G::Uint(n) => u64::try_from(*n).map_or_else(|_| json!(n.to_string()), |n| json!(n)),
+        G::Int(n) => json!(n),
+        G::Bool(b) => json!(b),
+        G::Bytes(b) => json!(b),
+        G::Map(items) => Value::Object(
+            items
+                .iter()
+                .map(|(k, v)| (k.clone(), geo_json(v)))
+                .collect(),
+        ),
+        G::Array(items) => Value::Array(items.iter().map(geo_json).collect()),
+    }
+}
+
+fn opt_json(value: Option<&ak_geoip::Value>) -> Value {
+    value.map_or(Value::Null, geo_json)
+}
+
+/// `ASN_CONTEXT_PROCESSOR.asn_to_dict(asn)`: `{}` for none.
+#[must_use]
+pub fn asn_to_dict(asn: Option<&Asn>) -> Value {
+    let Some(asn) = asn else {
+        return json!({});
+    };
+    json!({
+        "asn": opt_json(asn.autonomous_system_number.as_ref()),
+        "as_org": opt_json(asn.autonomous_system_organization.as_ref()),
+        "network": asn.network.to_string(),
+    })
+}
+
+/// `GEOIP_CONTEXT_PROCESSOR.city_to_dict(city)`: `{}` for none; `city` is
+/// `""` unless the city has a name.
+#[must_use]
+pub fn city_to_dict(city: Option<&City>) -> Value {
+    let Some(city) = city else {
+        return json!({});
+    };
+    let name = city
+        .city_name
+        .as_ref()
+        .map(geo_json)
+        .filter(|v| !matches!(v, Value::Null | Value::Bool(false)) && v.as_str() != Some(""))
+        .unwrap_or_else(|| json!(""));
+    json!({
+        "continent": opt_json(city.continent.get("code")),
+        "country": opt_json(city.country.get("iso_code")),
+        "lat": opt_json(city.latitude.as_ref()),
+        "long": opt_json(city.longitude.as_ref()),
+        "city": name,
+    })
+}
+
+/// A `geoip2` record's `to_dict()`.
+#[must_use]
+pub fn record_to_dict(record: &Record) -> Value {
+    Value::Object(
+        record
+            .fields()
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), geo_json(v)))
+            .collect::<Map<_, _>>(),
+    )
 }
 
 /// A binding as the session holds it: `None` when absent (`NO_BINDING`).
@@ -115,14 +206,27 @@ fn mode(binding: &Binding) -> &str {
         .unwrap_or_default()
 }
 
+fn broken(reason: &'static str, previous: Value, new: Value) -> Broken {
+    Broken {
+        reason,
+        previous,
+        new,
+    }
+}
+
 fn recheck_net(
     geoip: &GeoIp,
     binding: &str,
     last_ip: &str,
     new_ip: &str,
-) -> Result<Option<&'static str>, Error> {
-    let (Some(last), Some(new)) = (geoip.asn(last_ip)?, geoip.asn(new_ip)?) else {
-        return Ok(Some("network.missing"));
+) -> Result<Option<Broken>, Error> {
+    let (last, new) = (geoip.asn(last_ip)?, geoip.asn(new_ip)?);
+    let (Some(last), Some(new)) = (&last, &new) else {
+        return Ok(Some(broken(
+            "network.missing",
+            asn_to_dict(last.as_ref()),
+            asn_to_dict(new.as_ref()),
+        )));
     };
     if matches!(
         binding,
@@ -137,15 +241,23 @@ fn recheck_net(
             _ => false,
         };
         if !same {
-            return Ok(Some("network.asn"));
+            return Ok(Some(broken(
+                "network.asn",
+                opt_json(last.autonomous_system_number.as_ref()),
+                opt_json(new.autonomous_system_number.as_ref()),
+            )));
         }
     }
     if matches!(binding, "bind_asn_network" | "bind_asn_network_ip") && last.network != new.network
     {
-        return Ok(Some("network.asn_network"));
+        return Ok(Some(broken(
+            "network.asn_network",
+            json!(last.network.to_string()),
+            json!(new.network.to_string()),
+        )));
     }
     if binding == "bind_asn_network_ip" && last_ip != new_ip {
-        return Ok(Some("network.ip"));
+        return Ok(Some(broken("network.ip", json!(last_ip), json!(new_ip))));
     }
     Ok(None)
 }
@@ -155,9 +267,14 @@ fn recheck_geo(
     binding: &str,
     last_ip: &str,
     new_ip: &str,
-) -> Result<Option<&'static str>, Error> {
-    let (Some(last), Some(new)) = (geoip.city(last_ip)?, geoip.city(new_ip)?) else {
-        return Ok(Some("geoip.missing"));
+) -> Result<Option<Broken>, Error> {
+    let (last, new) = (geoip.city(last_ip)?, geoip.city(new_ip)?);
+    let (Some(last), Some(new)) = (&last, &new) else {
+        return Ok(Some(broken(
+            "geoip.missing",
+            city_to_dict(last.as_ref()),
+            city_to_dict(new.as_ref()),
+        )));
     };
     let differs = |a: &Record, b: &Record| !a.py_eq(b);
     if matches!(
@@ -165,17 +282,29 @@ fn recheck_geo(
         "bind_continent" | "bind_continent_country" | "bind_continent_country_city"
     ) && differs(&last.continent, &new.continent)
     {
-        return Ok(Some("geoip.continent"));
+        return Ok(Some(broken(
+            "geoip.continent",
+            record_to_dict(&last.continent),
+            record_to_dict(&new.continent),
+        )));
     }
     if matches!(
         binding,
         "bind_continent_country" | "bind_continent_country_city"
     ) && differs(&last.country, &new.country)
     {
-        return Ok(Some("geoip.country"));
+        return Ok(Some(broken(
+            "geoip.country",
+            record_to_dict(&last.country),
+            record_to_dict(&new.country),
+        )));
     }
     if binding == "bind_continent_country_city" && differs(&last.city, &new.city) {
-        return Ok(Some("geoip.city"));
+        return Ok(Some(broken(
+            "geoip.city",
+            record_to_dict(&last.city),
+            record_to_dict(&new.city),
+        )));
     }
     Ok(None)
 }
@@ -200,14 +329,14 @@ pub fn recheck(
     // `NOT NULL`); without one there is nothing to compare against.
     let last = last_ip.unwrap_or_default();
     if is_bound(net)
-        && let Some(reason) = recheck_net(geoip, mode(net), last, new_ip)?
+        && let Some(broken) = recheck_net(geoip, mode(net), last, new_ip)?
     {
-        return Ok(Recheck::Broken(reason));
+        return Ok(Recheck::Broken(broken));
     }
     if is_bound(geo)
-        && let Some(reason) = recheck_geo(geoip, mode(geo), last, new_ip)?
+        && let Some(broken) = recheck_geo(geoip, mode(geo), last, new_ip)?
     {
-        return Ok(Recheck::Broken(reason));
+        return Ok(Recheck::Broken(broken));
     }
     Ok(Recheck::Passed {
         set_last_ip: net.is_some() || geo.is_some(),

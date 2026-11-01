@@ -8,8 +8,11 @@ publish.workspace = true
 
 [dependencies]
 ak-auth = { path = "../ak-auth" }
+ak-geoip = { path = "../ak-geoip" }
 ak-pickle = { path = "../ak-pickle" }
 chrono.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 uuid.workspace = true
 

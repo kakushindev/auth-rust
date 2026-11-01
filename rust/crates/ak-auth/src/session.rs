@@ -59,6 +59,23 @@ pub struct Resolved {
     /// With `set_last_ip`: how to save the modified session, `None` when the
     /// save is not reproduced (the caller declines).
     pub save: Option<SessionSave>,
+    /// For [`RequestUser::InactiveLogout`] and [`RequestUser::BindingBroken`]:
+    /// the session Django logs out and flushes.
+    pub flush: Option<Flush>,
+}
+
+/// A session `logout()` / `logout_extra()` flushes, with what the logout's
+/// event and signals read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Flush {
+    pub session_key: String,
+    /// The `AuthenticatedSession`'s user: id and `is_active`.
+    pub user: Option<(i32, bool)>,
+    /// The stored pickle (the event reads impersonation and a flow plan).
+    pub session_data: Vec<u8>,
+    /// A broken binding's `SessionBindingBroken.to_event()`, which the
+    /// logout event's context is updated with.
+    pub event_extra: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 /// `SessionStore.save()` for a session whose only change is `last_ip`.
@@ -468,6 +485,7 @@ pub async fn resolve(
         set_last_ip: None,
         expiry_age: None,
         save: None,
+        flush: None,
     };
     let Some(key) = session_key(cookie, secret_key, now)? else {
         return Ok(anonymous);
@@ -486,6 +504,7 @@ pub async fn resolve(
     let Some((user, is_active, session_data, last_ip)) = row else {
         return Ok(anonymous);
     };
+    let user_id = user;
     // `SessionStore.decode`: an unreadable pickle is an empty session. The
     // pickled data overrides the model fields in `load()`.
     let data = ak_pickle::loads(&session_data).ok();
@@ -497,12 +516,18 @@ pub async fn resolve(
         Some(value) => value.as_str().map(str::to_owned),
         None => last_ip,
     };
-    let flushed = |user| Resolved {
+    let flushed = |user, event_extra| Resolved {
         user,
         session_key: None,
         set_last_ip: None,
         expiry_age: None,
         save: None,
+        flush: Some(Flush {
+            session_key: key.clone(),
+            user: user_id.zip(is_active),
+            session_data: session_data.clone(),
+            event_extra,
+        }),
     };
 
     // BoundSessionMiddleware.
@@ -513,13 +538,30 @@ pub async fn resolve(
         last_ip.as_deref(),
         client_ip,
     )? {
-        Recheck::Broken(reason) => return Ok(flushed(RequestUser::BindingBroken(reason))),
+        Recheck::Broken(broken) => {
+            let extra = serde_json::json!({
+                "logout_reason": "Session binding broken",
+                "binding": {
+                    "reason": broken.reason,
+                    "previous_value": broken.previous,
+                    "new_value": broken.new,
+                },
+                "ip": {"previous": last_ip, "new": client_ip},
+            });
+            let serde_json::Value::Object(extra) = extra else {
+                unreachable!("an object literal")
+            };
+            return Ok(flushed(
+                RequestUser::BindingBroken(broken.reason),
+                Some(extra),
+            ));
+        }
         Recheck::Passed { set_last_ip: true } => Some(client_ip.to_owned()),
         Recheck::Passed { set_last_ip: false } | Recheck::Unchanged => None,
     };
     // AuthenticationMiddleware.
     if user.is_some() && is_active == Some(false) {
-        return Ok(flushed(RequestUser::InactiveLogout));
+        return Ok(flushed(RequestUser::InactiveLogout, None));
     }
     let expiry_age = expiry_age(get(SESSION_KEY_EXPIRY).as_ref(), cookie_age, now)?;
     let save = set_last_ip.as_ref().and_then(|ip| {
@@ -545,6 +587,7 @@ pub async fn resolve(
         set_last_ip: set_last_ip.clone(),
         expiry_age,
         save: save.clone(),
+        flush: None,
     };
     // ImpersonateMiddleware: the pickled User (`model_unpickle`) state's `id`.
     if let Some(impersonated) = get(SESSION_KEY_IMPERSONATE_USER) {

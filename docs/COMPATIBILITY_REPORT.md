@@ -305,7 +305,40 @@ Evidence. Three sessions get a stale `last_ip` in SQL before the snapshot is dum
 
 Still declined: impersonation, flushes (inactive user, broken binding) and logout.
 
+## Write foundations (M8)
+
+- **Pickle writer** (`ak_pickle::write::dumps`): CPython 3.14's C pickler, protocol 5. That covers:
+  - framing: a 4-byte minimum and a 64 KiB target;
+  - the memo by object identity: classes by qualified name, module names by text, and interned strings (`Obj::Interned`);
+  - `EMPTY_TUPLE` without a memo entry;
+  - single-item `SETITEM`/`APPEND` and batches of 1000;
+  - the integer opcode choices and `encode_long`.
+
+  `Obj` covers `uuid.UUID` and Django model instances (`model_unpickle`, `ModelState`, `_django_version`). `testdata/write_vectors.json`, generated in the image by `gen_write_vectors.py`, is rebuilt byte for byte, including the default `Tenant` row as a dramatiq message carries it.
+- **Task enqueue** (`ak_events::task::enqueue`): `PostgresBroker.enqueue` with authentik's middlewares. It writes the `Message.asdict()` pickle, with `model_create_defaults` holding the current tenant, then the `Task` row as `update_or_create` inserts it, then `TaskLogMiddleware`'s "Task has been queued". `tests/events/check_enqueue.py` rebuilds a Rust-enqueued message with dramatiq inside a stack: it is byte-identical, and the row and its log match a Django-enqueued task field by field.
+
+## Events and middleware logouts (M8, part 3)
+
+- **Events** (`ak_events::event::new_from_http`): `Event.new(action, app, **kwargs).from_http(request, user)` and the `event_trigger_dispatch` task its `post_save` enqueues. That covers:
+  - `cleanse_dict(sanitize_dict(kwargs))`: NUL removal, falsy list items dropped, and the hidden-key regex with authentik's allowed keys;
+  - `http_request`: path, method, the query `QueryDict` cleansed and a flow's wrapped `query`, user agent, request id;
+  - the brand via `model_to_dict`, with `DEFAULT_BRAND`'s per-process random pk when the request has none;
+  - the user: `get_user`, then the override, then impersonation and a flow plan's pending user from the session, including `__slots__` pickle state;
+  - the client IP as `GenericIPAddressField` stores it, the ASN and GeoIP context processors, and the tenant's `event_retention`.
+- **Logouts** (`ak_events::logout`): `AuthenticationMiddleware`'s logout of an inactive user and `BoundSessionMiddleware.logout_extra`. The logout event carries the binding's `to_event()` (previous and new values, from `ak_auth::binding`). For an authenticated session, `outpost_session_end` is enqueued when any outpost exists, then the `AuthenticatedSession` and the `Session` are deleted.
+  - `BoundSessionMiddleware` uses Django's own `AuthenticationMiddleware`. Its `request.user` is `AnonymousUser`, and an inactive user gets one event, not two.
+  - Declined before writing: a `delete-on-logout` user, rows depending on the `AuthenticatedSession` (OAuth2, SAML, RAC), a connected RAC client, and any SSF stream.
+- **Served from Rust**: the read API answers these logouts as Django does. Inactive users get a 400 with `Content-Language`; broken bindings get a 302 to login, which Django sends before `LocaleMiddleware` runs. Both delete the cookie.
+
+| Evidence | Result |
+| --- | --- |
+| `tests/events/run.sh`: `event_decide.py` replays 847 `Event.new().from_http()` cases. The axes are kwargs, request or none, six client IPs, brands, users, override users, and six session shapes | 847/847 rows identical (masking only the default brand's random pk), with each dispatch task's row and log |
+| `logout_decide.py`: 12 real sessions run through Django's middlewares. The scenarios are inactive, five binding reasons, anonymous, inactive with a binding, impersonating, a flow plan, a `delete-on-logout` user and an OAuth2 token | 10 identical (response, events, tasks, remaining rows); the 2 receiver cases declined |
+| `tests/api/run.sh` with `session-inactive` and the new `session-bound` | 15 768 cases: 15 759 equal + 9 nondeterministic (`users/me/`). The 400 and 302 are Rust-served. Logout state ref vs cand is equal: 3 logout events, 3 `outpost_session_end` tasks, both sessions gone. Schema guard clean |
+
 ## Not verified / open
+
+- **Brand TLS polling (M2)**: 2026.2.7's Go server and embedded outpost refresh brand TLS through the brands API over IPC. Our server reads the database instead. Responses are unaffected, but when that API fails (as for this harness's `1e20` brand attribute), Django records a `system_exception` event per poll on the reference and none on the candidate. This must be reproduced, or explicitly accepted, before M17.
 
 - The 9 nondeterministic cases are compared only coarsely, so a real difference inside them would be masked. They need field-level masking, e.g. sorting `system_permissions` after checking set equality.
 - Every row of `FEATURE_MATRIX.md` other than the one above.
@@ -314,7 +347,7 @@ Still declined: impersonation, flushes (inactive user, broken binding) and logou
 
 ## Temporary compatibility adapters (must be removed before the full-Rust milestone)
 
-1. **Django fallback**: `fallback(forward_request)` → gunicorn → Django serves **every** application request today (`PORTED_ROUTES` is empty).
+1. **Django fallback**: `fallback(forward_request)` → gunicorn → Django serves every request outside `PORTED_ROUTES` (the M7 read API) and every request Rust declines.
 2. **pyo3 / CPython** embedded in the `authentik` binary (`core` feature), plus the Python dramatiq worker.
 3. **Go outposts** (LDAP, RADIUS, RAC).
 

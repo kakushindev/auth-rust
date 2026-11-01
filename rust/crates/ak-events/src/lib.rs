@@ -1,7 +1,9 @@
 //! authentik's write-side side effects (M8): dramatiq tasks enqueued on
-//! the Postgres broker, and (next) events. Each writer names the Django
+//! the Postgres broker, and audit events. Each writer names the Django
 //! code it reproduces and is checked against the reference's rows.
 
+pub mod event;
+pub mod logout;
 pub mod task;
 
 /// Why a side effect could not be written as Django writes it.

@@ -42,6 +42,14 @@ sid() { python3 -I -c 'import base64,json,sys; c=json.load(open(sys.argv[1]))[sy
 moved_sids="'$(sid session-moved-plain)','$(sid session-moved-super)','$(sid session-moved-bearer)'"
 dc exec -T ref-db psql -U authentik -d authentik -qc \
   "UPDATE authentik_core_user SET is_active = false WHERE username = 'm8-sess-inactive'; UPDATE authentik_core_session SET expires = now() - interval '1 hour' WHERE session_key = '${expired_sid}'; UPDATE authentik_core_session SET last_ip = '10.9.9.9' WHERE session_key IN (${moved_sids});" >/dev/null
+bound_sid="$(sid session-bound)"
+docker exec -i ak-api-ref-1 python -m manage shell -c "
+from authentik.core.sessions import SessionStore
+s = SessionStore(session_key='${bound_sid}')
+s['authentik/stages/user_login/binding/net'] = 'bind_asn'
+s['last_ip'] = '8.8.8.8'
+s.save()" >/dev/null 2>&1
+inactive_sid="$(sid session-inactive)"
 export API_SESSIONS="$SNAPSHOT_DIR/sessions.json"
 dc exec -T ref-db pg_dump -U authentik -d authentik -Fc > "$SNAPSHOT_DIR/snapshot.dump.new"
 mv "$SNAPSHOT_DIR/snapshot.dump.new" "$SNAPSHOT_DIR/snapshot.dump"
@@ -71,6 +79,24 @@ state="$(python3 -I -c 'import json,sys; print(json.dumps({"ref": json.load(open
   | grep '^\[session-state\]' || true)"
 echo "$state"
 grep -q '^\[session-state\] ok$' <<<"$state" || status=1
+# The middlewares' logouts (inactive user, broken binding): Django's state on
+# ref against Rust's on cand. Logout events (the default brand's pk is
+# random per process), the outposts' session-end tasks and the flushed
+# sessions. Dispatch tasks are not counted: Go's brand watcher polls the
+# brands API, whose 500s here add system_exception events on ref only.
+for db in ref-db cand-db; do
+  dc exec -T "$db" psql -U authentik -d authentik -Atc \
+    "SELECT json_build_object(
+       'events', (SELECT json_agg(e ORDER BY e::text) FROM (SELECT app, context, host(client_ip) AS ip, \"user\", brand - 'pk' AS brand,
+                  round(extract(epoch from expires - created)) AS ttl, expiring FROM authentik_events_event WHERE action = 'logout') e),
+       'tasks', (SELECT count(*) FROM authentik_tasks_task WHERE actor_name = 'authentik.outposts.tasks.outpost_session_end'),
+       'sessions', (SELECT count(*) FROM authentik_core_session WHERE session_key IN ('${bound_sid}', '${inactive_sid}')))" \
+    > "$SNAPSHOT_DIR/logout-$db.json"
+done
+if python3 -I -c 'import json,sys; a,b=(json.load(open(p)) for p in sys.argv[1:3]); print("[logout-state]", "ok" if a == b and a["sessions"] == 0 else "MISMATCH"); sys.exit(a != b or a["sessions"] != 0)' \
+  "$SNAPSHOT_DIR/logout-ref-db.json" "$SNAPSHOT_DIR/logout-cand-db.json"; then :; else
+  status=1; diff <(python3 -m json.tool "$SNAPSHOT_DIR/logout-ref-db.json") <(python3 -m json.tool "$SNAPSHOT_DIR/logout-cand-db.json") | head -40
+fi
 for port in 25432 25532 25632; do
   rust/target/debug/ak-schema-guard verify --database-url \
     "postgres://authentik:${PG_PASS}@127.0.0.1:${port}/authentik" \

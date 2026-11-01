@@ -300,7 +300,7 @@ fn check_bindings(web: &Value, geoip: &GeoIp, mismatches: &mut Vec<String>) -> u
             Ok(Recheck::Unchanged) => "unchanged".to_owned(),
             Ok(Recheck::Passed { set_last_ip: true }) => "passed:set_last_ip".to_owned(),
             Ok(Recheck::Passed { set_last_ip: false }) => "passed".to_owned(),
-            Ok(Recheck::Broken(reason)) => format!("broken:{reason}"),
+            Ok(Recheck::Broken(broken)) => format!("broken:{}", broken.reason),
             Err(err) => format!("error:{err:?}"),
         };
         if case["result"] != got.as_str() {
