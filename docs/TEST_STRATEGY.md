@@ -47,6 +47,8 @@ Speed-ups, each shown on one fixture to decide what the previous run decided:
 
 The limit was the candidate, not Django. In a sampled run, the candidate container used about 2 cores and its database 1.3, while each reference used about 0.5. A Rust-served request first took about twice Django's time, because the vendored pool closed its connection after every query (about 11 new PostgreSQL connections per request). With the read API's persistent pool (`ak_common::db::api_pool`, COMPATIBILITY_REPORT), a Rust-served request takes 4–9 ms against Django's 45–71 ms. The cases phase of a full run is now **418 s** (about 1 300 s at the start for the whole run), still 15 768/15 768 equal.
 
+`rbac/permissions` can be nondeterministic at a page boundary: Django orders by `name` alone, five permission names are duplicated, and PostgreSQL breaks ties as its plan does. The two references then disagree as well, which is what the noise bucket records.
+
 `users/me/` used to be the only nondeterministic endpoint: Django builds `system_permissions` from a set, so its order follows the process's hash seed. The harness now compares that list sorted, i.e. as the same multiset, and a full run is 15 768/15 768 equal.
 
 

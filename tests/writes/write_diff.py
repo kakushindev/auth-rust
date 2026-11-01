@@ -40,7 +40,9 @@ STACKS = {
 HOST = "authentik.test"
 TRACE = "x-authentik-rs"
 ADMIN = "m7-akadmin"
-IGNORED_HEADERS = {"date", "x-authentik-id", "x-request-id", "server", TRACE}
+# Per-request values: compared for presence only.
+NORMALIZED_HEADERS = {"date", "x-authentik-id", "x-request-id"}
+IGNORED_HEADERS = {"server", TRACE}
 
 UUID_RE = re.compile(r"\b[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\b", re.I)
 TS_RE = re.compile(r"\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d(?::?\d\d)?)\b")
@@ -150,11 +152,14 @@ class Normalizer:
 
 
 def resolve(base, path):
-    """`{role:NAME}` → that role's pk on this stack."""
+    """`{role:NAME}`, `{notification:BODY}` → that row's pk on this stack."""
 
     def one(m):
         kind, name = m.group(1), m.group(2)
-        lookup = {"role": "/api/v3/rbac/roles/?name="}[kind]
+        lookup = {
+            "role": "/api/v3/rbac/roles/?name=",
+            "notification": "/api/v3/events/notifications/?body=",
+        }[kind]
         _, _, body = request(base, "GET", lookup + urllib.parse.quote(name), ADMIN, None, None)
         results = body["results"]
         return results[0]["pk"] if results else "00000000-0000-4000-8000-000000000000"
@@ -214,6 +219,49 @@ def cases():
         ("delete model permission", "DELETE", roles + "{role:5}/", "m7-m6-direct", None, None),
         ("delete with permissions", "DELETE", roles + "{role:m6-model}/", ADMIN, None, None),
         ("delete created", "DELETE", roles + "{role:m8-role-trim}/", ADMIN, None, None),
+    ] + notification_cases()
+
+
+def notification_cases():
+    """The fixture's notifications (tests/api/populate.py): n0 and n1 are
+    akadmin's, n2 (unseen, with an event) and n3 m6-direct's."""
+    base = "/api/v3/events/notifications/"
+    n0, n1, n2, n3 = (base + "{notification:m7 body %d \"q\"}/" % i for i in range(4))
+    owner, other = "m7-m6-direct", "m7-m6-none"
+    seen = base + "mark_all_seen/"
+    return [
+        ("notification patch owner", "PATCH", n2, owner, {"seen": True}, JSON),
+        ("notification patch other owner", "PATCH", n1, owner, {"seen": False}, JSON),
+        ("notification patch no permission", "PATCH", n2, other, {"seen": False}, JSON),
+        ("notification patch anonymous", "PATCH", n2, None, {"seen": False}, JSON),
+        ("notification patch fields", "PATCH", n0, ADMIN, {"hyperlink": "  https://x.test/ ", "hyperlink_label": None, "seen": "no"}, JSON),
+        ("notification patch blank", "PATCH", n0, ADMIN, {"hyperlink": "", "hyperlink_label": "   "}, JSON),
+        ("notification patch errors", "PATCH", n0, ADMIN, {"hyperlink": "x" * 4097, "hyperlink_label": 5, "seen": "maybe"}, JSON),
+        ("notification patch types", "PATCH", n0, ADMIN, {"hyperlink": [1], "hyperlink_label": True, "seen": [True]}, JSON),
+        ("notification patch null seen", "PATCH", n0, ADMIN, {"seen": None}, JSON),
+        ("notification patch float seen", "PATCH", n0, ADMIN, {"seen": 1.0}, JSON),
+        ("notification patch fraction seen", "PATCH", n0, ADMIN, {"seen": 0.5}, JSON),
+        ("notification patch integer seen", "PATCH", n0, ADMIN, {"seen": 0}, JSON),
+        ("notification patch upper seen", "PATCH", n0, ADMIN, {"seen": "TRUE", "hyperlink_label": 7}, JSON),
+        ("notification patch mixed seen", "PATCH", n0, ADMIN, {"seen": "oFf"}, JSON),
+        ("notification patch max length", "PATCH", n0, ADMIN, {"hyperlink": "\u00e9" * 4096}, JSON),
+        ("notification patch event", "PATCH", n0, ADMIN, {"event": None}, JSON),
+        ("notification patch form", "PATCH", n0, ADMIN, b"seen=true", "application/x-www-form-urlencoded"),
+        ("notification put read-only", "PUT", n3, owner, {"seen": False, "hyperlink": "h", "pk": "x", "body": "changed", "severity": "alert"}, JSON),
+        ("notification put empty", "PUT", n3, owner, {}, JSON),
+        ("notification patch missing", "PATCH", base + "00000000-0000-4000-8000-000000000000/", ADMIN, {}, JSON),
+        ("notification patch invalid pk", "PATCH", base + "nope/", ADMIN, {}, JSON),
+        ("mark all seen", "POST", seen, owner, None, None),
+        ("mark all seen again", "POST", seen, owner, None, None),
+        ("mark all seen anonymous", "POST", seen, None, None, None),
+        ("mark all seen form body", "POST", seen, ADMIN, b"x=1", "application/x-www-form-urlencoded"),
+        ("mark all seen get", "GET", seen, ADMIN, None, None),
+        ("mark all seen put", "PUT", seen, ADMIN, {}, JSON),
+        ("notification delete other owner", "DELETE", n1, owner, None, None),
+        ("notification delete owner", "DELETE", n3, owner, None, None),
+        ("notification delete again", "DELETE", n3, owner, None, None),
+        ("notification delete invalid pk", "DELETE", base + "nope/", ADMIN, None, None),
+        ("notification delete admin", "DELETE", n1, ADMIN, None, None),
     ]
 
 
@@ -264,7 +312,11 @@ def main():
             status, headers, payload = request(base, method, resolved, token, body, ctype)
             changes = take_changes(db)
             rust = TRACE in headers
-            headers = {k: v for k, v in headers.items() if k not in IGNORED_HEADERS}
+            headers = {
+                k: (["<normalized>"] * len(v) if k in NORMALIZED_HEADERS else v)
+                for k, v in headers.items()
+                if k not in IGNORED_HEADERS
+            }
             out[stack] = {
                 "rust": rust,
                 "response": norm[stack].walk([status, headers, payload], since),

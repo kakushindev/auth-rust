@@ -376,6 +376,21 @@ The full API run is 15 768/15 768 equal, with clean session and logout state che
 | Same run, read suite | 15 768/15 768 equal; session and logout state ok; schema guard clean on all three databases |
 | Median latency, 50 create→PATCH→DELETE rounds per stack | create 58.9 → **3.9 ms**, PATCH 60.0 → **4.2 ms**, DELETE 61.9 → **4.5 ms** |
 
+## Notification writes (M8, part 5)
+
+`PUT`/`PATCH`/`DELETE /api/v3/events/notifications/{pk}/` and `POST /api/v3/events/notifications/mark_all_seen/` are served from Rust.
+
+- **No side effects to reproduce**: `Notification` is one of `AuditMiddleware`'s ignored models, no signal receiver handles it, nothing references it, and none of these writes creates a row. Each write is its one statement.
+- **Update**: the list's owner filter, the lookup and the object permission (the owner passes), then `NotificationSerializer`. Its writable fields, in order, are `hyperlink` (`max_length=4096`) and `hyperlink_label` (blank and null allowed, whitespace trimmed), and `seen` (`BooleanField` as DRF 3.16.1 parses it: lowercased strings, `1`/`0`, `1.0`/`0.0`). None is required, so PUT and PATCH behave alike. All field errors are reported together. Read-only fields in the body are ignored. `save()` writes every column with the values it read. The response serializes the stored row, nested event included.
+- **`mark_all_seen`**: `IsAuthenticated` only (anonymous gets "Authentication credentials were not provided."). The body is not read. `UPDATE … SET seen = true` for the user's unseen rows. The 204 keeps `Content-Type: application/json` and sends no body. Other methods stay with Django (405).
+- **Declined**: a body with `event` (a nested write; Django validates it, then raises), anonymous updates (Django's own 500), and everything the role writes decline (session cookies, non-JSON bodies, floats or NUL in text fields).
+- **Harness change**: the write differential now compares `Date`, `X-Authentik-Id` and `X-Request-Id` for presence, as the read harness does, instead of dropping them.
+
+| Evidence | Result |
+| --- | --- |
+| `tests/writes/write_diff.py`, 32 notification cases: owner, other owner, no permission, anonymous; trimmed, blank, null, over-long, non-string, boolean-string, numeric and fractional values; read-only fields; PUT `{}`; missing and invalid pks; `mark_all_seen` repeated, anonymous, with a form body, as GET and PUT; deletes | 75 write cases in all: 74 equal and 1 nondeterministic (the declined anonymous PATCH, where Django's 500 page and event embed a memory address, as between the two references); 66 Rust-served |
+| Median latency, 50 rounds per stack | PATCH 47.4 → **4.0 ms**, `mark_all_seen` 39.2 → **3.1 ms** |
+
 ## Not verified / open
 
 - **Brand TLS polling (M2)**: 2026.2.7's Go server and embedded outpost refresh brand TLS through the brands API over IPC. Our server reads the database instead. Responses are unaffected, but when that API fails (as for this harness's `1e20` brand attribute), Django records a `system_exception` event per poll on the reference and none on the candidate. This must be reproduced, or explicitly accepted, before M17.

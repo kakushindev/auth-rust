@@ -74,6 +74,7 @@ enum Route<'a> {
     EventsRetrieve(&'a str),
     NotificationsList,
     NotificationsRetrieve(&'a str),
+    NotificationsMarkAllSeen,
     RulesList,
     RulesRetrieve(&'a str),
     AssignedByRolesList,
@@ -176,6 +177,9 @@ fn route(path: &str) -> Option<Route<'_>> {
             Viewset::Detail(pk) => Route::EventsRetrieve(pk),
         });
     }
+    if path == "/api/v3/events/notifications/mark_all_seen/" {
+        return Some(Route::NotificationsMarkAllSeen);
+    }
     if let Some(v) = viewset(path, "/api/v3/events/notifications/", &["mark_all_seen"]) {
         return Some(match v {
             Viewset::List => Route::NotificationsList,
@@ -208,10 +212,15 @@ fn route(path: &str) -> Option<Route<'_>> {
 /// everything else.
 pub fn handles(method: &str, path: &str) -> bool {
     match (method, route(path)) {
+        // A POST-only action: Django answers the 405.
+        (_, Some(Route::NotificationsMarkAllSeen)) => method == "POST",
         // Writes ported so far (M8).
         ("GET", Some(_))
         | ("POST", Some(Route::RolesList))
-        | ("PUT" | "PATCH" | "DELETE", Some(Route::RolesRetrieve(_))) => true,
+        | (
+            "PUT" | "PATCH" | "DELETE",
+            Some(Route::RolesRetrieve(_) | Route::NotificationsRetrieve(_)),
+        ) => true,
         _ => false,
     }
 }
@@ -264,6 +273,18 @@ async fn serve_inner(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
         ..req.clone()
     };
     let (name, result) = match route {
+        Route::NotificationsMarkAllSeen => (
+            "events_notifications_mark_all_seen",
+            views::events_notifications_write::mark_all_seen(ctx, req).await,
+        ),
+        Route::NotificationsRetrieve(pk) if req.method == "DELETE" => (
+            "events_notifications_destroy",
+            views::events_notifications_write::destroy(ctx, req, &query, pk).await,
+        ),
+        Route::NotificationsRetrieve(pk) if req.method != "GET" => (
+            "events_notifications_update",
+            views::events_notifications_write::update(ctx, req, &query, pk).await,
+        ),
         Route::RolesList if req.method == "POST" => (
             "rbac_roles_create",
             views::rbac_roles_write::create(ctx, req, &query).await,
@@ -447,5 +468,15 @@ mod tests {
         assert!(!handles("PUT", "/api/v3/rbac/roles/"));
         assert!(!handles("POST", "/api/v3/core/brands/"));
         assert!(!handles("HEAD", "/api/v3/rbac/roles/"));
+        assert!(handles(
+            "POST",
+            "/api/v3/events/notifications/mark_all_seen/"
+        ));
+        assert!(!handles(
+            "GET",
+            "/api/v3/events/notifications/mark_all_seen/"
+        ));
+        assert!(!handles("POST", "/api/v3/events/notifications/"));
+        assert!(handles("PATCH", "/api/v3/events/notifications/abc/"));
     }
 }

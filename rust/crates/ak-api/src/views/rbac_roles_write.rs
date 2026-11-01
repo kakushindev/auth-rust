@@ -22,7 +22,7 @@ use crate::{
     sql::Bind,
     views::rbac_roles::{ALLOW_DETAIL, ALLOW_LIST, MODEL, filter_queryset},
     write::{
-        Audit, SIDE_EFFECT_MODELS, char_field, client, field_errors, initial_permissions_apply,
+        Audit, CharField, SIDE_EFFECT_MODELS, client, field_errors, initial_permissions_apply,
         json_body, model_dict, no_content,
     },
 };
@@ -121,8 +121,8 @@ async fn validate_name(
     allow: &'static str,
 ) -> Result<Result<Option<String>, Answer>, Decline> {
     let data = json_body(req)?;
-    let name = match char_field(&data, "name", required) {
-        Ok(name) => name,
+    let name = match CharField::new(required).validate(&data, "name") {
+        Ok(name) => name.value(),
         Err(Ok(message)) => return Ok(Err(field_errors(&[("name", message)], allow))),
         Err(Err(decline)) => return Err(decline),
     };

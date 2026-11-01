@@ -2,6 +2,19 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 29 — 2026-11-01
+
+- **M8 part 5, notification writes**: `PUT`/`PATCH`/`DELETE events/notifications/{pk}/` and `POST events/notifications/mark_all_seen/` are served from Rust (`views/events_notifications_write.rs`). Notifications are unaudited and unsignalled, so each write is one statement. The PATCH response serializes the stored row; `mark_all_seen`'s 204 keeps `Content-Type`, as Django's does.
+- `ak_api::write` gains `CharField` (blank, null, `max_length`), `Input` (absent/null/value) and `boolean_field` (DRF 3.16.1's parsing). Role writes use the same `CharField`.
+- Harness: the write differential compares `Date`/`X-Authentik-Id`/`X-Request-Id` for presence instead of dropping them, and resolves fixture notifications by body (their UUIDs change when the fixture is rebuilt).
+- Evidence: full run, reads 15 767 equal + 1 nondeterministic; writes 74 equal + 1 nondeterministic of 75 (66 Rust-served). Session and logout state ok, schema guard clean.
+  - Read noise: `rbac/permissions?page_size=7&page=100`. Django orders by `name` alone, 5 names are duplicated, and ref and ref2 disagree on the tie.
+  - Write noise: the declined anonymous PATCH, where Django's own 500 embeds a memory address.
+- Latency: notification PATCH 4.0 ms vs Django 47.4, `mark_all_seen` 3.1 vs 39.2.
+
+### Exact next action
+M8: the writes of the remaining ported viewsets. Next are InitialPermissions (needs CPython's int-set iteration order for its m2m inserts), transports and rules (validation), then groups/users/tokens/brands. After that, `InitialPermissions` assignment and session writes with CSRF.
+
 ## Batch 28 — 2026-11-01
 
 - **M8 part 4, the first writes**: `rbac/roles` create, update (PUT/PATCH) and delete are served from Rust (`ak_api::write`, `views/rbac_roles_write.rs`).

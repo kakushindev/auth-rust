@@ -12,6 +12,7 @@ pub mod events_notification_mappings;
 pub mod events_notification_rules;
 pub mod events_notification_transports;
 pub mod events_notifications;
+pub mod events_notifications_write;
 pub mod rbac_assigned_by_roles;
 pub mod rbac_initial_permissions;
 pub mod rbac_permissions;

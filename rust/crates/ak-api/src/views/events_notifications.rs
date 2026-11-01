@@ -26,9 +26,9 @@ use crate::{
 };
 
 const ALLOW_LIST: &str = "GET, HEAD, OPTIONS";
-const ALLOW_DETAIL: &str = "GET, PUT, PATCH, DELETE, HEAD, OPTIONS";
+pub(crate) const ALLOW_DETAIL: &str = "GET, PUT, PATCH, DELETE, HEAD, OPTIONS";
 
-const MODEL: Model<'static> = Model {
+pub(crate) const MODEL: Model<'static> = Model {
     app_label: "authentik_events",
     model_name: "notification",
     ctype_app_label: "authentik_events",
@@ -45,7 +45,7 @@ macro_rules! col {
 }
 
 const FROM: &str = "\"authentik_events_notification\"";
-const SELECT: &str = concat!(
+pub(crate) const SELECT: &str = concat!(
     col!("uuid"),
     ", ",
     col!("severity"),
@@ -120,7 +120,7 @@ const ORDERING: &[(&str, &str)] = &[
 
 /// `NotificationSerializer`.
 #[derive(Serialize)]
-struct NotificationData {
+pub(crate) struct NotificationData {
     pk: String,
     severity: String,
     body: String,
@@ -135,7 +135,7 @@ fn db(_: sqlx::Error) -> Decline {
     Decline("database error")
 }
 
-async fn serialize(
+pub(crate) async fn serialize(
     ctx: &Context<'_>,
     rows: &[sqlx::postgres::PgRow],
 ) -> Result<Vec<NotificationData>, Decline> {
@@ -175,7 +175,7 @@ async fn serialize(
     Ok(out)
 }
 
-async fn filter_queryset(
+pub(crate) async fn filter_queryset(
     ctx: &Context<'_>,
     query: &QueryDict,
     user: &User,

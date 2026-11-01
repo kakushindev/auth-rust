@@ -95,44 +95,147 @@ pub(crate) fn json_body(req: &ApiRequest<'_>) -> Result<Data, Decline> {
     }
 }
 
-/// A `CharField` (`allow_blank=False`, `trim_whitespace=True`,
-/// `allow_null=False`) on `data[name]`: `Ok(None)` when absent and not
-/// required, `Err(Ok(message))` for a validation error.
-pub(crate) fn char_field(
+/// A serializer field's input: absent from the data, `null`, or a value.
+pub(crate) enum Input<T> {
+    Absent,
+    Null,
+    Value(T),
+}
+
+impl<T> Input<T> {
+    /// The value, for a field that cannot be null.
+    pub(crate) fn value(self) -> Option<T> {
+        match self {
+            Self::Value(value) => Some(value),
+            Self::Absent | Self::Null => None,
+        }
+    }
+}
+
+/// A field's error: `Ok(message)` for DRF's 400, `Err` when that error is
+/// not reproduced.
+pub(crate) type FieldError = Result<String, Decline>;
+
+fn error<T>(message: &str) -> Result<T, FieldError> {
+    Err(Ok(message.to_owned()))
+}
+
+/// `Field.validate_empty_values` for a field that is required unless the
+/// update is partial.
+fn present<'d>(
+    data: &'d Data,
+    name: &str,
+    required: bool,
+    allow_null: bool,
+) -> Result<Option<&'d PyValue>, FieldError> {
+    match data.get(name) {
+        None if required => error("This field is required."),
+        None => Ok(None),
+        Some(PyValue::None) if allow_null => Ok(None),
+        Some(PyValue::None) => error("This field may not be null."),
+        Some(value) => Ok(Some(value)),
+    }
+}
+
+/// A `CharField` with `trim_whitespace=True`.
+pub(crate) struct CharField {
+    pub required: bool,
+    pub allow_blank: bool,
+    pub allow_null: bool,
+    pub max_length: Option<usize>,
+}
+
+impl CharField {
+    /// `allow_blank=False`, `allow_null=False`, no `max_length`.
+    pub(crate) const fn new(required: bool) -> Self {
+        Self {
+            required,
+            allow_blank: false,
+            allow_null: false,
+            max_length: None,
+        }
+    }
+
+    /// `run_validation(data[name])`.
+    pub(crate) fn validate(&self, data: &Data, name: &str) -> Result<Input<String>, FieldError> {
+        let value = match present(data, name, self.required, self.allow_null)? {
+            Some(value) => value,
+            None if data.get(name).is_some() => return Ok(Input::Null),
+            None => return Ok(Input::Absent),
+        };
+        let text = match value {
+            PyValue::Str(s) => s.to_string_lossless().ok_or(Err(Decline("surrogate")))?,
+            // `str(int)`; JSON integers are canonical except `-0`.
+            PyValue::Int(digits) if digits != "-0" => digits.clone(),
+            // `str(float)` is not reproduced.
+            PyValue::Int(_) | PyValue::Float(_) => return Err(Err(Decline("number as string"))),
+            // `run_validation` checks blankness on `str(data)` first, which
+            // for these is never blank; `to_internal_value` then refuses them.
+            PyValue::Bool(_) | PyValue::List(_) | PyValue::Dict(_) => {
+                return error("Not a valid string.");
+            }
+            PyValue::None => unreachable!("handled by present"),
+        };
+        let trimmed = text.trim_matches(isspace);
+        if trimmed.is_empty() {
+            return if self.allow_blank {
+                Ok(Input::Value(String::new()))
+            } else {
+                error("This field may not be blank.")
+            };
+        }
+        // `ProhibitNullCharactersValidator` (its message joins any other
+        // validator's, and a `UniqueValidator` query with it is refused by
+        // PostgreSQL: Django's 500).
+        if trimmed.contains('\0') {
+            return Err(Err(Decline("NUL in field")));
+        }
+        if let Some(max) = self.max_length
+            && trimmed.chars().count() > max
+        {
+            return Err(Ok(format!(
+                "Ensure this field has no more than {max} characters."
+            )));
+        }
+        Ok(Input::Value(trimmed.to_owned()))
+    }
+}
+
+/// A `BooleanField` (`allow_null=False`), DRF 3.16: strings compared
+/// lowercased (`str.lower()` maps no non-ASCII character onto these).
+pub(crate) fn boolean_field(
     data: &Data,
     name: &str,
     required: bool,
-) -> Result<Option<String>, Result<String, Decline>> {
-    let Some(value) = data.get(name) else {
-        return if required {
-            Err(Ok("This field is required.".to_owned()))
-        } else {
-            Ok(None)
-        };
+) -> Result<Input<bool>, FieldError> {
+    let Some(value) = present(data, name, required, false)? else {
+        return Ok(Input::Absent);
     };
-    let text = match value {
-        PyValue::None => return Err(Ok("This field may not be null.".to_owned())),
-        PyValue::Str(s) => s.to_string_lossless().ok_or(Err(Decline("surrogate")))?,
-        // `str(int)`; JSON integers are canonical except `-0`.
-        PyValue::Int(digits) if digits != "-0" => digits.clone(),
-        // `str(float)` is not reproduced.
-        PyValue::Int(_) | PyValue::Float(_) => return Err(Err(Decline("number as string"))),
-        // `run_validation` checks blankness on `str(data)` first, which for
-        // these is never blank; `to_internal_value` then refuses them.
-        PyValue::Bool(_) | PyValue::List(_) | PyValue::Dict(_) => {
-            return Err(Ok("Not a valid string.".to_owned()));
-        }
+    let parsed = match value {
+        PyValue::Bool(b) => Some(*b),
+        PyValue::Int(digits) => match digits.as_str() {
+            "1" => Some(true),
+            "0" | "-0" => Some(false),
+            _ => None,
+        },
+        // `1.0 == 1` and `0.0 == -0.0 == 0` in the sets.
+        #[expect(clippy::float_cmp, reason = "Python's set membership is exact equality")]
+        PyValue::Float(f) if *f == 1.0_f64 => Some(true),
+        PyValue::Float(f) if *f == 0.0_f64 => Some(false),
+        PyValue::Str(s) => match s.to_string_lossless() {
+            Some(text) => match text.to_ascii_lowercase().as_str() {
+                "t" | "y" | "yes" | "true" | "on" | "1" if text.is_ascii() => Some(true),
+                "f" | "n" | "no" | "false" | "off" | "0" if text.is_ascii() => Some(false),
+                _ => None,
+            },
+            None => return Err(Err(Decline("surrogate"))),
+        },
+        _ => None,
     };
-    let trimmed = text.trim_matches(isspace);
-    if trimmed.is_empty() {
-        return Err(Ok("This field may not be blank.".to_owned()));
+    match parsed {
+        Some(b) => Ok(Input::Value(b)),
+        None => error("Must be a valid boolean."),
     }
-    // `ProhibitNullCharactersValidator`, then a `UniqueValidator` query that
-    // PostgreSQL refuses (Django's 500).
-    if trimmed.contains('\0') {
-        return Err(Err(Decline("NUL in field")));
-    }
-    Ok(Some(trimmed.to_owned()))
 }
 
 /// DRF's 400 for field errors, in field order.
