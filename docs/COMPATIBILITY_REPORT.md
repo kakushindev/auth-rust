@@ -336,7 +336,27 @@ Still declined: impersonation, flushes (inactive user, broken binding) and logou
 | `logout_decide.py`: 12 real sessions run through Django's middlewares. The scenarios are inactive, five binding reasons, anonymous, inactive with a binding, impersonating, a flow plan, a `delete-on-logout` user and an OAuth2 token | 10 identical (response, events, tasks, remaining rows); the 2 receiver cases declined |
 | `tests/api/run.sh` with `session-inactive` and the new `session-bound` | 15 768 cases: 15 759 equal + 9 nondeterministic (`users/me/`). The 400 and 302 are Rust-served. Logout state ref vs cand is equal: 3 logout events, 3 `outpost_session_end` tasks, both sessions gone. Schema guard clean |
 
-**Connections per request (product change)**: with `conn_max_age: 0` (authentik's default), Django holds one connection for a request and closes it when the request ends. The vendored pool honoured it by closing a connection on every release, i.e. after every query, so a Rust-served request opened about 11 PostgreSQL connections. `ak_common::db::request_scoped` now gives each read-API request a pool of one connection, opened on first use and closed when the request is done, as Django does. Rust-served requests went from about 110 ms to about 34 ms (Django: 51–64 ms on the same stacks), and the full API run decided all 15 768 cases as before (0 differ).
+**Database connections for the read API (product change).** With `conn_max_age: 0` (authentik's default), Django opens a connection for a request and closes it when the request ends. The vendored pool honoured that by closing a connection on every release, so a Rust-served request opened about 11 PostgreSQL connections (110 ms).
+
+A one-connection-per-request pool, as Django holds, brought that to 34 ms. Profiling showed what remained was still per-connection cost. A minimal list runs 11 queries, and each paid for a fresh connection (startup, SCRAM authentication, the session `SET`s) plus an extra Parse/Describe round trip, because sqlx's statement cache started empty every time.
+
+`ak_common::db::api_pool` now keeps the read API's connections and reuses them. The pool has these limits:
+- bounded like the shared pool (`web.workers × web.threads`);
+- closed after 5 minutes idle;
+- at most 30 minutes old, or `conn_max_age` when it is above 0.
+
+The connections carry the same session settings, and every request still runs its queries in autocommit, so what a query sees is unchanged. The only difference from Django is how long the server process keeps its own idle connections. `conn_max_age` continues to govern Django's workers and the shared pool.
+
+Median latency, Django against Rust on the same stacks:
+
+| Endpoint | Django | Rust |
+| --- | --- | --- |
+| `rbac/roles` | 45 ms | **4.1 ms** |
+| `rbac/permissions?page_size=100` | 47 ms | **5.3 ms** |
+| `events/events` | 46 ms | **4.3 ms** |
+| `core/users?search=…`, with avatars and per-user groups and roles | 71 ms | **8.9 ms** |
+
+The full API run is 15 768/15 768 equal, with clean session and logout state checks. A request Rust declines still costs Rust's few milliseconds before Django answers it.
 
 **Database pool (product change)**: the server's pool (vendored `ak-common`, upstream 4 connections) now allows `web.workers × web.threads` connections (2 × 4 = 8 by default, never fewer than 4), as many as Django's web process holds, since the server answers requests gunicorn used to. The API run decided all 15 768 cases as the 4-connection build did.
 

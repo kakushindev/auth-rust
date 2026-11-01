@@ -15,6 +15,7 @@ use crate::{
 };
 
 static DB: OnceLock<PgPool> = OnceLock::new();
+static API_DB: OnceLock<PgPool> = OnceLock::new();
 
 async fn get_connect_opts() -> Result<PgConnectOptions> {
     let config = config::get();
@@ -59,8 +60,11 @@ async fn update_connect_opts_on_config_change(arbiter: Arbiter) -> Result<()> {
                 }
 
                 trace!("config change received, refreshing database connection options");
-                let db = get();
-                db.set_connect_options(get_connect_opts().await?);
+                let options = get_connect_opts().await?;
+                if let Some(api) = API_DB.get() {
+                    api.set_connect_options(options.clone());
+                }
+                get().set_connect_options(options);
             },
             () = arbiter.shutdown() => {
                 info!("stopping database watcher for config changes");
@@ -120,29 +124,37 @@ async fn prepare_connection(conn: &mut PgConnection) -> Result<(), sqlx::Error> 
     Ok(())
 }
 
-/// authentik-rs: Django's `CONN_MAX_AGE = 0` opens one connection for a
-/// request and closes it when the request finishes. The shared pool honours
-/// `conn_max_age: 0` by closing a connection whenever it is released, i.e.
-/// after every query, so a request the server answers itself (the read API)
-/// gets this instead: a pool of one connection, opened on first use with the
-/// shared pool's current options, for the caller to close when the request
-/// is done. `None` when connections persist (the shared pool reuses them).
-#[must_use]
-pub fn request_scoped() -> Option<PgPool> {
-    let config = config::get();
-    if config.postgresql.conn_max_age != Some(0) {
-        return None;
-    }
-    let options = (*get().connect_options()).clone();
-    Some(
+/// authentik-rs: the pool for requests the server answers itself (the read API).
+///
+/// Connections persist and are reused: the handshake, SCRAM
+/// authentication, the session `SET`s and sqlx's statement preparation
+/// happen once per connection instead of once per request, which is most of
+/// a short request's time. `conn_max_age` tunes Django's gunicorn workers,
+/// whose `0` (close after each request) the shared pool reproduces by
+/// closing on release; this pool instead closes connections after 5 minutes
+/// idle (30 minutes at most, or `conn_max_age` when it is longer than 0).
+/// Bounded like the shared pool (`web.workers` × `web.threads`), and the
+/// connections carry the same session settings, so what a query sees is
+/// unchanged.
+pub fn api_pool() -> &'static PgPool {
+    API_DB.get_or_init(|| {
+        let config = config::get();
+        let django_connections =
+            config.web.workers.unwrap_or(2) * config.web.threads.unwrap_or(4);
+        let lifetime = match config.postgresql.conn_max_age {
+            Some(0) | None => Duration::from_mins(30),
+            Some(seconds) => Duration::from_secs(seconds),
+        };
         PgPoolOptions::new()
             .min_connections(0)
-            .max_connections(1)
+            .max_connections(u32::try_from(django_connections.max(4)).unwrap_or(u32::MAX))
+            .idle_timeout(Duration::from_mins(5))
+            .max_lifetime(lifetime)
             .acquire_time_level(LevelFilter::Trace)
             .test_before_acquire(config.postgresql.conn_health_checks)
             .after_connect(|conn, _meta| Box::pin(prepare_connection(conn)))
-            .connect_lazy_with(options),
-    )
+            .connect_lazy_with((*get().connect_options()).clone())
+    })
 }
 
 pub fn get() -> &'static PgPool {

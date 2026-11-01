@@ -111,10 +111,8 @@ fn session_settings() -> Option<&'static ak_api::SessionSettings> {
 
 async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Response> {
     let ipc_key = std::fs::read_to_string(std::env::temp_dir().join(super::IPC_KEY_FILE)).ok();
-    // One connection for the whole request, as Django holds one.
-    let scoped = db::request_scoped();
     let ctx = ak_api::Context {
-        pool: scoped.as_ref().unwrap_or_else(|| db::get()),
+        pool: db::api_pool(),
         secret_key: &config::get().secret_key,
         ipc_key: ipc_key.as_deref(),
         now: chrono::Utc::now(),
@@ -125,12 +123,9 @@ async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Res
         query: &query,
         headers: &headers,
         session_user: None,
-        drf_user: std::sync::Arc::default(),
+        drf_user: Arc::default(),
     };
     let outcome = ak_api::serve(&ctx, &req).await;
-    if let Some(pool) = &scoped {
-        pool.close().await;
-    }
     let (route, answer) = match outcome {
         ak_api::Outcome::Serve { route, answer } => (route, answer),
         ak_api::Outcome::Decline(reason) => {
