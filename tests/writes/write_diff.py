@@ -21,6 +21,7 @@ Standard library only; the databases are read through `docker exec psql`.
 """
 
 import argparse
+import concurrent.futures
 import datetime
 import json
 import pathlib
@@ -50,12 +51,38 @@ TS_RE = re.compile(r"\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d(
 BYTEA_RE = re.compile(r"^\\x[0-9a-f]*$")
 
 
+class Psql:
+    """One long-lived `psql` per database: a `docker exec` per query costs
+    about 90 ms, a query on an open session about 4 ms."""
+
+    END = "__m8end__"
+
+    def __init__(self, container):
+        self.proc = subprocess.Popen(
+            ["docker", "exec", "-i", container, "psql", "-U", "authentik", "-d", "authentik", "-At", "-q", "-v", "ON_ERROR_STOP=1"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
+        )
+
+    def query(self, sql):
+        self.proc.stdin.write(sql + f"\n\\echo {self.END}\n")
+        self.proc.stdin.flush()
+        out = []
+        while True:
+            line = self.proc.stdout.readline()
+            if not line:
+                sys.exit(f"psql exited ({self.proc.wait()}) on: {sql}")
+            if line.rstrip("\n") == self.END:
+                return "\n".join(out)
+            out.append(line.rstrip("\n"))
+
+
+SESSIONS = {}
+
+
 def psql(container, sql):
-    out = subprocess.run(
-        ["docker", "exec", "-i", container, "psql", "-U", "authentik", "-d", "authentik", "-At", "-v", "ON_ERROR_STOP=1"],
-        input=sql, capture_output=True, text=True, check=True,
-    )
-    return out.stdout
+    if container not in SESSIONS:
+        SESSIONS[container] = Psql(container)
+    return SESSIONS[container].query(sql)
 
 
 def preexisting(container):
@@ -219,7 +246,17 @@ import urllib.parse  # noqa: E402
 JSON = "application/json"
 
 
-def cases():
+def groups():
+    """Self-contained case groups, in run order: each needs only the fixture
+    and its own earlier cases, so `--only` can run any of them alone."""
+    return {
+        "roles": role_cases(),
+        "notifications": notification_cases(),
+        "initial_permissions": initial_permission_cases(),
+    }
+
+
+def role_cases():
     """(name, method, path, token, body, content type), in run order."""
     roles = "/api/v3/rbac/roles/"
     return [
@@ -266,7 +303,7 @@ def cases():
         ("delete model permission", "DELETE", roles + "{role:5}/", "m7-m6-direct", None, None),
         ("delete with permissions", "DELETE", roles + "{role:m6-model}/", ADMIN, None, None),
         ("delete created", "DELETE", roles + "{role:m8-role-trim}/", ADMIN, None, None),
-    ] + notification_cases() + initial_permission_cases()
+    ]
 
 
 def notification_cases():
@@ -378,7 +415,9 @@ def initial_permission_cases():
 def self_test(results):
     """A seeded difference in a case's response or changes must be found;
     otherwise the comparison proves nothing and the run is void."""
-    probe = next((r for r in results if r["bucket"] == "equal" and len(r["cand"]["changes"]) >= 2), None)
+    probe = next((r for r in results if r["bucket"] == "equal" and len(r["cand"]["changes"]) >= 2), None) or next(
+        (r for r in results if r["bucket"] == "equal" and r["cand"]["changes"]), None
+    )
     if probe is None:
         sys.exit("write differential self-test: no case with changes to seed")
     cand = probe["cand"]
@@ -391,7 +430,7 @@ def self_test(results):
     seeds = {
         "value": first,
         "dropped row": changes[:-1],
-        "reordered": changes[::-1],
+        **({"reordered": changes[::-1]} if len(changes) > 1 else {}),
         "status": None,
     }
     if ids:
@@ -410,12 +449,20 @@ def self_test(results):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--report", default=None)
+    ap.add_argument("--only", default=None, help="comma-separated case groups")
     args = ap.parse_args()
-    norm = {name: Normalizer(preexisting(db)) for name, (_, db) in STACKS.items()}
+    all_groups = groups()
+    chosen = args.only.split(",") if args.only else list(all_groups)
+    unknown = [g for g in chosen if g not in all_groups]
+    if unknown:
+        sys.exit(f"unknown groups {unknown}; known: {list(all_groups)}")
+    pool = concurrent.futures.ThreadPoolExecutor(len(STACKS))
+    known = dict(zip(STACKS, pool.map(lambda db: preexisting(db), (db for _, db in STACKS.values()))))
+    norm = {name: Normalizer(known[name]) for name in STACKS}
     results, buckets, served = [], {}, 0
-    for name, method, path, token, body, ctype in cases():
-        out = {}
-        for stack, (base, db) in STACKS.items():
+    for name, method, path, token, body, ctype in (c for g in chosen for c in all_groups[g]):
+        def run(stack):
+            base, db = STACKS[stack]
             resolved = resolve(base, path)
             resolved_body = resolve_body(base, body)
             take_changes(db)
@@ -428,11 +475,15 @@ def main():
                 for k, v in headers.items()
                 if k not in IGNORED_HEADERS
             }
-            out[stack] = {
+            return {
                 "rust": rust,
                 "response": norm[stack].walk([status, headers, payload], since),
                 "changes": norm[stack].walk(changes, since),
             }
+
+        # The stacks run each case at once; each still sees every case in
+        # order, and its own normalizer numbers its fresh values.
+        out = dict(zip(STACKS, pool.map(run, STACKS)))
         diffs = [k for k in ("response", "changes") if out["ref"][k] != out["cand"][k]]
         noise = [k for k in ("response", "changes") if out["ref"][k] != out["ref2"][k]]
         bucket = "equal" if not diffs else ("nondeterministic" if set(diffs) <= set(noise) else "different")

@@ -70,6 +70,15 @@ Integer keys are not normalized: an m2m row's serial id is compared literally, s
 
 A fixture value referenced wrongly stays a literal mismatch, and a created value referenced wrongly is a number mismatch. Before the summary, a self-test seeds five differences into an equal case (a changed value, a dropped row, reversed rows, a renumbered reference, a status) and fails the run unless every one is detected.
 
+### Fast loop for writes
+
+`tests/writes/quick.sh group[,group…] [--keep]` is the loop while a viewset is being ported:
+1. It builds a debug binary incrementally in the toolchain container.
+2. It runs the candidate image with that binary mounted over `/bin/authentik` (`CAND_BINARY`, `compose.binary.yml`), so no image build is needed.
+3. It replays only the named case groups (`WRITE_ONLY`, `write_diff.py --only`).
+
+Each group (`roles`, `notifications`, `initial_permissions`, …) needs only the fixture and its own earlier cases, so any group runs alone. The schema guard still runs; reads, session and logout checks do not. A commit still needs the full suite on a release image (`CANDIDATE_IMAGE=… tests/api/run.sh`).
+
 ## Rules
 
 - A test that cannot detect a difference does not count. Each differential suite needs at least one seeded-failure check, as the schema guard drift test does.

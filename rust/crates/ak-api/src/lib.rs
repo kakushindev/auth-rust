@@ -12,6 +12,7 @@
 
 pub mod avatar;
 pub mod cache;
+mod crud;
 pub mod drf;
 pub mod filters;
 pub mod json;
@@ -284,35 +285,44 @@ async fn serve_inner(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
         ),
         Route::NotificationsRetrieve(pk) if req.method == "DELETE" => (
             "events_notifications_destroy",
-            views::events_notifications_write::destroy(ctx, req, &query, pk).await,
+            crud::destroy::<views::events_notifications_write::Notifications>(ctx, req, &query, pk)
+                .await,
         ),
         Route::NotificationsRetrieve(pk) if req.method != "GET" => (
             "events_notifications_update",
-            views::events_notifications_write::update(ctx, req, &query, pk).await,
+            crud::update::<views::events_notifications_write::Notifications>(ctx, req, &query, pk)
+                .await,
         ),
         Route::InitialPermissionsList if req.method == "POST" => (
             "rbac_initial_permissions_create",
-            views::rbac_initial_permissions_write::create(ctx, req, &query).await,
+            crud::create::<views::rbac_initial_permissions_write::InitialPermissions>(ctx, req)
+                .await,
         ),
         Route::InitialPermissionsRetrieve(pk) if req.method == "DELETE" => (
             "rbac_initial_permissions_destroy",
-            views::rbac_initial_permissions_write::destroy(ctx, req, &query, pk).await,
+            crud::destroy::<views::rbac_initial_permissions_write::InitialPermissions>(
+                ctx, req, &query, pk,
+            )
+            .await,
         ),
         Route::InitialPermissionsRetrieve(pk) if req.method != "GET" => (
             "rbac_initial_permissions_update",
-            views::rbac_initial_permissions_write::update(ctx, req, &query, pk).await,
+            crud::update::<views::rbac_initial_permissions_write::InitialPermissions>(
+                ctx, req, &query, pk,
+            )
+            .await,
         ),
         Route::RolesList if req.method == "POST" => (
             "rbac_roles_create",
-            views::rbac_roles_write::create(ctx, req, &query).await,
+            crud::create::<views::rbac_roles_write::Roles>(ctx, req).await,
         ),
         Route::RolesRetrieve(pk) if req.method == "DELETE" => (
             "rbac_roles_destroy",
-            views::rbac_roles_write::destroy(ctx, req, &query, pk).await,
+            crud::destroy::<views::rbac_roles_write::Roles>(ctx, req, &query, pk).await,
         ),
         Route::RolesRetrieve(pk) if req.method != "GET" => (
             "rbac_roles_update",
-            views::rbac_roles_write::update(ctx, req, &query, pk).await,
+            crud::update::<views::rbac_roles_write::Roles>(ctx, req, &query, pk).await,
         ),
         Route::RolesList => (
             "rbac_roles",

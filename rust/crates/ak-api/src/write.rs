@@ -102,16 +102,6 @@ pub(crate) enum Input<T> {
     Value(T),
 }
 
-impl<T> Input<T> {
-    /// The value, for a field that cannot be null.
-    pub(crate) fn value(self) -> Option<T> {
-        match self {
-            Self::Value(value) => Some(value),
-            Self::Absent | Self::Null => None,
-        }
-    }
-}
-
 /// A field's error: `Ok(message)` for DRF's 400, `Err` when that error is
 /// not reproduced.
 pub(crate) type FieldError = Result<String, Decline>;
@@ -138,6 +128,7 @@ fn present<'d>(
 }
 
 /// A `CharField` with `trim_whitespace=True`.
+#[derive(Clone, Copy)]
 pub(crate) struct CharField {
     pub required: bool,
     pub allow_blank: bool,

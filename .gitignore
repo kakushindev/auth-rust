@@ -4,6 +4,7 @@
 /reference/certs/
 /reference/custom-templates/
 /rust/target/
+/rust/.cand/
 *.secret
 /tests/differential/http/last-report.json
 /tests/differential/http/last-report-web-path.json

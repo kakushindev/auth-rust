@@ -2,6 +2,20 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 31 — 2026-11-01
+
+- **Write engine** (`ak_api::crud`). A viewset is now a `Spec` (model, writable fields in serializer order, unique messages, audited or not) plus a `Resource` (`find`, `render`, `collect`). The engine runs permission/`get_object()`, validation with all field errors, the InitialPermissions check, then `save()` + audit event + m2m `set()` in one transaction, and the collector for deletes.
+  - `save()` writes every column with the values read, through `to_jsonb`/`jsonb_populate_record`, so there is no per-table SQL.
+  - Roles, notifications and InitialPermissions moved onto it: the view code went from 1 265 to 560 lines, and the differential decides all 125 write cases exactly as before.
+- **Fast loop**:
+  - `tests/writes/quick.sh <groups>` builds a debug binary incrementally, mounts it into the candidate image (`CAND_BINARY`, `compose.binary.yml`) and replays only those write groups (`WRITE_ONLY`). There is no image build; a run takes about 90 s.
+  - `write_diff.py` keeps one `psql` session per database (4 ms per query instead of 90 ms for each `docker exec`) and asks the three stacks at once per case: the writes phase went from 108 s to 19–24 s.
+  - Cases are grouped (`roles`, `notifications`, `initial_permissions`), each self-contained.
+- Evidence: full run on a release image, reads 15 768/15 768 equal; writes 124 equal + 1 nondeterministic of 125 (115 Rust-served); session and logout state ok, schema guard clean. The read cases phase took 777 s this run (355–418 s before), with no read code changed; this is not yet explained.
+
+### Exact next action
+Port the next viewsets on the engine with `quick.sh`, adding field kinds as they come up (choice, JSON dict, integer, nullable FK, multi-table inheritance for `PolicyBindingModel` children): application entitlements, notification rules and transports, then groups, tokens, brands.
+
 ## Batch 30 — 2026-11-01
 
 - **M8 part 6, InitialPermissions writes**: create, update (PUT/PATCH) and delete are served from Rust (`views/rbac_initial_permissions_write.rs`). They cover `CharField(max_length=150)` + `UniqueValidator`, the `role` `PrimaryKeyRelatedField` (read as `UUIDField.to_python`), and the `permissions` `ManyRelatedField`, then `permissions.set()` in Django's order.

@@ -6,8 +6,11 @@
 # API case (api_diff.py). The schema guard checks all databases afterwards.
 # Then the M8 write differential (tests/writes) runs on the same stacks.
 # Usage: CANDIDATE_IMAGE=... [API_ONLY=endpoint,...] [API_JOBS=n] [WEB_WORKERS=n]
-#        [API_FRESH=1] [API_SUITES="reads writes"] run.sh [--keep]
-# API_SUITES picks the suites; the schema guard always runs.
+#        [API_FRESH=1] [API_SUITES="reads writes"] [WRITE_ONLY=group,...]
+#        [CAND_BINARY=path] run.sh [--keep]
+# API_SUITES picks the suites; the schema guard always runs. WRITE_ONLY
+# runs some write groups (write_diff.py --only); CAND_BINARY runs the
+# candidate image with that binary (tests/writes/quick.sh).
 # API_JOBS (default 8) runs that many tokens concurrently; each token keeps
 # the suite order, and 1 is the fully sequential run. Each case asks the
 # three stacks at once. WEB_WORKERS sets gunicorn's workers on every stack
@@ -20,7 +23,10 @@ export PG_PASS="$(sed -n 's/^PG_PASS=//p' reference/.env)"
 export SNAPSHOT_DIR="$(mktemp -d)"
 export WEB_PATH=/
 export RS_API_TRACE=1
-dc() { docker compose -p ak-api -f tests/differential/http/compose.yml "$@"; }
+# CAND_BINARY mounts a locally built binary into the candidate image.
+compose_files=(-f tests/differential/http/compose.yml)
+if [[ -n "${CAND_BINARY:-}" ]]; then compose_files+=(-f tests/differential/http/compose.binary.yml); fi
+dc() { docker compose -p ak-api "${compose_files[@]}" "$@"; }
 trap 'rm -rf "$SNAPSHOT_DIR"' EXIT
 
 # The fixture: the reference snapshot plus model rows, roles, tokens and
@@ -157,7 +163,7 @@ if [[ "$suites" == *" writes "* ]]; then
   for db in ref-db ref2-db cand-db; do
     dc exec -T "$db" psql -q -U authentik -d authentik -v ON_ERROR_STOP=1 < tests/writes/capture.sql
   done
-  python3 -I tests/writes/write_diff.py --report tests/writes/last-report.json || status=1
+  python3 -I tests/writes/write_diff.py --report tests/writes/last-report.json ${WRITE_ONLY:+--only "$WRITE_ONLY"} || status=1
   for db in ref-db ref2-db cand-db; do
     dc exec -T "$db" psql -q -U authentik -d authentik -v ON_ERROR_STOP=1 < tests/writes/uncapture.sql
   done

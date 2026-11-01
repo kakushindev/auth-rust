@@ -409,6 +409,20 @@ The full API run is 15 768/15 768 equal, with clean session and logout state che
 | `tests/writes/write_diff.py`, 50 InitialPermissions cases: creates with 0, 3 and 13 permissions (repeats, values up to 700); every validation branch above; renames; uniqueness against itself; set replacements with overlap, repeats, clearing and a 16-id refill; role changes; PUT with and without `permissions`; no permission, anonymous, missing and invalid pks; deletes; then deleting the role that holds them | All equal in response and row changes, including the m2m rows' ids (only the list-valued `role` is declined) |
 | `cargo test -p ak-api pyset` | 290/290 CPython orders; a seeded order check |
 
+## Write engine (M8, part 7)
+
+The role, notification and InitialPermissions writes now run on one generic engine, `ak_api::crud`. A viewset declares its model and its serializer's writable fields (`Spec`), and how `get_object()` finds a row, how the response renders, and what the collector deletes (`Resource`). The engine then runs DRF's and Django's steps in order:
+
+1. permission or `get_object()`;
+2. parsing and per-field validation with all errors in field order;
+3. the InitialPermissions check;
+4. one transaction with `save()`, the audit event and each m2m `set()`;
+5. for deletes, the collected events and deletes.
+
+`save()` writes every column with the values `get_object()` read, without per-table code: the row travels as `to_jsonb(row)` and is written back through `jsonb_populate_record`, so any column type round-trips exactly. A create leaves the columns it does not set NULL, so a model with a non-null Python default on an unwritten field needs that default added first.
+
+Evidence: the same 125 write cases as before the move give the same buckets (124 equal + 1 nondeterministic from Django's own 500) and the same 115 Rust-served cases. A full run on a release image is in the batch's checkpoint.
+
 ## Not verified / open
 
 - **Brand TLS polling (M2)**: 2026.2.7's Go server and embedded outpost refresh brand TLS through the brands API over IPC. Our server reads the database instead. Responses are unaffected, but when that API fails (as for this harness's `1e20` brand attribute), Django records a `system_exception` event per poll on the reference and none on the candidate. This must be reproduced, or explicitly accepted, before M17.

@@ -1,80 +1,31 @@
-//! `NotificationViewSet`'s writes: `update`/`partial_update`, `destroy` and
-//! `mark_all_seen`.
+//! `NotificationViewSet`'s writes on [`crate::crud`]:
+//! `update`/`partial_update` and `destroy`, plus the `mark_all_seen` action.
 //!
 //! `Notification` is one of `AuditMiddleware`'s ignored models, nothing
-//! receives its signals, and these writes create no rows, so each write is
-//! its statement alone. `NotificationSerializer` writes `hyperlink`
-//! (`max_length=4096`) and `hyperlink_label`, both blank and null allowed,
-//! and `seen`, none of them required. `event` is a nested serializer whose
-//! write raises (declined).
+//! receives its signals or references it, and these writes create no rows,
+//! so each write is its statement alone. `NotificationSerializer` writes
+//! `hyperlink` (`max_length=4096`) and `hyperlink_label`, both blank and
+//! null allowed, and `seen`, none of them required. `event` is a nested
+//! serializer whose write raises (declined).
 
-use ak_rbac::{Access, Object};
-use sqlx::{Row as _, postgres::PgRow};
+use sqlx::Row as _;
 
 use crate::{
     Answer, Decline,
+    crud::{Collected, Field, Found, Kind, Pk, Resource, Row, Spec},
     drf::{self, ApiRequest, Context, User},
     py::{QueryDict, UuidLookup, uuid_lookup},
     sql::Bind,
     views::events_notifications::{ALLOW_DETAIL, MODEL, SELECT, filter_queryset, serialize},
-    write::{CharField, Input, boolean_field, field_errors, json_body, no_content},
+    write::CharField,
 };
+
+pub(crate) struct Notifications;
 
 const ALLOW_MARK_ALL_SEEN: &str = "POST, OPTIONS";
 
 fn db(_: sqlx::Error) -> Decline {
     Decline("database error")
-}
-
-/// `get_object()`: the row (`SELECT`'s columns), or its 404/403.
-async fn get_object(
-    ctx: &Context<'_>,
-    req: &ApiRequest<'_>,
-    query: &QueryDict,
-    user: &User,
-    pk: &str,
-) -> Result<Result<PgRow, Answer>, Decline> {
-    let mut qs = match filter_queryset(ctx, query, user, ALLOW_DETAIL).await? {
-        Ok(qs) => qs,
-        Err(answer) => return Ok(Err(answer)),
-    };
-    let uuid = match uuid_lookup(pk).map_err(|_| Decline("pk syntax"))? {
-        UuidLookup::Valid(uuid) => uuid,
-        UuidLookup::Invalid => return Ok(Err(drf::detail(404, "Not found.", ALLOW_DETAIL))),
-    };
-    let p = qs.bind(Bind::Uuid(uuid));
-    qs.filter(format!("\"authentik_events_notification\".\"uuid\" = {p}"));
-    let mut rows = qs.fetch(ctx.pool, &[], None).await?;
-    let row = match rows.len() {
-        0 => {
-            return Ok(Err(drf::detail(
-                404,
-                "No Notification matches the given query.",
-                ALLOW_DETAIL,
-            )));
-        }
-        1 => rows.remove(0),
-        _ => return Err(Decline("multiple objects")),
-    };
-    let owner: i32 = row.try_get(8).map_err(db)?;
-    let pk_text = uuid.to_string();
-    let access = ak_rbac::has_object_permission(
-        ctx.pool,
-        user.subject(),
-        req.method,
-        &Object {
-            model: MODEL,
-            pk: &pk_text,
-        },
-        owner == user.subject().user_id,
-    )
-    .await
-    .map_err(|_| Decline("object permission raised"))?;
-    Ok(match access {
-        Access::Allow => Ok(row),
-        Access::NotFound => Err(drf::detail(404, "Not found.", ALLOW_DETAIL)),
-        Access::Deny => Err(drf::permission_denied(user, ALLOW_DETAIL)),
-    })
 }
 
 const NULLABLE: CharField = CharField {
@@ -84,136 +35,110 @@ const NULLABLE: CharField = CharField {
     max_length: None,
 };
 
-/// `PUT`/`PATCH /api/v3/events/notifications/{pk}/`.
-pub async fn update(
-    ctx: &Context<'_>,
-    req: &ApiRequest<'_>,
-    query: &QueryDict,
-    pk: &str,
-) -> Result<Answer, Decline> {
-    drf::tenant(ctx, req).await?;
-    let user = match drf::authenticate(ctx, req, ALLOW_DETAIL).await? {
-        Ok(user) => user,
-        Err(answer) => return Ok(answer),
+impl Resource for Notifications {
+    const SPEC: Spec = Spec {
+        model: MODEL,
+        pk: Pk::Uuid4,
+        fields: &[
+            Field {
+                name: "hyperlink",
+                column: "hyperlink",
+                kind: Kind::Char(CharField {
+                    max_length: Some(4096),
+                    ..NULLABLE
+                }),
+                required: false,
+                unique: None,
+            },
+            Field {
+                name: "hyperlink_label",
+                column: "hyperlink_label",
+                kind: Kind::Char(NULLABLE),
+                required: false,
+                unique: None,
+            },
+            Field {
+                name: "seen",
+                column: "seen",
+                kind: Kind::Bool,
+                required: false,
+                unique: None,
+            },
+        ],
+        audit: None,
+        decline_keys: &["event"],
     };
-    let row = match get_object(ctx, req, query, &user, pk).await? {
-        Ok(row) => row,
-        Err(answer) => return Ok(answer),
-    };
-    let data = json_body(req)?;
-    if data.get("event").is_some() {
-        return Err(Decline("nested event write"));
-    }
-    // Fields in declaration order; every error is reported.
-    let mut errors = Vec::new();
-    let mut text = |name: &'static str, field: &CharField| match field.validate(&data, name) {
-        Ok(input) => Ok(Some(input)),
-        Err(Ok(message)) => {
-            errors.push((name, message));
-            Ok(None)
-        }
-        Err(Err(decline)) => Err(decline),
-    };
-    let hyperlink = text(
-        "hyperlink",
-        &CharField {
-            max_length: Some(4096),
-            ..NULLABLE
-        },
-    )?;
-    let hyperlink_label = text("hyperlink_label", &NULLABLE)?;
-    let seen = match boolean_field(&data, "seen", false) {
-        Ok(input) => Some(input),
-        Err(Ok(message)) => {
-            errors.push(("seen", message));
-            None
-        }
-        Err(Err(decline)) => return Err(decline),
-    };
-    let (Some(hyperlink), Some(hyperlink_label), Some(seen)) = (hyperlink, hyperlink_label, seen)
-    else {
-        return Ok(field_errors(&errors, ALLOW_DETAIL));
-    };
-    let current =
-        |index: usize| -> Result<Option<String>, Decline> { row.try_get(index).map_err(db) };
-    let merge = |input: Input<String>, index: usize| -> Result<Option<String>, Decline> {
-        Ok(match input {
-            Input::Absent => current(index)?,
-            Input::Null => None,
-            Input::Value(value) => Some(value),
-        })
-    };
-    let hyperlink = merge(hyperlink, 3)?;
-    let hyperlink_label = merge(hyperlink_label, 4)?;
-    let seen = match seen {
-        Input::Value(seen) => seen,
-        Input::Absent | Input::Null => row.try_get(7).map_err(db)?,
-    };
-    // `Model.save()` writes every field, with the values it read.
-    let uuid: uuid::Uuid = row.try_get(0).map_err(db)?;
-    let updated = sqlx::query(sqlx::AssertSqlSafe(format!(
-        "UPDATE \"authentik_events_notification\" SET \"severity\" = $1, \"body\" = $2, \
-         \"hyperlink\" = $3, \"hyperlink_label\" = $4, \"created\" = $5, \"event_id\" = $6, \
-         \"seen\" = $7, \"user_id\" = $8 WHERE \"authentik_events_notification\".\"uuid\" = $9 \
-         RETURNING {SELECT}"
-    )))
-    .bind(row.try_get::<String, _>(1).map_err(db)?)
-    .bind(row.try_get::<String, _>(2).map_err(db)?)
-    .bind(&hyperlink)
-    .bind(&hyperlink_label)
-    .bind(
-        row.try_get::<chrono::DateTime<chrono::Utc>, _>(5)
-            .map_err(db)?,
-    )
-    .bind(row.try_get::<Option<uuid::Uuid>, _>(6).map_err(db)?)
-    .bind(seen)
-    .bind(row.try_get::<i32, _>(8).map_err(db)?)
-    .bind(uuid)
-    .fetch_all(ctx.pool)
-    .await
-    .map_err(db)?;
-    // Deleted meanwhile: `save()` would insert it again.
-    if updated.len() != 1 {
-        return Err(Decline("notification gone"));
-    }
-    let mut one = serialize(ctx, &updated).await?;
-    Ok(drf::json(
-        200,
-        &one.pop().ok_or(Decline("database error"))?,
-        ALLOW_DETAIL,
-    ))
-}
+    // No create route.
+    const ALLOW_LIST: &'static str = "GET, HEAD, OPTIONS";
+    const ALLOW_DETAIL: &'static str = ALLOW_DETAIL;
 
-/// `DELETE /api/v3/events/notifications/{pk}/`. Nothing references a
-/// notification, so the collector deletes it alone.
-pub async fn destroy(
-    ctx: &Context<'_>,
-    req: &ApiRequest<'_>,
-    query: &QueryDict,
-    pk: &str,
-) -> Result<Answer, Decline> {
-    drf::tenant(ctx, req).await?;
-    let user = match drf::authenticate(ctx, req, ALLOW_DETAIL).await? {
-        Ok(user) => user,
-        Err(answer) => return Ok(answer),
-    };
-    let row = match get_object(ctx, req, query, &user, pk).await? {
-        Ok(row) => row,
-        Err(answer) => return Ok(answer),
-    };
-    let uuid: uuid::Uuid = row.try_get(0).map_err(db)?;
-    let deleted = sqlx::query(
-        "DELETE FROM \"authentik_events_notification\" WHERE \
-         \"authentik_events_notification\".\"uuid\" IN ($1)",
-    )
-    .bind(uuid)
-    .execute(ctx.pool)
-    .await
-    .map_err(db)?;
-    if deleted.rows_affected() != 1 {
-        return Err(Decline("notification gone"));
+    async fn find(
+        ctx: &Context<'_>,
+        query: &QueryDict,
+        user: &User,
+        pk: &str,
+    ) -> Result<Result<Found, Answer>, Decline> {
+        let mut qs = match filter_queryset(ctx, query, user, ALLOW_DETAIL).await? {
+            Ok(qs) => qs,
+            Err(answer) => return Ok(Err(answer)),
+        };
+        let uuid = match uuid_lookup(pk).map_err(|_| Decline("pk syntax"))? {
+            UuidLookup::Valid(uuid) => uuid,
+            UuidLookup::Invalid => return Ok(Err(drf::detail(404, "Not found.", ALLOW_DETAIL))),
+        };
+        let p = qs.bind(Bind::Uuid(uuid));
+        qs.filter(format!("\"authentik_events_notification\".\"uuid\" = {p}"));
+        let rows = qs.fetch(ctx.pool, &[], None).await?;
+        let row = match rows.as_slice() {
+            [] => {
+                return Ok(Err(drf::detail(
+                    404,
+                    "No Notification matches the given query.",
+                    ALLOW_DETAIL,
+                )));
+            }
+            [row] => row,
+            _ => return Err(Decline("multiple objects")),
+        };
+        let owner: i32 = row.try_get(8).map_err(db)?;
+        Ok(Ok(Found {
+            pk: uuid.to_string(),
+            owner: owner == user.subject().user_id,
+        }))
     }
-    Ok(no_content(ALLOW_DETAIL))
+
+    /// `NotificationSerializer(instance).data`, nested event included.
+    async fn render(
+        ctx: &Context<'_>,
+        row: &Row,
+        status: u16,
+        allow: &'static str,
+    ) -> Result<Answer, Decline> {
+        let uuid = row
+            .get("uuid")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .ok_or(Decline("row"))?;
+        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "SELECT {SELECT} FROM \"authentik_events_notification\" WHERE \
+             \"authentik_events_notification\".\"uuid\" = $1"
+        )))
+        .bind(uuid)
+        .fetch_all(ctx.pool)
+        .await
+        .map_err(db)?;
+        let mut one = serialize(ctx, &rows).await?;
+        Ok(drf::json(
+            status,
+            &one.pop().ok_or(Decline("row gone"))?,
+            allow,
+        ))
+    }
+
+    /// Nothing references a notification.
+    async fn collect(_ctx: &Context<'_>, _row: &Row) -> Result<Collected, Decline> {
+        Ok(Collected::default())
+    }
 }
 
 /// `POST /api/v3/events/notifications/mark_all_seen/`: `IsAuthenticated`

@@ -1,0 +1,7 @@
+# Fast loop (tests/writes/quick.sh): the candidate runs a binary built
+# outside the image, mounted over /bin/authentik. Everything else in the
+# image is unchanged.
+services:
+  cand:
+    volumes:
+      - ${CAND_BINARY:?set CAND_BINARY}:/bin/authentik:ro
