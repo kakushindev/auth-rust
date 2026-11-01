@@ -4,8 +4,10 @@
 # subject (populate.py), dump that as the shared snapshot, then run
 # reference, second reference and candidate from it and compare every read
 # API case (api_diff.py). The schema guard checks all databases afterwards.
+# Then the M8 write differential (tests/writes) runs on the same stacks.
 # Usage: CANDIDATE_IMAGE=... [API_ONLY=endpoint,...] [API_JOBS=n] [WEB_WORKERS=n]
-#        [API_FRESH=1] run.sh [--keep]
+#        [API_FRESH=1] [API_SUITES="reads writes"] run.sh [--keep]
+# API_SUITES picks the suites; the schema guard always runs.
 # API_JOBS (default 8) runs that many tokens concurrently; each token keeps
 # the suite order, and 1 is the fully sequential run. Each case asks the
 # three stacks at once. WEB_WORKERS sets gunicorn's workers on every stack
@@ -114,6 +116,8 @@ done
 
 timing stacks
 status=0
+suites=" ${API_SUITES:-reads writes} "
+if [[ "$suites" == *" reads "* ]]; then
 python3 -I "$here/api_diff.py" --report "$here/last-report.json" ${API_ONLY:+--only "$API_ONLY"} || status=$?
 timing cases
 # The moved sessions after their save: Django's on ref, Rust's on cand.
@@ -145,6 +149,19 @@ done
 if python3 -I -c 'import json,sys; a,b=(json.load(open(p)) for p in sys.argv[1:3]); print("[logout-state]", "ok" if a == b and a["sessions"] == 0 else "MISMATCH"); sys.exit(a != b or a["sessions"] != 0)' \
   "$SNAPSHOT_DIR/logout-ref-db.json" "$SNAPSHOT_DIR/logout-cand-db.json"; then :; else
   status=1; diff <(python3 -m json.tool "$SNAPSHOT_DIR/logout-ref-db.json") <(python3 -m json.tool "$SNAPSHOT_DIR/logout-cand-db.json") | head -40
+fi
+fi
+# The write differential records every row change through triggers, which
+# come off again before the schema guard.
+if [[ "$suites" == *" writes "* ]]; then
+  for db in ref-db ref2-db cand-db; do
+    dc exec -T "$db" psql -q -U authentik -d authentik -v ON_ERROR_STOP=1 < tests/writes/capture.sql
+  done
+  python3 -I tests/writes/write_diff.py --report tests/writes/last-report.json || status=1
+  for db in ref-db ref2-db cand-db; do
+    dc exec -T "$db" psql -q -U authentik -d authentik -v ON_ERROR_STOP=1 < tests/writes/uncapture.sql
+  done
+  timing writes
 fi
 for port in 25432 25532 25632; do
   rust/target/debug/ak-schema-guard verify --database-url \

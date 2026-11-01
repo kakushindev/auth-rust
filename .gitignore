@@ -10,4 +10,5 @@
 /tests/differential/http/noise-report.json
 .DS_Store
 /tests/api/last-report.json
+/tests/writes/last-report.json
 __pycache__/

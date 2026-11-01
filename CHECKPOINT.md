@@ -2,6 +2,21 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 28 — 2026-11-01
+
+- **M8 part 4, the first writes**: `rbac/roles` create, update (PUT/PATCH) and delete are served from Rust (`ak_api::write`, `views/rbac_roles_write.rs`).
+  - DRF's order: authentication, `has_permission`, `get_object` with the object permission, `ORJSONParser`, `CharField` + `UniqueValidator`, `save()`.
+  - `AuditMiddleware`'s `model_created`/`model_updated`/`model_deleted` events, each with its dispatch task, all in one transaction with the row change.
+  - A delete reproduces Django's `Collector`: `pre_delete` events (RoleModelPermission, InitialPermissions, then the role) and the deletes in `sort()` order (group/user roles, InitialPermissions' m2m rows, object and model permissions, InitialPermissions, the role).
+  - The server buffers a write's body (declared length ≤ `DATA_UPLOAD_MAX_MEMORY_SIZE`) so a decline still forwards it whole. A 204 carries no length, as Django's does.
+  - Declined: session writes (CSRF not ported), bodies other than a UTF-8 JSON object, orjson's refusals, floats/`-0`/NUL in `name`, and any request where `InitialPermissions` would apply to a created row.
+- **Write differential** (`tests/writes`): triggers record every row change per case on ref, ref2 and cand. Fresh UUIDs are numbered per stack and new timestamps become `<now>`. A self-test seeds five differences (value, dropped row, order, reference, status) and requires all to be found. `run.sh` runs it after the reads (`API_SUITES`).
+- Evidence: full run 15 768/15 768 reads equal, 43/43 writes equal (39 Rust-served, the 4 others correctly declined), session and logout state ok, schema guard clean on all three databases.
+- Write latency, median on the same stacks: create 3.9 ms vs Django 58.9, PATCH 4.2 vs 60.0, DELETE 4.5 vs 61.9 (about 14×).
+
+### Exact next action
+M8: the writes of the other ported viewsets (groups, users, tokens, brands, …), then `InitialPermissions` assignment and session writes with CSRF.
+
 ## Batch 27 — 2026-11-01
 
 - Read-API performance: the one-connection-per-request pool of batch 26 still paid per request for the handshake, SCRAM, the `SET`s and statement preparation, which is most of a short request's time. `ak_common::db::api_pool` keeps connections and reuses them. It is bounded like Django's web process, closes them after 5 minutes idle, and caps their age at 30 minutes or `conn_max_age`. `request_scoped` is removed.

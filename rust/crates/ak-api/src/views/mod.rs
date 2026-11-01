@@ -16,3 +16,4 @@ pub mod rbac_assigned_by_roles;
 pub mod rbac_initial_permissions;
 pub mod rbac_permissions;
 pub mod rbac_roles;
+pub mod rbac_roles_write;

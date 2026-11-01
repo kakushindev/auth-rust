@@ -54,6 +54,18 @@ Session and CSRF variants run alongside the tokens. `tests/api/sessions.py` crea
 
 Inputs where Django's own answer depends on the process are left out of the case list, and Rust declines them; each is listed with a comment in `api_diff.py`. One example is several invalid values for a `ModelMultipleChoiceFilter`, where Django reports whichever value comes first in a `frozenset`, so the order follows the per-process string hash seed.
 
+## Write differential (M8)
+
+`tests/writes/write_diff.py` runs after the read suite on the same three stacks (`API_SUITES="reads writes"` by default, `API_SUITES=writes` alone). `capture.sql` installs a trigger on every public table that appends each row change (table, operation, old and new row as JSON) to `m8cap.changes`. Cases run one at a time on each stack, and the harness collects that case's changes right after its response. `uncapture.sql` removes the triggers before the schema guard runs.
+
+Normalization, and nothing more:
+- A UUID or 32-hex value absent from that stack's `pg_dump` before the suite becomes `<idN>`, numbered per stack in order of appearance.
+- A timestamp from the case's start onward becomes `<now>`.
+- A `bytea` task message becomes `<bytea>` (tests/events checks it byte for byte).
+- The embedded outpost's state heartbeat in the cache table is dropped.
+
+A fixture value referenced wrongly stays a literal mismatch, and a created value referenced wrongly is a number mismatch. Before the summary, a self-test seeds five differences into an equal case (a changed value, a dropped row, reversed rows, a renumbered reference, a status) and fails the run unless every one is detected.
+
 ## Rules
 
 - A test that cannot detect a difference does not count. Each differential suite needs at least one seeded-failure check, as the schema guard drift test does.

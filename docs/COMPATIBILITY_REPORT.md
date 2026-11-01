@@ -360,6 +360,22 @@ The full API run is 15 768/15 768 equal, with clean session and logout state che
 
 **Database pool (product change)**: the server's pool (vendored `ak-common`, upstream 4 connections) now allows `web.workers × web.threads` connections (2 × 4 = 8 by default, never fewer than 4), as many as Django's web process holds, since the server answers requests gunicorn used to. The API run decided all 15 768 cases as the 4-connection build did.
 
+## Role writes (M8, part 4)
+
+`POST /api/v3/rbac/roles/`, and `PUT`/`PATCH`/`DELETE /api/v3/rbac/roles/{pk}/`, are served from Rust.
+
+- **Order of checks**, as DRF runs them: authentication, then `ObjectPermissions.has_permission` (`add_role` for a create; detail routes pass). Next, `get_object`: the list's filters, the lookup (404s as for reads) and the object permission (`change_role`/`delete_role`; 403 when the object is visible, 404 otherwise). Then the body through `ORJSONParser`, and `RoleSerializer`'s `name` (`CharField`: required, null, blank, "Not a valid string.", whitespace trimmed; `UniqueValidator` excluding the instance).
+- **Writes**: one transaction holds the row change and `AuditMiddleware`'s events. Each event is `Event.new(...).from_http()` with `model_to_dict` and its `event_trigger_dispatch` task. `save()` on an existing role updates every field, so a PATCH without fields still writes and audits.
+- **Delete** follows Django's `Collector`. It collects group/user role rows, InitialPermissions (and their m2m rows), object and model permissions. It sends `pre_delete` in sorted order: `RoleModelPermission` events (`str()` as the name), then `InitialPermissions` events (their `name`), then the role's. Auto-created m2m rows and `RoleObjectPermission` get none. It then deletes in `sort()` order: group roles, user roles, InitialPermissions' permissions, object permissions, model permissions, InitialPermissions, the role.
+- **The server** reads a write's body whole when its declared length is within `DATA_UPLOAD_MAX_MEMORY_SIZE`, so a decline forwards the identical bytes; chunked or larger bodies go straight to Django. A body that does not arrive whole gets the proxy's 502. A 204 has no `Content-Type` or `Content-Length`, and keeps `Content-Language`.
+- **Declined** (Django answers): a session cookie on a write (CSRF and session saves are not ported), `X-Authentik-Outpost-Token`, a content type other than `application/json` (optionally `charset=utf-8`), an empty, non-UTF-8 or BOM-prefixed body, JSON orjson refuses (its error text is not reproduced), JSON that is not an object, a float, `-0` or NUL in `name`, and any write where the user's roles have InitialPermissions that would apply to a created row (the role, the event, the task or its log).
+
+| Evidence | Result |
+| --- | --- |
+| `tests/writes/write_diff.py` (run by `tests/api/run.sh`): 43 cases covering valid writes; duplicates; blank, missing, null, list, bool and integer names; trimming; repeated keys; charset; form bodies; invalid JSON; anonymous, no-permission and model-permission users; missing and invalid pks; deletes with members and with model permissions and InitialPermissions. Every row change is recorded by triggers | 43/43 equal in response and row changes (39 Rust-served, 4 declined). The self-test detects 5 seeded differences |
+| Same run, read suite | 15 768/15 768 equal; session and logout state ok; schema guard clean on all three databases |
+| Median latency, 50 create→PATCH→DELETE rounds per stack | create 58.9 → **3.9 ms**, PATCH 60.0 → **4.2 ms**, DELETE 61.9 → **4.5 ms** |
+
 ## Not verified / open
 
 - **Brand TLS polling (M2)**: 2026.2.7's Go server and embedded outpost refresh brand TLS through the brands API over IPC. Our server reads the database instead. Responses are unaffected, but when that API fails (as for this harness's `1e20` brand attribute), Django records a `system_exception` event per poll on the reference and none on the candidate. This must be reproduced, or explicitly accepted, before M17.

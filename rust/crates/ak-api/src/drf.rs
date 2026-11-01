@@ -37,6 +37,8 @@ pub struct SessionSettings {
 /// The request exactly as Django receives it from the front server.
 #[derive(Clone)]
 pub struct ApiRequest<'a> {
+    /// `request.method`.
+    pub method: &'a str,
     /// Decoded path (`request.path_info`).
     pub path: &'a str,
     /// Raw query string.
@@ -49,10 +51,20 @@ pub struct ApiRequest<'a> {
     /// [`authenticate`]. DRF writes it back to `request._request.user`,
     /// which is whom `SessionMiddleware` signs a refreshed cookie for.
     pub drf_user: std::sync::Arc<std::sync::Mutex<Option<Option<i32>>>>,
+    /// The request body (empty for reads).
+    pub body: &'a [u8],
+    /// `RequestIDMiddleware`'s `request.request_id` (`uuid4().hex`): the
+    /// `X-authentik-id` header and the id events record.
+    pub request_id: String,
 }
 
 fn header_str<'a>(headers: &'a HeaderMap, name: &header::HeaderName) -> Option<&'a str> {
     headers.get(name)?.to_str().ok()
+}
+
+/// Whether the request carries `authentik_session`.
+pub(crate) fn has_session_cookie(headers: &HeaderMap) -> bool {
+    has_cookie(headers, ak_auth::session::SESSION_COOKIE_NAME)
 }
 
 /// The cookies Django parses (`django.http.parse_cookie`), just to see
@@ -161,6 +173,7 @@ pub fn admit(req: &ApiRequest<'_>, query: &QueryDict) -> Result<(), Decline> {
 /// The public tenant's pagination sizes, once Django's host and tenant
 /// middleware would accept the request.
 pub struct Tenant {
+    pub uuid: Uuid,
     pub default_page_size: i64,
     pub max_page_size: i64,
     /// `Tenant.avatars`: comma-separated avatar modes.
@@ -206,6 +219,7 @@ pub async fn tenant(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Result<Tenant, D
         return Err(Decline("enterprise license"));
     }
     Ok(Tenant {
+        uuid,
         default_page_size: i64::from(default_page_size),
         max_page_size: i64::from(max_page_size),
         avatars,

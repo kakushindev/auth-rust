@@ -109,7 +109,13 @@ fn session_settings() -> Option<&'static ak_api::SessionSettings> {
         .as_ref()
 }
 
-async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Response> {
+async fn read_api(
+    method: &Method,
+    path: String,
+    query: String,
+    headers: HeaderMap,
+    body: &[u8],
+) -> Option<Response> {
     let ipc_key = std::fs::read_to_string(std::env::temp_dir().join(super::IPC_KEY_FILE)).ok();
     let ctx = ak_api::Context {
         pool: db::api_pool(),
@@ -121,7 +127,11 @@ async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Res
     let req = ak_api::ApiRequest {
         path: &path,
         query: &query,
+        method: method.as_str(),
         headers: &headers,
+        body,
+        // `RequestIDMiddleware`: `uuid4().hex`.
+        request_id: uuid::Uuid::new_v4().simple().to_string(),
         session_user: None,
         drf_user: Arc::default(),
     };
@@ -143,8 +153,11 @@ async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Res
             .headers_mut()
             .append(name, HeaderValue::from_str(&value).ok()?);
     }
-    let length = axum::body::HttpBody::size_hint(response.body()).exact()?;
-    response.headers_mut().insert(CONTENT_LENGTH, length.into());
+    // Django sends no length on a 204.
+    if response.status() != StatusCode::NO_CONTENT {
+        let length = axum::body::HttpBody::size_hint(response.body()).exact()?;
+        response.headers_mut().insert(CONTENT_LENGTH, length.into());
+    }
     if std::env::var_os("AUTHENTIK_RS_API_TRACE").is_some_and(|v| !v.is_empty()) {
         response
             .headers_mut()
@@ -152,6 +165,34 @@ async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Res
     }
     response.extensions_mut().insert(go_compat::Proxied);
     Some(response)
+}
+
+/// authentik-rs (M8): the body of a request `ak_api` may answer, read
+/// whole so a decline can still forward it. A GET's is never read (its
+/// views do not read one, as Django's do not). A write's is read only when
+/// its length is declared and within `ak_api::write::MAX_BODY`; `None`
+/// forwards the request as is.
+async fn buffered_body(request: &mut Request) -> Option<Result<axum::body::Bytes, axum::Error>> {
+    if request.method() == Method::GET {
+        return Some(Ok(axum::body::Bytes::new()));
+    }
+    let headers = request.headers();
+    if headers.contains_key(TRANSFER_ENCODING) {
+        return None;
+    }
+    let length: usize = match headers.get(CONTENT_LENGTH) {
+        Some(value) => value.to_str().ok()?.parse().ok()?,
+        None => 0,
+    };
+    if length > ak_api::write::MAX_BODY {
+        return None;
+    }
+    let body = std::mem::take(request.body_mut());
+    Some(
+        body.collect()
+            .await
+            .map(http_body_util::Collected::to_bytes),
+    )
 }
 
 /// authentik-rs: net/http `isReplayable`.
@@ -363,8 +404,27 @@ async fn proxy_to_backend(
         && let Some(path) = read_api_path(&request)
     {
         let query = request.uri().query().unwrap_or_default().to_owned();
-        if let Some(response) = read_api(path, query, request.headers().clone()).await {
-            return Ok(response);
+        if let Some(body) = buffered_body(&mut request).await {
+            // A body that did not arrive whole: Go's proxy fails writing it
+            // upstream.
+            let body = match body {
+                Ok(body) => body,
+                Err(err) => return Ok(proxy_error_response(accept_header, &err)),
+            };
+            if let Some(response) = read_api(
+                request.method(),
+                path,
+                query,
+                request.headers().clone(),
+                &body,
+            )
+            .await
+            {
+                return Ok(response);
+            }
+            if request.method() != Method::GET {
+                *request.body_mut() = Body::from(body);
+            }
         }
     }
 

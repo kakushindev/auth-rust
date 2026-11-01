@@ -150,6 +150,7 @@ mod tests {
 
     fn tenant() -> Tenant {
         Tenant {
+            uuid: uuid::Uuid::nil(),
             default_page_size: 20,
             max_page_size: 100,
             avatars: String::new(),

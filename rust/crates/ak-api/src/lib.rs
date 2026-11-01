@@ -21,6 +21,7 @@ mod registry;
 mod session;
 pub mod sql;
 pub mod views;
+pub mod write;
 
 pub use ak_auth::{binding::GeoIp, python::timedelta_seconds};
 pub use drf::{ApiRequest, Context, SessionSettings};
@@ -203,17 +204,44 @@ fn route(path: &str) -> Option<Route<'_>> {
     None
 }
 
-/// Whether `serve` might answer `GET path`; cheap, for the server to skip
+/// Whether `serve` might answer `method path`; cheap, for the server to skip
 /// everything else.
 pub fn handles(method: &str, path: &str) -> bool {
-    method == "GET" && route(path).is_some()
+    match (method, route(path)) {
+        // Writes ported so far (M8).
+        ("GET", Some(_))
+        | ("POST", Some(Route::RolesList))
+        | ("PUT" | "PATCH" | "DELETE", Some(Route::RolesRetrieve(_))) => true,
+        _ => false,
+    }
 }
 
 /// Answer `GET path?query` as Django would, or decline.
 pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
+    let mut outcome = serve_inner(ctx, req).await;
+    // `RequestIDMiddleware`: `X-authentik-id` is the request's id, which any
+    // event the request wrote records too.
+    if let Outcome::Serve { answer, .. } = &mut outcome {
+        for (name, value) in &mut answer.headers {
+            if *name == "x-authentik-id" {
+                value.clone_from(&req.request_id);
+            }
+        }
+    }
+    outcome
+}
+
+async fn serve_inner(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
+    if !handles(req.method, req.path) {
+        return Outcome::Decline(Decline("route"));
+    }
     let Some(route) = route(req.path) else {
         return Outcome::Decline(Decline("route"));
     };
+    // A write with a session needs DRF's CSRF enforcement, not ported yet.
+    if req.method != "GET" && drf::has_session_cookie(req.headers) {
+        return Outcome::Decline(Decline("session write"));
+    }
     let query = match py::QueryDict::parse(req.query) {
         Ok(query) => query,
         Err(py::Unsupported) => return Outcome::Decline(Decline("too many fields")),
@@ -236,6 +264,18 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
         ..req.clone()
     };
     let (name, result) = match route {
+        Route::RolesList if req.method == "POST" => (
+            "rbac_roles_create",
+            views::rbac_roles_write::create(ctx, req, &query).await,
+        ),
+        Route::RolesRetrieve(pk) if req.method == "DELETE" => (
+            "rbac_roles_destroy",
+            views::rbac_roles_write::destroy(ctx, req, &query, pk).await,
+        ),
+        Route::RolesRetrieve(pk) if req.method != "GET" => (
+            "rbac_roles_update",
+            views::rbac_roles_write::update(ctx, req, &query, pk).await,
+        ),
         Route::RolesList => (
             "rbac_roles",
             views::rbac_roles::list(ctx, req, &query).await,
@@ -400,6 +440,12 @@ mod tests {
             Some(Route::BrandsRetrieve("currentx"))
         ));
         assert!(handles("GET", "/api/v3/rbac/roles/"));
-        assert!(!handles("POST", "/api/v3/rbac/roles/"));
+        assert!(handles("POST", "/api/v3/rbac/roles/"));
+        assert!(handles("PATCH", "/api/v3/rbac/roles/abc/"));
+        assert!(handles("DELETE", "/api/v3/rbac/roles/abc/"));
+        assert!(!handles("POST", "/api/v3/rbac/roles/abc/"));
+        assert!(!handles("PUT", "/api/v3/rbac/roles/"));
+        assert!(!handles("POST", "/api/v3/core/brands/"));
+        assert!(!handles("HEAD", "/api/v3/rbac/roles/"));
     }
 }

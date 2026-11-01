@@ -21,8 +21,8 @@ use crate::{
     sql::{Bind, QuerySet},
 };
 
-const ALLOW_LIST: &str = "GET, POST, HEAD, OPTIONS";
-const ALLOW_DETAIL: &str = "GET, PUT, PATCH, DELETE, HEAD, OPTIONS";
+pub(crate) const ALLOW_LIST: &str = "GET, POST, HEAD, OPTIONS";
+pub(crate) const ALLOW_DETAIL: &str = "GET, PUT, PATCH, DELETE, HEAD, OPTIONS";
 
 pub(crate) const MODEL: Model<'static> = Model {
     app_label: "authentik_rbac",
@@ -290,7 +290,7 @@ fn ordering(query: &QueryDict) -> Vec<String> {
 }
 
 /// `filter_queryset(get_queryset())`.
-async fn filter_queryset(
+pub(crate) async fn filter_queryset(
     ctx: &Context<'_>,
     query: &QueryDict,
     user: &User,
