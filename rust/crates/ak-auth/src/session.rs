@@ -56,6 +56,174 @@ pub struct Resolved {
     pub set_last_ip: Option<String>,
     /// `get_expiry_age()` for the cookie, `None` to expire at browser close.
     pub expiry_age: Option<f64>,
+    /// With `set_last_ip`: how to save the modified session, `None` when the
+    /// save is not reproduced (the caller declines).
+    pub save: Option<SessionSave>,
+}
+
+/// `SessionStore.save()` for a session whose only change is `last_ip`.
+///
+/// `create_model_instance` re-pickles the loaded dict. `CPython`'s pickling of
+/// session contents is not even deterministic between two `dumps` of one
+/// object (memo sharing of equal strings, Django model `__getstate__`), so
+/// the stored bytes, which unpickle to that same dict, are kept. The
+/// columns are what Django writes: `expires = get_expiry_date()`,
+/// `expiring` (the model default), `last_ip`, and `last_used` (`auto_now`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionSave {
+    pub session_key: String,
+    pub last_ip: String,
+    pub expires: DateTime<Utc>,
+}
+
+/// Keys `create_model_instance` moves out of `session_data` (model fields)
+/// or drops (Django's auth keys, the related `AuthenticatedSession`).
+const NOT_IN_SESSION_DATA: &[&str] = &[
+    "last_ip",
+    "last_user_agent",
+    "last_used",
+    "_auth_user_id",
+    "_auth_user_backend",
+    "_auth_user_hash",
+    "authenticatedsession",
+];
+
+/// Modules whose classes can appear in authentik's session pickles; an
+/// unknown one might fail `pickle.loads` in Python (`decode()` then yields
+/// an empty session, or raises), which reusing the bytes would not.
+const KNOWN_MODULES: &[&str] = &[
+    "authentik.",
+    "django.",
+    "builtins",
+    "copyreg",
+    "collections",
+    "datetime",
+    "uuid",
+    "decimal",
+    "ipaddress",
+    "_codecs",
+    "enum",
+];
+
+fn globals_known(value: &ak_pickle::Value) -> bool {
+    use ak_pickle::Value as V;
+    let known = |module: &str| {
+        KNOWN_MODULES.iter().any(|m| {
+            if m.ends_with('.') {
+                module.starts_with(m)
+            } else {
+                module == *m
+                    || module
+                        .strip_prefix(m)
+                        .is_some_and(|rest| rest.starts_with('.'))
+            }
+        })
+    };
+    // Iterative, with shared containers visited once: session graphs are
+    // deep (flow history) and may be cyclic.
+    let mut seen = std::collections::HashSet::new();
+    let mut stack = vec![value.clone()];
+    while let Some(v) = stack.pop() {
+        match &v {
+            V::Global { module, .. } => {
+                if !known(module) {
+                    return false;
+                }
+            }
+            V::Tuple(items) | V::FrozenSet(items) => {
+                if seen.insert(std::rc::Rc::as_ptr(items).cast::<()>()) {
+                    stack.extend(items.iter().cloned());
+                }
+            }
+            V::List(items) | V::Set(items) => {
+                if seen.insert(std::rc::Rc::as_ptr(items).cast::<()>()) {
+                    stack.extend(items.borrow().iter().cloned());
+                }
+            }
+            V::Dict(items) => {
+                if seen.insert(std::rc::Rc::as_ptr(items).cast::<()>()) {
+                    for (k, x) in items.borrow().iter() {
+                        stack.push(k.clone());
+                        stack.push(x.clone());
+                    }
+                }
+            }
+            V::Object(object) if seen.insert(std::rc::Rc::as_ptr(object).cast::<()>()) => {
+                let object = object.borrow();
+                stack.push(object.callable.clone());
+                stack.push(object.args.clone());
+                stack.extend(object.kwargs.iter().cloned());
+                stack.extend(object.state.iter().cloned());
+                stack.extend(object.list_items.iter().cloned());
+                for (k, x) in &object.dict_items {
+                    stack.push(k.clone());
+                    stack.push(x.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+/// `SessionBase.get_expiry_date()` at `now`.
+fn expiry_date(
+    expiry: Option<&ak_pickle::Value>,
+    cookie_age: f64,
+    now: DateTime<Utc>,
+) -> Option<DateTime<Utc>> {
+    use ak_pickle::Value as V;
+    let after = |seconds: f64| {
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_possible_truncation,
+            reason = "microseconds"
+        )]
+        let micros = (seconds * 1e6_f64).round() as i64;
+        now.checked_add_signed(chrono::Duration::microseconds(micros))
+    };
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_precision_loss,
+        reason = "seconds"
+    )]
+    match expiry {
+        // `expiry or self.get_session_cookie_age()`.
+        None | Some(V::None | V::Bool(false) | V::Int(0)) => after(cookie_age),
+        Some(V::Float(f)) if *f == 0.0_f64 => after(cookie_age),
+        Some(V::Str(s)) if s.is_empty() => after(cookie_age),
+        Some(V::Bool(true)) => after(1.0_f64),
+        Some(V::Int(n)) => after(*n as f64),
+        Some(V::Float(f)) => after(*f),
+        Some(V::Str(s)) => DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|d| d.with_timezone(&Utc)),
+        Some(_) => None,
+    }
+}
+
+/// Run the [`SessionSave`]; the number of rows updated (0: the session
+/// was deleted meanwhile, Django's `UpdateError`).
+///
+/// # Errors
+///
+/// A database error.
+pub async fn save_last_ip(
+    pool: &PgPool,
+    save: &SessionSave,
+    now: DateTime<Utc>,
+) -> Result<u64, Error> {
+    let done = sqlx::query(
+        "UPDATE authentik_core_session SET expires = $1, expiring = true, last_ip = $2::inet, \
+         last_used = $3 WHERE session_key = $4",
+    )
+    .bind(save.expires)
+    .bind(&save.last_ip)
+    .bind(now)
+    .bind(&save.session_key)
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected())
 }
 
 /// A Django 500: the exception that escapes the middleware.
@@ -299,6 +467,7 @@ pub async fn resolve(
         session_key: None,
         set_last_ip: None,
         expiry_age: None,
+        save: None,
     };
     let Some(key) = session_key(cookie, secret_key, now)? else {
         return Ok(anonymous);
@@ -333,6 +502,7 @@ pub async fn resolve(
         session_key: None,
         set_last_ip: None,
         expiry_age: None,
+        save: None,
     };
 
     // BoundSessionMiddleware.
@@ -352,11 +522,29 @@ pub async fn resolve(
         return Ok(flushed(RequestUser::InactiveLogout));
     }
     let expiry_age = expiry_age(get(SESSION_KEY_EXPIRY).as_ref(), cookie_age, now)?;
+    let save = set_last_ip.as_ref().and_then(|ip| {
+        let data = data.as_ref()?;
+        let ak_pickle::Value::Dict(items) = data else {
+            return None;
+        };
+        let clean = items.borrow().iter().all(|(k, _)| {
+            matches!(k, ak_pickle::Value::Str(k) if !NOT_IN_SESSION_DATA.contains(&k.as_str()))
+        });
+        if !clean || !globals_known(data) {
+            return None;
+        }
+        Some(SessionSave {
+            session_key: key.clone(),
+            last_ip: ip.clone(),
+            expires: expiry_date(get(SESSION_KEY_EXPIRY).as_ref(), cookie_age, now)?,
+        })
+    });
     let resolved = |user| Resolved {
         user,
         session_key: Some(key.clone()),
         set_last_ip: set_last_ip.clone(),
         expiry_age,
+        save: save.clone(),
     };
     // ImpersonateMiddleware: the pickled User (`model_unpickle`) state's `id`.
     if let Some(impersonated) = get(SESSION_KEY_IMPERSONATE_USER) {

@@ -45,6 +45,10 @@ pub struct ApiRequest<'a> {
     /// The session middleware's user, set by [`crate::serve`] for a
     /// request with a session cookie.
     pub session_user: Option<ak_auth::session::RequestUser>,
+    /// The user DRF authenticated (`Some(None)`: anonymous), recorded by
+    /// [`authenticate`]. DRF writes it back to `request._request.user`,
+    /// which is whom `SessionMiddleware` signs a refreshed cookie for.
+    pub drf_user: std::sync::Arc<std::sync::Mutex<Option<Option<i32>>>>,
 }
 
 fn header_str<'a>(headers: &'a HeaderMap, name: &header::HeaderName) -> Option<&'a str> {
@@ -236,6 +240,23 @@ impl User {
 ///
 /// `Ok(Err(answer))` is DRF's `AuthenticationFailed` response.
 pub async fn authenticate(
+    ctx: &Context<'_>,
+    req: &ApiRequest<'_>,
+    allow: &'static str,
+) -> Result<Result<User, Answer>, Decline> {
+    let result = authenticate_inner(ctx, req, allow).await?;
+    // A failed authentication leaves DRF's `AnonymousUser`.
+    let user = match &result {
+        Ok(User::Authenticated(subject)) => Some(subject.user_id),
+        _ => None,
+    };
+    if let Ok(mut cell) = req.drf_user.lock() {
+        *cell = Some(user);
+    }
+    Ok(result)
+}
+
+async fn authenticate_inner(
     ctx: &Context<'_>,
     req: &ApiRequest<'_>,
     allow: &'static str,

@@ -282,7 +282,28 @@ An **invalid `authentik_csrf` cookie** is now declined on every request: `CsrfVi
 | --- | --- |
 | `tests/api/run.sh` with session variants. `tests/api/sessions.py` logs in through the flow executor on the reference before the snapshot is dumped, so all three stacks restore the same session rows. Variants: a plain user, a superuser-group member, a user deactivated after login, an anonymous in-flow session, a logged-out session, an expired one, a non-JWT and an empty cookie, a session plus a bearer token, and valid and invalid CSRF cookies. Each variant runs on every fifth case of all 15 endpoints | Full run **14 963 cases: 14 956 equal + 7 nondeterministic** (all `users/me/`, Django-served). The superuser session's status histogram matches the superuser token's. Empty sessions get Django's cookie deletion from Rust. Invalid CSRF cookies and the inactive user's first request (Django's 400 and flush) are declined |
 
-Not covered yet: the modified-session path itself (the run's sessions keep their login IP), and impersonation.
+**Modified sessions (M8, part 2).** When `BoundSessionMiddleware` records a new `last_ip`, Rust saves the session as `SessionStore.save()` does (`ak_auth::session::SessionSave`):
+- `expires = get_expiry_date()`;
+- `expiring = true`, the model default;
+- `last_ip`;
+- `last_used = now`, from `auto_now`.
+
+It then refreshes the cookie: a JWT for the user DRF authenticated, because DRF writes `request.user` back, so with a bearer token the cookie's `sub` is the token user's `uid`.
+
+`session_data` keeps its stored bytes, which is the one place Rust does not write what Django writes, and the choice is deliberate. Django re-pickles the loaded dict, but CPython's pickling of these sessions is **not deterministic**: two `dumps` of the same loaded graph differ in memo sharing, as observed in the reference image. Byte equality is therefore not a property Django itself has. The stored bytes unpickle to exactly the dict Django would pickle.
+
+The save is declined when it would differ semantically:
+- data that `ak_pickle` cannot read (Python would answer with an empty session or raise);
+- keys that `create_model_instance` moves to columns or drops;
+- classes from modules outside a known list;
+- an expiry type that is not reproduced.
+
+Evidence. Three sessions get a stale `last_ip` in SQL before the snapshot is dumped, so the first request saves them:
+- On cand that first request is **served by Rust**, and every response is equal, refreshed `Set-Cookie` included (full run of 15 607 cases: 15 598 equal + 9 nondeterministic `users/me/`).
+- `tests/api/session_state.py` then compares the saved rows, ref's (Django) against cand's (Rust): `last_ip`, `expiring` and `expires` match, and `session_data` is equal once unpickled (a cycle-aware structural comparison).
+- Its seeded failures, a tampered `last_ip` and a renamed pickled key, are both reported as `MISMATCH`.
+
+Still declined: impersonation, flushes (inactive user, broken binding) and logout.
 
 ## Not verified / open
 

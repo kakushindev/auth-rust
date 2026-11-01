@@ -68,6 +68,11 @@ logout = Browser().login("m8-sess-plain")
 cookies["session-logged-out"] = logout.cookie()
 status, body = logout.call("GET", "/api/v3/flows/executor/default-invalidation-flow/?query=")
 assert status == 200, (status, body)
+# Moved: run.sh rewrites their stored last_ip, so the first request
+# modifies and saves them (SessionStore.save) and refreshes the cookie.
+cookies["session-moved-plain"] = Browser().login("m8-sess-plain").cookie()
+cookies["session-moved-super"] = Browser().login("m8-sess-super").cookie()
+cookies["session-moved-bearer"] = Browser().login("m8-sess-plain").cookie()
 cookies["session-garbage"] = "not-a-jwt"
 cookies["session-empty"] = ""
 assert all(v is not None for v in cookies.values()), cookies

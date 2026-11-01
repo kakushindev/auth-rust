@@ -80,3 +80,8 @@ Django adds behavior the schema does not show. Each must be captured per model b
 ## Password hash format (verified)
 
 `authentik_core_user.password` uses Django's default `PASSWORD_HASHERS` (no override): `pbkdf2_sha256` (preferred, 1 000 000 iterations), `pbkdf2_sha1`, `argon2` (argon2id, t=2, m=102400, p=8), `bcrypt_sha256` (12 rounds), `scrypt` (N=16384, r=8, **p=5**). Unusable passwords start with `!`. See `SECURITY_INVARIANTS.md` for the verified behavior.
+
+## Data written by the Rust port
+
+- `authentik_core_session` (M8): on a modified session, Rust updates `expires`, `expiring`, `last_ip` and `last_used` as Django's `SessionStore.save()` does, and leaves `session_data` as stored. Django would write a re-pickled `session_data`. That re-pickle unpickles to the same dict, but its bytes are not deterministic in CPython itself (memo sharing differs between two `dumps` of one graph). The contract for `session_data` is therefore semantic equality, checked by `tests/api/session_state.py`.
+

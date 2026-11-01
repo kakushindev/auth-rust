@@ -123,6 +123,7 @@ async fn read_api(path: String, query: String, headers: HeaderMap) -> Option<Res
         query: &query,
         headers: &headers,
         session_user: None,
+        drf_user: std::sync::Arc::default(),
     };
     let (route, answer) = match ak_api::serve(&ctx, &req).await {
         ak_api::Outcome::Serve { route, answer } => (route, answer),

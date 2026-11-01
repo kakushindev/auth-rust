@@ -78,6 +78,7 @@ async fn sessions_match_django() {
             session_key,
             set_last_ip,
             expiry_age,
+            ..
         } = &resolved;
         let (got, status, uid_of) = match user {
             RequestUser::Anonymous => ("anonymous".to_owned(), 200, None),

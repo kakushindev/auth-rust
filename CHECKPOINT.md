@@ -2,6 +2,15 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 22 — 2026-11-01
+
+- M8 part 2: modified sessions are saved from Rust. When `last_ip` changes, Rust writes the columns and refreshes the cookie for the DRF user; `session_data` is kept as stored. Django's re-pickle is nondeterministic in CPython, so the contract is semantic equality, recorded in DATABASE_CONTRACT. Saves are declined for unreadable data, keys `create_model_instance` would move, unknown classes and unknown expiry types.
+- Bug found while testing: a recursion limit in the class check (`depth > 200`) rejected real flow-history sessions. The walk is now iterative and cycle-safe.
+- Evidence: the full run has 15 607 cases (15 598 equal, 9 nondeterministic `users/me/`), and the first request of each moved session is Rust-served and equal. `session_state.py` compares the saved rows on ref and cand: all equal, and both seeded tampers are detected.
+
+### Exact next action
+M8 part 3: logout and flush (inactive user, broken binding), with the `user_logged_out` event and its signals, then the first write endpoints with a state-transition differential.
+
 ## Batch 21 — 2026-11-01
 
 - M8 part 1: the read API serves session-cookie requests. M5's `session::resolve` runs before the view, `process_response` after it (including the cookie deletion for an empty session), and DRF's `SessionAuthentication` applies when there is no bearer credential. Declined: sessions Django would modify, flush or impersonate, outpost client-IP overrides, and invalid CSRF cookies. The CSRF case was a latent M7 gap.

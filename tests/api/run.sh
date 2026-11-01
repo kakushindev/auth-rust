@@ -38,8 +38,10 @@ done
 # need SQL: a deactivated user and an expired session.
 python3 -I "$here/sessions.py" http://127.0.0.1:29000 > "$SNAPSHOT_DIR/sessions.json"
 expired_sid="$(python3 -I -c 'import base64,json,sys; c=json.load(open(sys.argv[1]))["session-expired"].split(".")[1]; print(json.loads(base64.urlsafe_b64decode(c+"="*(-len(c)%4)))["sid"])' "$SNAPSHOT_DIR/sessions.json")"
+sid() { python3 -I -c 'import base64,json,sys; c=json.load(open(sys.argv[1]))[sys.argv[2]].split(".")[1]; print(json.loads(base64.urlsafe_b64decode(c+"="*(-len(c)%4)))["sid"])' "$SNAPSHOT_DIR/sessions.json" "$1"; }
+moved_sids="'$(sid session-moved-plain)','$(sid session-moved-super)','$(sid session-moved-bearer)'"
 dc exec -T ref-db psql -U authentik -d authentik -qc \
-  "UPDATE authentik_core_user SET is_active = false WHERE username = 'm8-sess-inactive'; UPDATE authentik_core_session SET expires = now() - interval '1 hour' WHERE session_key = '${expired_sid}';" >/dev/null
+  "UPDATE authentik_core_user SET is_active = false WHERE username = 'm8-sess-inactive'; UPDATE authentik_core_session SET expires = now() - interval '1 hour' WHERE session_key = '${expired_sid}'; UPDATE authentik_core_session SET last_ip = '10.9.9.9' WHERE session_key IN (${moved_sids});" >/dev/null
 export API_SESSIONS="$SNAPSHOT_DIR/sessions.json"
 dc exec -T ref-db pg_dump -U authentik -d authentik -Fc > "$SNAPSHOT_DIR/snapshot.dump.new"
 mv "$SNAPSHOT_DIR/snapshot.dump.new" "$SNAPSHOT_DIR/snapshot.dump"
@@ -57,6 +59,18 @@ done
 
 status=0
 python3 -I "$here/api_diff.py" --report "$here/last-report.json" ${API_ONLY:+--only "$API_ONLY"} || status=$?
+# The moved sessions after their save: Django's on ref, Rust's on cand.
+for db in ref-db cand-db; do
+  dc exec -T "$db" psql -U authentik -d authentik -Atc \
+    "SELECT json_agg(json_build_object('key', session_key, 'last_ip', host(last_ip), 'expiring', expiring, 'expires', extract(epoch from expires), 'data', encode(session_data, 'base64'))) FROM authentik_core_session WHERE session_key IN (${moved_sids})" \
+    > "$SNAPSHOT_DIR/sessions-$db.json"
+done
+state="$(python3 -I -c 'import json,sys; print(json.dumps({"ref": json.load(open(sys.argv[1])), "cand": json.load(open(sys.argv[2]))}))' \
+  "$SNAPSHOT_DIR/sessions-ref-db.json" "$SNAPSHOT_DIR/sessions-cand-db.json" \
+  | docker exec -i ak-api-ref-1 python -m manage shell -c "$(cat "$here/session_state.py")" 2>/dev/null \
+  | grep '^\[session-state\]' || true)"
+echo "$state"
+grep -q '^\[session-state\] ok$' <<<"$state" || status=1
 for port in 25432 25532 25632; do
   rust/target/debug/ak-schema-guard verify --database-url \
     "postgres://authentik:${PG_PASS}@127.0.0.1:${port}/authentik" \

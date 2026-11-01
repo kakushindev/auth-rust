@@ -963,7 +963,13 @@ SESSIONS = json.loads(pathlib.Path(os.environ["API_SESSIONS"]).read_text()) if o
 VARIANTS = {
     **{f"cookie:{k}": (None, f"authentik_session={v}") for k, v in SESSIONS.items()},
     **(
-        {"cookie+bearer:session-plain+m7-akadmin": ("m7-akadmin", f"authentik_session={SESSIONS['session-plain']}")}
+        {
+            "cookie+bearer:session-plain+m7-akadmin": ("m7-akadmin", f"authentik_session={SESSIONS['session-plain']}"),
+            "cookie+bearer:session-moved-bearer+m7-akadmin": (
+                "m7-akadmin",
+                f"authentik_session={SESSIONS['session-moved-bearer']}",
+            ),
+        }
         if SESSIONS
         else {}
     ),

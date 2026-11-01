@@ -221,12 +221,12 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
     if let Err(decline) = drf::admit(req, &query) {
         return Outcome::Decline(decline);
     }
-    let (session_user, session_cookies) = match session::middleware(ctx, req).await {
+    let mut session_state = match session::middleware(ctx, req).await {
         Ok(state) => state,
         Err(decline) => return Outcome::Decline(decline),
     };
     let req = &ApiRequest {
-        session_user,
+        session_user: session_state.user.take(),
         ..req.clone()
     };
     let (name, result) = match route {
@@ -348,15 +348,18 @@ pub async fn serve(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
         ),
     };
     match result {
-        Ok(mut answer) => {
-            answer
-                .headers
-                .extend(session_cookies.into_iter().map(|c| ("set-cookie", c)));
-            Outcome::Serve {
-                route: name,
-                answer,
+        Ok(mut answer) => match session::finish(ctx, req, session_state, answer.status).await {
+            Ok(cookies) => {
+                answer
+                    .headers
+                    .extend(cookies.into_iter().map(|c| ("set-cookie", c)));
+                Outcome::Serve {
+                    route: name,
+                    answer,
+                }
             }
-        }
+            Err(decline) => Outcome::Decline(decline),
+        },
         Err(decline) => Outcome::Decline(decline),
     }
 }
