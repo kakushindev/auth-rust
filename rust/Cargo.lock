@@ -107,6 +107,10 @@ dependencies = [
 [[package]]
 name = "ak-pickle"
 version = "2026.2.7"
+dependencies = [
+ "hex",
+ "serde_json",
+]
 
 [[package]]
 name = "ak-rbac"

@@ -7,6 +7,8 @@
 //! because pickles fill them after memoizing them, and the memo must see the
 //! filled container, as Python's object identity does.
 
+pub mod write;
+
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// How an [`Object`] is constructed.
