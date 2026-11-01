@@ -2,6 +2,15 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 26 — 2026-11-01
+
+- **Found by profiling the read API**: with `conn_max_age: 0`, the vendored pool closes a connection on every release, so each Rust-served request opened about 11 PostgreSQL connections. Django opens one per request.
+- `ak_common::db::request_scoped` gives each read-API request one connection, opened on first use and closed at the end (`core.rs`), matching Django's semantics.
+- Results: Rust-served requests went from about 110 ms to about 34 ms (Django 51–64 ms). The full API run takes 573 s instead of 995 s, and decides all 15 768 cases identically to the previous run on the same fixture.
+
+### Exact next action
+M8: the first write endpoints of the ported viewsets (create/update/delete). That means `model_created`/`model_updated`/`model_deleted` events (`AuditMiddleware`), cache invalidation and `InitialPermissions`, with a state-transition differential.
+
 ## Batch 25 — 2026-11-01
 
 - **API differential speed-up**, with nothing loosened:

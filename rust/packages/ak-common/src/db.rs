@@ -85,20 +85,7 @@ pub async fn init(tasks: &mut Tasks) -> Result<()> {
         .max_connections(u32::try_from(django_connections.max(4)).unwrap_or(u32::MAX))
         .acquire_time_level(LevelFilter::Trace)
         .test_before_acquire(config.postgresql.conn_health_checks)
-        .after_connect(|conn, _meta| {
-            Box::pin(async move {
-                let mut application_name =
-                    format!("authentik-{}@{}", Mode::get(), authentik_full_version());
-                application_name.truncate(63);
-                let default_schema = &config::get().postgresql.default_schema;
-                let query = format!(
-                    "SET application_name = '{application_name}'; SET search_path = \
-                     '{default_schema}';"
-                );
-                conn.execute(AssertSqlSafe(query)).await?;
-                Ok(())
-            })
-        });
+        .after_connect(|conn, _meta| Box::pin(prepare_connection(conn)));
 
     let pool_options = match config.postgresql.conn_max_age {
         Some(0) => pool_options.after_release(|_conn, _meta| Box::pin(async { Ok(false) })),
@@ -119,6 +106,43 @@ pub async fn init(tasks: &mut Tasks) -> Result<()> {
 
     info!("database pool initialized");
     Ok(())
+}
+
+/// Every new connection's session settings.
+async fn prepare_connection(conn: &mut PgConnection) -> Result<(), sqlx::Error> {
+    let mut application_name = format!("authentik-{}@{}", Mode::get(), authentik_full_version());
+    application_name.truncate(63);
+    let default_schema = &config::get().postgresql.default_schema;
+    let query = format!(
+        "SET application_name = '{application_name}'; SET search_path = '{default_schema}';"
+    );
+    conn.execute(AssertSqlSafe(query)).await?;
+    Ok(())
+}
+
+/// authentik-rs: Django's `CONN_MAX_AGE = 0` opens one connection for a
+/// request and closes it when the request finishes. The shared pool honours
+/// `conn_max_age: 0` by closing a connection whenever it is released, i.e.
+/// after every query, so a request the server answers itself (the read API)
+/// gets this instead: a pool of one connection, opened on first use with the
+/// shared pool's current options, for the caller to close when the request
+/// is done. `None` when connections persist (the shared pool reuses them).
+#[must_use]
+pub fn request_scoped() -> Option<PgPool> {
+    let config = config::get();
+    if config.postgresql.conn_max_age != Some(0) {
+        return None;
+    }
+    let options = (*get().connect_options()).clone();
+    Some(
+        PgPoolOptions::new()
+            .min_connections(0)
+            .max_connections(1)
+            .acquire_time_level(LevelFilter::Trace)
+            .test_before_acquire(config.postgresql.conn_health_checks)
+            .after_connect(|conn, _meta| Box::pin(prepare_connection(conn)))
+            .connect_lazy_with(options),
+    )
 }
 
 pub fn get() -> &'static PgPool {
