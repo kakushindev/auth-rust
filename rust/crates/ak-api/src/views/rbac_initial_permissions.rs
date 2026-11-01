@@ -21,10 +21,10 @@ use crate::{
     },
 };
 
-const ALLOW_LIST: &str = "GET, POST, HEAD, OPTIONS";
-const ALLOW_DETAIL: &str = "GET, PUT, PATCH, DELETE, HEAD, OPTIONS";
+pub(crate) const ALLOW_LIST: &str = "GET, POST, HEAD, OPTIONS";
+pub(crate) const ALLOW_DETAIL: &str = "GET, PUT, PATCH, DELETE, HEAD, OPTIONS";
 
-const MODEL: Model<'static> = Model {
+pub(crate) const MODEL: Model<'static> = Model {
     app_label: "authentik_rbac",
     model_name: "initialpermissions",
     ctype_app_label: "authentik_rbac",
@@ -45,7 +45,7 @@ const ORDERING: &[(&str, &str)] = &[
 
 /// `InitialPermissionsSerializer`.
 #[derive(Serialize)]
-struct InitialPermissions {
+pub(crate) struct InitialPermissions {
     pk: i32,
     name: String,
     role: String,
@@ -53,7 +53,7 @@ struct InitialPermissions {
     permissions_obj: Vec<Permission>,
 }
 
-async fn filter_queryset(
+pub(crate) async fn filter_queryset(
     ctx: &Context<'_>,
     query: &QueryDict,
     user: &User,
@@ -84,7 +84,7 @@ async fn filter_queryset(
 
 /// The rows plus their `permissions.all()` in `Permission`'s default
 /// ordering (`content_type__app_label`, `content_type__model`, `codename`).
-async fn serialize(
+pub(crate) async fn serialize(
     ctx: &Context<'_>,
     rows: &[sqlx::postgres::PgRow],
 ) -> Result<Vec<InitialPermissions>, Decline> {
@@ -126,7 +126,7 @@ async fn serialize(
     Ok(out)
 }
 
-const COLUMNS: &str = "t.\"id\", t.\"name\", t.\"role_id\"";
+pub(crate) const COLUMNS: &str = "t.\"id\", t.\"name\", t.\"role_id\"";
 
 /// `GET /api/v3/rbac/initial_permissions/`.
 pub async fn list(

@@ -17,6 +17,7 @@ pub mod filters;
 pub mod json;
 pub mod pagination;
 pub mod py;
+pub mod pyset;
 mod registry;
 mod session;
 pub mod sql;
@@ -216,10 +217,14 @@ pub fn handles(method: &str, path: &str) -> bool {
         (_, Some(Route::NotificationsMarkAllSeen)) => method == "POST",
         // Writes ported so far (M8).
         ("GET", Some(_))
-        | ("POST", Some(Route::RolesList))
+        | ("POST", Some(Route::RolesList | Route::InitialPermissionsList))
         | (
             "PUT" | "PATCH" | "DELETE",
-            Some(Route::RolesRetrieve(_) | Route::NotificationsRetrieve(_)),
+            Some(
+                Route::RolesRetrieve(_)
+                | Route::NotificationsRetrieve(_)
+                | Route::InitialPermissionsRetrieve(_),
+            ),
         ) => true,
         _ => false,
     }
@@ -284,6 +289,18 @@ async fn serve_inner(ctx: &Context<'_>, req: &ApiRequest<'_>) -> Outcome {
         Route::NotificationsRetrieve(pk) if req.method != "GET" => (
             "events_notifications_update",
             views::events_notifications_write::update(ctx, req, &query, pk).await,
+        ),
+        Route::InitialPermissionsList if req.method == "POST" => (
+            "rbac_initial_permissions_create",
+            views::rbac_initial_permissions_write::create(ctx, req, &query).await,
+        ),
+        Route::InitialPermissionsRetrieve(pk) if req.method == "DELETE" => (
+            "rbac_initial_permissions_destroy",
+            views::rbac_initial_permissions_write::destroy(ctx, req, &query, pk).await,
+        ),
+        Route::InitialPermissionsRetrieve(pk) if req.method != "GET" => (
+            "rbac_initial_permissions_update",
+            views::rbac_initial_permissions_write::update(ctx, req, &query, pk).await,
         ),
         Route::RolesList if req.method == "POST" => (
             "rbac_roles_create",

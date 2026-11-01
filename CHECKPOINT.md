@@ -2,6 +2,22 @@
 
 Durable resume point for the authentik → Rust rewrite. Update at the end of every batch.
 
+## Batch 30 — 2026-11-01
+
+- **M8 part 6, InitialPermissions writes**: create, update (PUT/PATCH) and delete are served from Rust (`views/rbac_initial_permissions_write.rs`). They cover `CharField(max_length=150)` + `UniqueValidator`, the `role` `PrimaryKeyRelatedField` (read as `UUIDField.to_python`), and the `permissions` `ManyRelatedField`, then `permissions.set()` in Django's order.
+- **`ak_api::pyset`**: CPython 3.14's int `set`. Django inserts m2m rows in the order of `target_ids.difference(…)`, and the through rows' ids follow it. It is verified against 290 orders recorded with the reference image's Python 3.14.5 (`tests/differential/pyset/gen.py`).
+- Harness:
+  - JSON bodies resolve `{role:…}`/`{initial:…}` per stack.
+  - The reference's IPC brand-polling `system_exception` events (open item "Brand TLS polling") are dropped as background writes, with their dispatch task (matched through the pickled event UUID) and log. Before this, one such event on ref shifted the placeholders of every later case.
+- Evidence: full run, reads 15 768/15 768 equal; writes 124 equal + 1 nondeterministic of 125 (115 Rust-served, including all 50 InitialPermissions cases except a declined list-valued `role`); session and logout state ok, schema guard clean.
+
+### Exact next action
+Speed (owner asked why it is slow):
+- a generic CRUD layer for plain `ModelViewSet`s (field descriptors: char/bool/int/FK/m2m/JSON, validators, audit, the m2m `set()`), so each simple viewset is a descriptor plus cases;
+- a per-viewset subset run of the differential for iteration, with the full run once per batch.
+
+Then the remaining writes (transports, rules, groups, users, tokens, brands …).
+
 ## Batch 29 — 2026-11-01
 
 - **M8 part 5, notification writes**: `PUT`/`PATCH`/`DELETE events/notifications/{pk}/` and `POST events/notifications/mark_all_seen/` are served from Rust (`views/events_notifications_write.rs`). Notifications are unaudited and unsignalled, so each write is one statement. The PATCH response serializes the stored row; `mark_all_seen`'s 204 keeps `Content-Type`, as Django's does.

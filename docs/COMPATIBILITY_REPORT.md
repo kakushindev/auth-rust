@@ -391,6 +391,24 @@ The full API run is 15 768/15 768 equal, with clean session and logout state che
 | `tests/writes/write_diff.py`, 32 notification cases: owner, other owner, no permission, anonymous; trimmed, blank, null, over-long, non-string, boolean-string, numeric and fractional values; read-only fields; PUT `{}`; missing and invalid pks; `mark_all_seen` repeated, anonymous, with a form body, as GET and PUT; deletes | 75 write cases in all: 74 equal and 1 nondeterministic (the declined anonymous PATCH, where Django's 500 page and event embed a memory address, as between the two references); 66 Rust-served |
 | Median latency, 50 rounds per stack | PATCH 47.4 → **4.0 ms**, `mark_all_seen` 39.2 → **3.1 ms** |
 
+## InitialPermissions writes (M8, part 6)
+
+`POST /api/v3/rbac/initial_permissions/` and `PUT`/`PATCH`/`DELETE /api/v3/rbac/initial_permissions/{pk}/` are served from Rust.
+
+- **Validation**, in field order, with every field's error reported:
+  - `name`: `CharField(max_length=150)`; its `UniqueValidator` ("Initial Permissions with this name already exists.") runs before the length check.
+  - `role`: `PrimaryKeyRelatedField` on every role. A string is read as `uuid.UUID(hex=…)` (“nope” is not a valid UUID.). An integer is read as `UUID(int=…)`: negative values are invalid, others are looked up. A bool is an incorrect type, and a missing row gives `Invalid pk "…" - object does not exist.`.
+  - `permissions`: `ManyRelatedField`, not required. A non-list gets "Expected a list of items but got type …". Items are read as `int()`: digit strings, out-of-range values (no match), bool, list and dict items (incorrect type), and `null` (`get(pk=None)` is `IS NULL`, so "Invalid pk "None""). The first bad item is the error.
+- **Writes**, in Django's order: the row (an update writes every field), the audit event, then `permissions.set()`. That step reads the current ids, deletes the dropped rows through the collector (select, then delete by primary key; auto-created rows get no signal), then inserts the missing ids with `ON CONFLICT DO NOTHING`.
+- **Insert order**: `AuditMiddleware`'s global `m2m_changed` receiver rules out Django's fast add. `_add_items` therefore inserts in the order of `target_ids.difference(queryset)`, a CPython `set`, and the new through rows' ids follow it. `ak_api::pyset::IntSet` reproduces `Objects/setobject.c` (linear and perturbed probing, resizing, the copy in `set_merge`, dummies on discard). It is verified against 290 orders recorded with the reference image's Python 3.14.5 (`tests/differential/pyset/gen.py`).
+- **Delete**: the event, then the m2m rows by primary key, then the row.
+- **Declined**: floats and `-0` in `permissions`; `int()` syntax beyond plain digits (whitespace, `+`, underscores, non-ASCII digits); `role` values whose `str()` Django prints (floats, lists, dicts); a dict for `permissions`; a name both taken and too long; plus everything every write declines. With a license row, every request already declines (`drf::tenant`), so `EnterpriseAuditMiddleware`'s diffs never apply.
+
+| Evidence | Result |
+| --- | --- |
+| `tests/writes/write_diff.py`, 50 InitialPermissions cases: creates with 0, 3 and 13 permissions (repeats, values up to 700); every validation branch above; renames; uniqueness against itself; set replacements with overlap, repeats, clearing and a 16-id refill; role changes; PUT with and without `permissions`; no permission, anonymous, missing and invalid pks; deletes; then deleting the role that holds them | All equal in response and row changes, including the m2m rows' ids (only the list-valued `role` is declined) |
+| `cargo test -p ak-api pyset` | 290/290 CPython orders; a seeded order check |
+
 ## Not verified / open
 
 - **Brand TLS polling (M2)**: 2026.2.7's Go server and embedded outpost refresh brand TLS through the brands API over IPC. Our server reads the database instead. Responses are unaffected, but when that API fails (as for this harness's `1e20` brand attribute), Django records a `system_exception` event per poll on the reference and none on the candidate. This must be reproduced, or explicitly accepted, before M17.

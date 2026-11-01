@@ -30,6 +30,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 STACKS = {
@@ -67,16 +68,48 @@ def preexisting(container):
 
 
 # Writers that run beside the request, not because of it: the embedded
-# outpost's state heartbeat.
+# outpost's state heartbeat, and the reference's Go server polling the
+# brands API over IPC (COMPATIBILITY_REPORT, "Brand TLS polling"). When
+# that poll fails, Django records a `system_exception` event with its
+# dispatch task and log, on the references only.
 BACKGROUND = [("django_postgres_cache_cacheentry", "goauthentik.io/outposts/state/")]
+IPC_AGENT = "goauthentik.io/ipc/"
 
 
-def background(change):
-    row = change["new"] or change["old"] or {}
-    return any(
-        change["tbl"] == table and prefix in str(row.get("cache_key", ""))
-        for table, prefix in BACKGROUND
-    )
+def encode_long(n):
+    """`pickle.encode_long`: little-endian two's complement, minimal."""
+    return n.to_bytes((n.bit_length() + 8) // 8, "little", signed=True)
+
+
+def background_rows(changes):
+    """Indexes of `changes` that no case request wrote."""
+    out = set()
+    for i, c in enumerate(changes):
+        row = c["new"] or c["old"] or {}
+        if any(c["tbl"] == t and prefix in str(row.get("cache_key", "")) for t, prefix in BACKGROUND):
+            out.add(i)
+    events = {}
+    for i, c in enumerate(changes):
+        row = c["new"] or {}
+        http = ((row.get("context") or {}).get("http_request") or {}) if c["tbl"] == "authentik_events_event" else {}
+        if str(http.get("user_agent", "")).startswith(IPC_AGENT):
+            out.add(i)
+            events[uuid.UUID(row["event_uuid"])] = i
+    # `event_trigger_dispatch(event_uuid)`: the pickled UUID's `int`.
+    tasks = set()
+    for i, c in enumerate(changes):
+        row = c["new"] or c["old"] or {}
+        if c["tbl"] != "authentik_tasks_task" or not str(row.get("message", "")).startswith("\\x"):
+            continue
+        message = bytes.fromhex(row["message"][2:])
+        if any(encode_long(u.int) in message for u in events):
+            out.add(i)
+            tasks.add(row["message_id"])
+    for i, c in enumerate(changes):
+        row = c["new"] or c["old"] or {}
+        if c["tbl"] == "authentik_tasks_tasklog" and row.get("task_id") in tasks:
+            out.add(i)
+    return out
 
 
 def take_changes(container):
@@ -84,7 +117,9 @@ def take_changes(container):
         "WITH d AS (DELETE FROM m8cap.changes RETURNING *) "
         "SELECT coalesce(json_agg(json_build_object('tbl', tbl, 'op', op, 'old', old, 'new', new) ORDER BY id), '[]') FROM d;"
     ))
-    return [c for c in json.loads(rows.strip() or "[]") if not background(c)]
+    changes = json.loads(rows.strip() or "[]")
+    skip = background_rows(changes)
+    return [c for i, c in enumerate(changes) if i not in skip]
 
 
 def request(base, method, path, token, body, content_type):
@@ -159,12 +194,24 @@ def resolve(base, path):
         lookup = {
             "role": "/api/v3/rbac/roles/?name=",
             "notification": "/api/v3/events/notifications/?body=",
+            "initial": "/api/v3/rbac/initial_permissions/?name=",
         }[kind]
         _, _, body = request(base, "GET", lookup + urllib.parse.quote(name), ADMIN, None, None)
         results = body["results"]
-        return results[0]["pk"] if results else "00000000-0000-4000-8000-000000000000"
+        return str(results[0]["pk"]) if results else "00000000-0000-4000-8000-000000000000"
 
     return re.sub(r"\{(\w+):([^}]+)\}", one, path)
+
+
+def resolve_body(base, body):
+    """`resolve` on every string of a JSON body."""
+    if isinstance(body, dict):
+        return {k: resolve_body(base, v) for k, v in body.items()}
+    if isinstance(body, list):
+        return [resolve_body(base, v) for v in body]
+    if isinstance(body, str):
+        return resolve(base, body)
+    return body
 
 
 import urllib.parse  # noqa: E402
@@ -219,7 +266,7 @@ def cases():
         ("delete model permission", "DELETE", roles + "{role:5}/", "m7-m6-direct", None, None),
         ("delete with permissions", "DELETE", roles + "{role:m6-model}/", ADMIN, None, None),
         ("delete created", "DELETE", roles + "{role:m8-role-trim}/", ADMIN, None, None),
-    ] + notification_cases()
+    ] + notification_cases() + initial_permission_cases()
 
 
 def notification_cases():
@@ -265,6 +312,69 @@ def notification_cases():
     ]
 
 
+
+def initial_permission_cases():
+    """InitialPermissions on a role nobody holds (so no request's own
+    initial permissions apply). Permission ids are the fixture's serial
+    ids; the larger lists exercise CPython's set order for the m2m rows."""
+    base = "/api/v3/rbac/initial_permissions/"
+    roles = "/api/v3/rbac/roles/"
+    role = "{role:m8-ip-role}"
+    a, b = base + "{initial:m8-ip-a}/", base + "{initial:m8-ip-b}/"
+    many = [700, 9, 8, 300, 17, 1, 64, 33, 2, 500, 129, 9, 700]
+    return [
+        ("ip role", "POST", roles, ADMIN, {"name": "m8-ip-role"}, JSON),
+        ("ip create", "POST", base, ADMIN, {"name": "m8-ip-a", "role": role, "permissions": [3, 1, 2]}, JSON),
+        ("ip create many", "POST", base, ADMIN, {"name": "m8-ip-b", "role": role, "permissions": many}, JSON),
+        ("ip create no permissions key", "POST", base, ADMIN, {"name": "m8-ip-c", "role": role}, JSON),
+        ("ip create empty permissions", "POST", base, ADMIN, {"name": "m8-ip-d", "role": role, "permissions": []}, JSON),
+        ("ip create duplicate", "POST", base, ADMIN, {"name": "m8-ip-a", "role": role}, JSON),
+        ("ip create long name", "POST", base, ADMIN, {"name": "x" * 151, "role": role}, JSON),
+        ("ip create max name", "POST", base, ADMIN, {"name": "y" * 150, "role": role}, JSON),
+        ("ip create missing role", "POST", base, ADMIN, {"name": "m8-ip-e"}, JSON),
+        ("ip create null role", "POST", base, ADMIN, {"name": "m8-ip-e", "role": None}, JSON),
+        ("ip create invalid role", "POST", base, ADMIN, {"name": "m8-ip-e", "role": "nope"}, JSON),
+        ("ip create unknown role", "POST", base, ADMIN, {"name": "m8-ip-e", "role": "00000000-0000-4000-8000-000000000000"}, JSON),
+        ("ip create integer role", "POST", base, ADMIN, {"name": "m8-ip-e", "role": 5}, JSON),
+        ("ip create negative role", "POST", base, ADMIN, {"name": "m8-ip-e", "role": -5}, JSON),
+        ("ip create bool role", "POST", base, ADMIN, {"name": "m8-ip-e", "role": True}, JSON),
+        ("ip create list role", "POST", base, ADMIN, {"name": "m8-ip-e", "role": [role]}, JSON),
+        ("ip create permissions string", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": "1"}, JSON),
+        ("ip create permissions int", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": 1}, JSON),
+        ("ip create permissions null", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": None}, JSON),
+        ("ip create permission bool", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": [1, True]}, JSON),
+        ("ip create permission null", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": [None]}, JSON),
+        ("ip create permission text", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": ["abc"]}, JSON),
+        ("ip create permission digits", "POST", base, ADMIN, {"name": "m8-ip-f", "role": role, "permissions": ["7", "007"]}, JSON),
+        ("ip create permission unknown", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": [1, 999999]}, JSON),
+        ("ip create permission huge", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": [99999999999]}, JSON),
+        ("ip create permission list", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": [[1]]}, JSON),
+        ("ip create permission dict", "POST", base, ADMIN, {"name": "m8-ip-e", "role": role, "permissions": [{"a": 1}]}, JSON),
+        ("ip create several errors", "POST", base, ADMIN, {"name": "", "role": "nope", "permissions": "x"}, JSON),
+        ("ip create anonymous", "POST", base, None, {"name": "m8-ip-e", "role": role}, JSON),
+        ("ip create no permission", "POST", base, "m7-m6-none", {"name": "m8-ip-e", "role": role}, JSON),
+        ("ip patch rename", "PATCH", a, ADMIN, {"name": "m8-ip-a2"}, JSON),
+        ("ip patch same name", "PATCH", base + "{initial:m8-ip-a2}/", ADMIN, {"name": "m8-ip-a2"}, JSON),
+        ("ip patch duplicate", "PATCH", base + "{initial:m8-ip-a2}/", ADMIN, {"name": "m8-ip-b"}, JSON),
+        ("ip patch permissions overlap", "PATCH", b, ADMIN, {"permissions": [3, 4, 5, 700, 64, 100, 129]}, JSON),
+        ("ip patch permissions repeated", "PATCH", b, ADMIN, {"permissions": [5, 5, 64, 3, 3]}, JSON),
+        ("ip patch permissions clear", "PATCH", b, ADMIN, {"permissions": []}, JSON),
+        ("ip patch permissions refill", "PATCH", b, ADMIN, {"permissions": many + [40, 72, 136, 264, 520]}, JSON),
+        ("ip patch role", "PATCH", b, ADMIN, {"role": "{role:m6-object}"}, JSON),
+        ("ip put", "PUT", b, ADMIN, {"name": "m8-ip-b", "role": role, "permissions": [2]}, JSON),
+        ("ip put missing role", "PUT", b, ADMIN, {"name": "m8-ip-b"}, JSON),
+        ("ip put without permissions", "PUT", b, ADMIN, {"name": "m8-ip-b", "role": role}, JSON),
+        ("ip patch empty", "PATCH", b, ADMIN, {}, JSON),
+        ("ip patch no permission", "PATCH", b, "m7-m6-none", {"name": "x"}, JSON),
+        ("ip patch missing", "PATCH", base + "999999/", ADMIN, {}, JSON),
+        ("ip patch invalid pk", "PATCH", base + "abc/", ADMIN, {}, JSON),
+        ("ip delete", "DELETE", b, ADMIN, None, None),
+        ("ip delete renamed", "DELETE", base + "{initial:m8-ip-a2}/", ADMIN, None, None),
+        ("ip delete no permission", "DELETE", base + "{initial:m8-ip-f}/", "m7-m6-none", None, None),
+        ("ip delete empty", "DELETE", base + "{initial:m8-ip-c}/", ADMIN, None, None),
+        ("ip role delete", "DELETE", roles + "{role:m8-ip-role}/", ADMIN, None, None),
+    ]
+
 def self_test(results):
     """A seeded difference in a case's response or changes must be found;
     otherwise the comparison proves nothing and the run is void."""
@@ -307,9 +417,10 @@ def main():
         out = {}
         for stack, (base, db) in STACKS.items():
             resolved = resolve(base, path)
+            resolved_body = resolve_body(base, body)
             take_changes(db)
             since = time.time() - 2
-            status, headers, payload = request(base, method, resolved, token, body, ctype)
+            status, headers, payload = request(base, method, resolved, token, resolved_body, ctype)
             changes = take_changes(db)
             rust = TRACE in headers
             headers = {

@@ -64,7 +64,9 @@ Normalization, and nothing more:
 - A UUID or 32-hex value absent from that stack's `pg_dump` before the suite becomes `<idN>`, numbered per stack in order of appearance.
 - A timestamp from the case's start onward becomes `<now>`.
 - A `bytea` task message becomes `<bytea>` (tests/events checks it byte for byte).
-- The embedded outpost's state heartbeat in the cache table is dropped.
+- Rows no case request wrote are dropped: the embedded outpost's state heartbeat in the cache table, and on the references the `system_exception` events that the Go server's IPC brand polling causes (user agent `goauthentik.io/ipc/`), with the dispatch task whose pickled message carries that event's UUID and the task's log. The polling itself is an open item in COMPATIBILITY_REPORT. Its fresh UUIDs would otherwise shift every later case's placeholders.
+
+Integer keys are not normalized: an m2m row's serial id is compared literally, so the order Django inserts rows in (`ak_api::pyset`) is checked as well. Fixture rows that have random keys are found per stack by lookups in the case (`{role:…}`, `{notification:…}`, `{initial:…}`, resolved in paths and JSON bodies).
 
 A fixture value referenced wrongly stays a literal mismatch, and a created value referenced wrongly is a number mismatch. Before the summary, a self-test seeds five differences into an equal case (a changed value, a dropped row, reversed rows, a renumbered reference, a status) and fails the run unless every one is detected.
 

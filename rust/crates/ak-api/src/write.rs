@@ -219,7 +219,10 @@ pub(crate) fn boolean_field(
             _ => None,
         },
         // `1.0 == 1` and `0.0 == -0.0 == 0` in the sets.
-        #[expect(clippy::float_cmp, reason = "Python's set membership is exact equality")]
+        #[expect(
+            clippy::float_cmp,
+            reason = "Python's set membership is exact equality"
+        )]
         PyValue::Float(f) if *f == 1.0_f64 => Some(true),
         PyValue::Float(f) if *f == 0.0_f64 => Some(false),
         PyValue::Str(s) => match s.to_string_lossless() {

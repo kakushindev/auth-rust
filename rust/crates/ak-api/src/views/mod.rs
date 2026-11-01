@@ -15,6 +15,7 @@ pub mod events_notifications;
 pub mod events_notifications_write;
 pub mod rbac_assigned_by_roles;
 pub mod rbac_initial_permissions;
+pub mod rbac_initial_permissions_write;
 pub mod rbac_permissions;
 pub mod rbac_roles;
 pub mod rbac_roles_write;
